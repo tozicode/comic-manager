@@ -1,6 +1,6 @@
 [package]
 name = "otosazu"
-version = "0.1.1"
+version = "0.1.2"
 description = "漫画制作スケジュール管理ソフト"
 authors = ["tozicode"]
 edition = "2024"
