@@ -45,7 +45,9 @@ export function SettingsScreen() {
           <div className="section-title" style={{ margin: 0 }}>
             工程
           </div>
-          <span className="muted small-text">工程の追加・並べ替え・隠すは、登録済みの作品にも反映されます</span>
+          <span className="muted small-text">
+            追加した工程は、これから登録する作品で使われます。並べ替えと隠すは、登録済みの作品にも反映されます
+          </span>
         </div>
         <div className="slist">
           {stages.map((s, i) => (

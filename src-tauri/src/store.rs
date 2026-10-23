@@ -291,7 +291,8 @@ impl Store {
         .map_err(db_err)
     }
 
-    /// 工程を追加する。既存の作品にも末尾に追加する（隠せば非表示にできる）
+    /// 工程を追加する。これから登録する作品だけが使い、登録済みの作品には加えない
+    /// （制作途中の作品に、未着手の工程が急に増えないようにするため）
     pub fn add_stage(&self, name: &str, color: &str) -> Result<StageDef> {
         let name = valid_name(name)?;
         let next: i64 = self
@@ -304,14 +305,7 @@ impl Store {
                 params![name, color, next],
             )
             .map_err(db_err)?;
-        let id = self.conn.last_insert_rowid();
-        self.conn
-            .execute(
-                "INSERT INTO work_stage (work_id, stage_id, sort_order) SELECT id, ?1, ?2 FROM work",
-                params![id, next],
-            )
-            .map_err(db_err)?;
-        self.stage(id)
+        self.stage(self.conn.last_insert_rowid())
     }
 
     pub fn update_stage(&self, id: i64, name: &str, color: &str, hint_minutes: i64) -> Result<StageDef> {
@@ -981,8 +975,8 @@ mod tests {
     }
 
     #[test]
-    fn 工程を追加_並べ替え_隠すとボードに反映する() {
-        let (store, id) = setup();
+    fn 追加した工程はこれから登録する作品だけが使う() {
+        let (store, old) = setup();
         let added = store.add_stage(" ネーム ", "#9a7fb8").unwrap();
         assert_eq!(added.name, "ネーム");
         // 先頭まで動かす
@@ -990,12 +984,21 @@ mod tests {
         store.move_stage(added.id, -1).unwrap();
         store.move_stage(added.id, -1).unwrap();
         store.move_stage(added.id, -1).unwrap(); // 先頭より上には行かない
-        let names: Vec<String> = store.board(id, 0).unwrap().stages.into_iter().map(|s| s.name).collect();
-        assert_eq!(names, ["ネーム", "下書き", "ペン入れ", "トーン"]);
+        let names = |work| -> Vec<String> { store.board(work, 0).unwrap().stages.into_iter().map(|s| s.name).collect() };
 
+        // 登録済みの作品には加わらない
+        assert_eq!(names(old), ["下書き", "ペン入れ", "トーン"]);
+        // これから登録する作品は使う
+        let new = store.add_work("C:/b.cmc", &comic(&[("page0001.clip", 1)]), 0).unwrap();
+        assert_eq!(names(new), ["ネーム", "下書き", "ペン入れ", "トーン"]);
+
+        // 並べ替えと隠すは登録済みの作品にも反映する
+        let st = stage_ids(&store);
+        store.move_stage(st[3], -1).unwrap(); // トーンをペン入れの前へ
+        assert_eq!(names(old), ["下書き", "トーン", "ペン入れ"]);
         store.set_stage_hidden(added.id, true).unwrap();
-        assert_eq!(store.board(id, 0).unwrap().stages.len(), 3);
-        assert_eq!(store.list_works().unwrap()[0].stage_count, 3);
+        assert_eq!(names(new).len(), 3);
+        assert!(store.list_works().unwrap().iter().all(|w| w.stage_count == 3));
 
         store.update_stage(added.id, "ネーム（ラフ）", "#000000", 30).unwrap();
         let s = store.list_stages().unwrap().into_iter().find(|s| s.id == added.id).unwrap();
