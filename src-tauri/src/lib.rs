@@ -163,6 +163,86 @@ fn move_stage(state: State<AppState>, id: i64, delta: i64) -> Cmd<()> {
     with_store(&state, |s| s.move_stage(id, delta))
 }
 
+// ----- タグ -----
+
+#[tauri::command]
+fn list_tags(state: State<AppState>) -> Cmd<Vec<store::TagGroup>> {
+    with_store(&state, |s| s.list_tags())
+}
+
+#[tauri::command]
+fn set_page_tag(state: State<AppState>, page_ids: Vec<i64>, tag_id: i64, on: bool) -> Cmd<()> {
+    with_store(&state, |s| s.set_page_tag(&page_ids, tag_id, on))
+}
+
+#[tauri::command]
+fn add_tag_group(state: State<AppState>, name: String, exclusive: bool) -> Cmd<i64> {
+    with_store(&state, |s| s.add_tag_group(&name, exclusive))
+}
+
+#[tauri::command]
+fn update_tag_group(state: State<AppState>, id: i64, name: String, exclusive: bool) -> Cmd<()> {
+    with_store(&state, |s| s.update_tag_group(id, &name, exclusive))
+}
+
+#[tauri::command]
+fn add_tag(state: State<AppState>, group_id: i64, name: String, initial_factor: f64) -> Cmd<i64> {
+    with_store(&state, |s| s.add_tag(group_id, &name, initial_factor))
+}
+
+#[tauri::command]
+fn update_tag(state: State<AppState>, id: i64, name: String, initial_factor: f64) -> Cmd<()> {
+    with_store(&state, |s| s.update_tag(id, &name, initial_factor))
+}
+
+#[tauri::command]
+fn set_tag_hidden(state: State<AppState>, id: i64, hidden: bool) -> Cmd<()> {
+    with_store(&state, |s| s.set_tag_hidden(id, hidden))
+}
+
+// ----- 予測・スケジュール -----
+
+#[tauri::command]
+fn get_prediction(state: State<AppState>, work_id: i64) -> Cmd<store::Prediction> {
+    with_store(&state, |s| s.prediction(work_id, now_ms()))
+}
+
+#[tauri::command]
+fn get_schedule(state: State<AppState>, work_id: i64) -> Cmd<store::WorkSchedule> {
+    with_store(&state, |s| s.schedule(work_id))
+}
+
+#[tauri::command]
+fn set_work_hours(state: State<AppState>, work_id: i64, hours: Option<[f64; 7]>) -> Cmd<()> {
+    with_store(&state, |s| s.set_work_hours(work_id, hours))
+}
+
+#[tauri::command]
+fn set_default_hours(state: State<AppState>, hours: [f64; 7]) -> Cmd<()> {
+    with_store(&state, |s| s.set_default_hours(hours))
+}
+
+#[tauri::command]
+fn set_deadline(state: State<AppState>, work_id: i64, deadline: Option<String>) -> Cmd<()> {
+    with_store(&state, |s| s.set_deadline(work_id, deadline.as_deref()))
+}
+
+#[tauri::command]
+fn set_work_order(state: State<AppState>, work_id: i64, order: String) -> Cmd<()> {
+    with_store(&state, |s| s.set_work_order(work_id, &order))
+}
+
+/// 全作品の既定の作業時間（月〜日）と休みの日
+#[tauri::command]
+fn get_calendar(state: State<AppState>) -> Cmd<([f64; 7], Vec<String>)> {
+    with_store(&state, |s| Ok((s.default_hours()?, s.days_off()?)))
+}
+
+#[tauri::command]
+fn set_day_off(state: State<AppState>, date: String, off: bool) -> Cmd<()> {
+    with_store(&state, |s| s.set_day_off(&date, off))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -199,6 +279,21 @@ pub fn run() {
             update_stage,
             set_stage_hidden,
             move_stage,
+            list_tags,
+            set_page_tag,
+            add_tag_group,
+            update_tag_group,
+            add_tag,
+            update_tag,
+            set_tag_hidden,
+            get_prediction,
+            get_schedule,
+            set_work_hours,
+            set_default_hours,
+            set_deadline,
+            set_work_order,
+            set_day_off,
+            get_calendar,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

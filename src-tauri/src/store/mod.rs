@@ -10,6 +10,14 @@ use serde::Serialize;
 
 use crate::cmc::Comic;
 
+mod predict;
+mod schedule;
+mod tags;
+
+pub use predict::Prediction;
+pub use schedule::WorkSchedule;
+pub use tags::TagGroup;
+
 pub type Result<T> = std::result::Result<T, String>;
 
 fn db_err(e: rusqlite::Error) -> String {
@@ -81,6 +89,8 @@ pub struct BoardPage {
     pub number: i64,
     pub span: i64,
     pub missing: bool,
+    /// 付いているタグ（自動で付く「見開き」も含む。隠したタグは含まない）
+    pub tags: Vec<i64>,
     /// 工程の順（`Board::stages` と同じ並び）
     pub cells: Vec<Cell>,
 }
@@ -140,6 +150,7 @@ pub struct SessionRow {
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Span {
+    pub work_id: i64,
     pub started_at: i64,
     pub ended_at: Option<i64>,
     pub stage_name: String,
@@ -266,6 +277,42 @@ impl Store {
                     )
                     .map_err(db_err)?;
             }
+        }
+        if version < 2 {
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE tag_group (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        exclusive INTEGER NOT NULL DEFAULT 0,
+                        sort_order INTEGER NOT NULL
+                    );
+                    CREATE TABLE tag_def (
+                        id INTEGER PRIMARY KEY,
+                        group_id INTEGER NOT NULL REFERENCES tag_group(id),
+                        name TEXT NOT NULL,
+                        initial_factor REAL NOT NULL DEFAULT 1.0,
+                        system TEXT,
+                        hidden INTEGER NOT NULL DEFAULT 0,
+                        sort_order INTEGER NOT NULL
+                    );
+                    CREATE TABLE page_tag (
+                        page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+                        tag_id INTEGER NOT NULL REFERENCES tag_def(id),
+                        PRIMARY KEY (page_id, tag_id)
+                    );
+                    CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                    CREATE TABLE day_off (date TEXT PRIMARY KEY);
+                    ALTER TABLE work ADD COLUMN deadline TEXT;
+                    ALTER TABLE work ADD COLUMN work_order TEXT NOT NULL DEFAULT 'stage';
+                    ALTER TABLE work ADD COLUMN weekday_hours TEXT;
+                    PRAGMA user_version = 2;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+            self.seed_tags()?;
+            self.seed_schedule()?;
         }
         Ok(())
     }
@@ -528,6 +575,7 @@ impl Store {
                     number,
                     span,
                     missing: r.get(4)?,
+                    tags: Vec::new(),
                     cells: Vec::new(),
                 })
             })
@@ -555,7 +603,9 @@ impl Store {
             .and_then(|rows| rows.collect())
             .map_err(db_err)?;
 
+        let page_tags = self.page_tags(work_id)?;
         for page in &mut pages {
+            page.tags = page_tags.iter().filter(|(p, _)| *p == page.id).map(|(_, t)| *t).collect();
             page.cells = stages
                 .iter()
                 .map(|s| Cell {
@@ -742,12 +792,15 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT ss.started_at, ss.ended_at, s.name FROM work_session ss
+                "SELECT p.work_id, ss.started_at, ss.ended_at, s.name FROM work_session ss
                  JOIN stage_def s ON s.id = ss.stage_id
+                 JOIN page p ON p.id = ss.page_id
                  WHERE COALESCE(ss.ended_at, ss.started_at) >= ?1 ORDER BY ss.started_at",
             )
             .map_err(db_err)?;
-        stmt.query_map([from], |r| Ok(Span { started_at: r.get(0)?, ended_at: r.get(1)?, stage_name: r.get(2)? }))
+        stmt.query_map([from], |r| {
+            Ok(Span { work_id: r.get(0)?, started_at: r.get(1)?, ended_at: r.get(2)?, stage_name: r.get(3)? })
+        })
             .and_then(|rows| rows.collect())
             .map_err(db_err)
     }
@@ -834,9 +887,9 @@ mod tests {
     use super::*;
     use crate::cmc::Page;
 
-    const MIN: i64 = 60_000;
+    pub(crate) const MIN: i64 = 60_000;
 
-    fn comic(pages: &[(&str, u32)]) -> Comic {
+    pub(crate) fn comic(pages: &[(&str, u32)]) -> Comic {
         let mut number = 1;
         Comic {
             title: "テスト作品".into(),
@@ -851,7 +904,7 @@ mod tests {
         }
     }
 
-    fn setup() -> (Store, i64) {
+    pub(crate) fn setup() -> (Store, i64) {
         let store = Store::open_in_memory().unwrap();
         let id = store
             .add_work("C:/a.cmc", &comic(&[("page0001.clip", 1), ("page0002.clip", 2), ("page0004.clip", 1)]), 0)
@@ -859,7 +912,7 @@ mod tests {
         (store, id)
     }
 
-    fn stage_ids(store: &Store) -> Vec<i64> {
+    pub(crate) fn stage_ids(store: &Store) -> Vec<i64> {
         store.list_stages().unwrap().iter().map(|s| s.id).collect()
     }
 
