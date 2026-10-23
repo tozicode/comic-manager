@@ -12,7 +12,7 @@ use super::{Result, Store, db_err, page_label};
 /// 同期の前後で見比べるためのページの状態
 #[derive(Debug, Clone)]
 pub(super) struct PageState {
-    id: i64,
+    pub(super) id: i64,
     file_name: String,
     order_index: i64,
     number: i64,

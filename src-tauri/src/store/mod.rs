@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use crate::cmc::Comic;
 
+mod files;
 mod pages;
 mod predict;
 mod prefs;
@@ -36,6 +37,8 @@ fn db_err(e: rusqlite::Error) -> String {
 #[serde(rename_all = "camelCase")]
 pub struct StageDef {
     pub id: i64,
+    /// 属する工程のセット（漫画・イラストなど）
+    pub set_id: i64,
     pub name: String,
     pub color: String,
     pub sort_order: i64,
@@ -44,20 +47,38 @@ pub struct StageDef {
     pub hidden: bool,
 }
 
+/// 工程のセット。作品の登録時に選び、そのセットの工程を使う
+#[derive(Debug, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StageSet {
+    pub id: i64,
+    pub name: String,
+    /// 1 単位の呼び方（ページ・枚）
+    pub unit: String,
+    /// このセットを既定にする作品の種類（comic / files）
+    pub kind: String,
+}
+
+/// 作品の種類：漫画（cmc）とイラスト（.clip / .psd を束ねたもの）
+pub const KIND_COMIC: &str = "comic";
+pub const KIND_FILES: &str = "files";
+
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkSummary {
     pub id: i64,
     pub title: String,
-    pub cmc_path: String,
-    /// 見開きを 2 ページと数えたページ数
+    pub kind: String,
+    /// 漫画の cmc の場所（イラストは None）
+    pub cmc_path: Option<String>,
+    /// 見開きを 2 ページと数えたページ数（イラストはファイルの数）
     pub page_count: i64,
     pub stage_count: i64,
     /// 0.0〜1.0。完了したタスクの割合（見開きは 2 ページ分の重み）
     pub progress: f64,
     pub total_ms: i64,
     pub last_worked_at: Option<i64>,
-    /// 登録した場所に cmc が見つからない（移動・名前の変更など）。画面に返す直前に調べる
+    /// 登録した場所にファイルが見つからない（移動・名前の変更など）。画面に返す直前に調べる
     pub file_missing: bool,
 }
 
@@ -80,7 +101,8 @@ pub struct RelinkCheck {
 pub struct WorkInfo {
     pub id: i64,
     pub title: String,
-    pub cmc_path: String,
+    pub kind: String,
+    pub cmc_path: Option<String>,
     pub last_synced_at: Option<i64>,
 }
 
@@ -105,10 +127,15 @@ pub struct Cell {
 pub struct BoardPage {
     pub id: i64,
     pub file_name: String,
+    /// ページのファイルの場所（サムネイルと保存の検知に使う）
+    pub path: String,
     pub label: String,
     pub number: i64,
     pub span: i64,
+    /// cmc から消えたページ（漫画のみ。予測や進捗から外す）
     pub missing: bool,
+    /// ファイルが今の場所にあるか（画面に返す直前に調べる。イラストの「場所を指定」に使う）
+    pub found: bool,
     /// 付いているタグ（自動で付く「見開き」も含む。隠したタグは含まない）
     pub tags: Vec<i64>,
     /// 工程の順（`Board::stages` と同じ並び）
@@ -197,6 +224,19 @@ pub fn page_label(number: i64, span: i64) -> String {
     }
 }
 
+/// 行の表示名。イラストのファイルは名前（title）、漫画のページは p 番号
+pub fn row_label(title: Option<String>, number: i64, span: i64) -> String {
+    title.unwrap_or_else(|| page_label(number, span))
+}
+
+/// ページのファイルの場所。漫画は cmc と同じフォルダ、イラストは file_name に場所そのものが入っている
+pub fn page_path(cmc_path: Option<&str>, file_name: &str) -> std::path::PathBuf {
+    match cmc_path {
+        Some(cmc) => crate::cmc::page_path(Path::new(cmc), file_name),
+        None => std::path::PathBuf::from(file_name),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // データベース本体
 // ---------------------------------------------------------------------------
@@ -211,6 +251,17 @@ const DEFAULT_STAGES: [(&str, &str, i64); 3] = [
     ("ペン入れ", "#c8553d", 90),
     ("トーン", "#4f8a5b", 60),
 ];
+
+/// イラスト用の初期の工程（版 3 で追加）
+const ILLUST_STAGES: [(&str, &str, i64); 4] = [
+    ("ラフ", "#9a7fb8", 60),
+    ("線画", "#5b7fb8", 120),
+    ("塗り", "#d0913a", 180),
+    ("仕上げ", "#4f8a5b", 60),
+];
+
+/// スキーマの最新の版
+const LATEST: i64 = 3;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -229,17 +280,17 @@ impl Store {
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
             .map_err(db_err)?;
         let store = Self { conn };
-        store.migrate()?;
+        store.migrate(LATEST)?;
         Ok(store)
     }
 
-    /// `PRAGMA user_version` でスキーマの版を管理する
-    fn migrate(&self) -> Result<()> {
+    /// `PRAGMA user_version` でスキーマの版を管理する。`target` の版まで上げる（テストでは古い版を作るのに使う）
+    fn migrate(&self, target: i64) -> Result<()> {
         let version: i64 = self
             .conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(db_err)?;
-        if version < 1 {
+        if version < 1 && target >= 1 {
             self.conn
                 .execute_batch(
                     "BEGIN;
@@ -304,7 +355,7 @@ impl Store {
                     .map_err(db_err)?;
             }
         }
-        if version < 2 {
+        if version < 2 && target >= 2 {
             self.conn
                 .execute_batch(
                     "BEGIN;
@@ -340,6 +391,76 @@ impl Store {
             self.seed_tags()?;
             self.seed_schedule()?;
         }
+        if version < 3 && target >= 3 {
+            self.migrate_v3()?;
+        }
+        Ok(())
+    }
+
+    /// 版 3：イラスト作品（.clip / .psd を束ねる）と工程のセット、タグの出し分け
+    fn migrate_v3(&self) -> Result<()> {
+        // work の cmc_path を NULL にできるよう作り直す。作り直しの間は外部キーを止める
+        // （止めないと DROP TABLE work でページや記録まで消える）。SQLite の公式の手順に沿う
+        self.conn
+            .execute_batch(
+                "PRAGMA foreign_keys = OFF;
+                BEGIN;
+                CREATE TABLE stage_set (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    unit TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL
+                );
+                INSERT INTO stage_set (id, name, unit, kind, sort_order) VALUES
+                    (1, '漫画', 'ページ', 'comic', 0),
+                    (2, 'イラスト', '枚', 'files', 1);
+                ALTER TABLE stage_def ADD COLUMN set_id INTEGER NOT NULL DEFAULT 1;
+                CREATE TABLE work_new (
+                    id INTEGER PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    kind TEXT NOT NULL DEFAULT 'comic',
+                    cmc_path TEXT UNIQUE,
+                    created_at INTEGER NOT NULL,
+                    last_synced_at INTEGER,
+                    deadline TEXT,
+                    work_order TEXT NOT NULL DEFAULT 'stage',
+                    weekday_hours TEXT
+                );
+                INSERT INTO work_new (id, title, kind, cmc_path, created_at, last_synced_at, deadline, work_order, weekday_hours)
+                    SELECT id, title, 'comic', cmc_path, created_at, last_synced_at, deadline, work_order, weekday_hours FROM work;
+                DROP TABLE work;
+                ALTER TABLE work_new RENAME TO work;
+                ALTER TABLE page ADD COLUMN title TEXT;
+                ALTER TABLE tag_group ADD COLUMN applies TEXT NOT NULL DEFAULT 'both';
+                UPDATE tag_group SET applies = 'comic'
+                    WHERE id IN (SELECT group_id FROM tag_def WHERE system IS NOT NULL)
+                       OR id IN (SELECT group_id FROM tag_def WHERE name IN ('コマ少', 'コマ普通', 'コマ多'));
+                PRAGMA user_version = 3;
+                COMMIT;
+                PRAGMA foreign_keys = ON;",
+            )
+            .map_err(db_err)?;
+        let broken: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0))
+            .map_err(db_err)?;
+        if broken > 0 {
+            return Err("データの更新で不整合が見つかりました。バックアップから戻してください".into());
+        }
+        let base: i64 = self
+            .conn
+            .query_row("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM stage_def", [], |r| r.get(0))
+            .map_err(db_err)?;
+        for (i, (name, color, hint)) in ILLUST_STAGES.iter().enumerate() {
+            self.conn
+                .execute(
+                    "INSERT INTO stage_def (name, color, sort_order, hint_minutes, set_id) VALUES (?1, ?2, ?3, ?4, 2)",
+                    params![name, color, base + i as i64, hint],
+                )
+                .map_err(db_err)?;
+        }
+        self.seed_illust_tags()?;
         Ok(())
     }
 
@@ -348,25 +469,71 @@ impl Store {
     pub fn list_stages(&self) -> Result<Vec<StageDef>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, color, sort_order, hint_minutes, hidden FROM stage_def ORDER BY sort_order, id")
+            .prepare(
+                "SELECT id, set_id, name, color, sort_order, hint_minutes, hidden FROM stage_def ORDER BY set_id, sort_order, id",
+            )
             .map_err(db_err)?;
         stmt.query_map([], |r| {
             Ok(StageDef {
                 id: r.get(0)?,
-                name: r.get(1)?,
-                color: r.get(2)?,
-                sort_order: r.get(3)?,
-                hint_minutes: r.get(4)?,
-                hidden: r.get(5)?,
+                set_id: r.get(1)?,
+                name: r.get(2)?,
+                color: r.get(3)?,
+                sort_order: r.get(4)?,
+                hint_minutes: r.get(5)?,
+                hidden: r.get(6)?,
             })
         })
         .and_then(|rows| rows.collect())
         .map_err(db_err)
     }
 
+    pub fn list_stage_sets(&self) -> Result<Vec<StageSet>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, unit, kind FROM stage_set ORDER BY sort_order, id")
+            .map_err(db_err)?;
+        stmt.query_map([], |r| Ok(StageSet { id: r.get(0)?, name: r.get(1)?, unit: r.get(2)?, kind: r.get(3)? }))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)
+    }
+
+    /// 作品の種類の既定の工程セット
+    #[cfg(test)]
+    pub fn default_set(&self, kind: &str) -> Result<i64> {
+        self.conn
+            .query_row(
+                "SELECT id FROM stage_set WHERE kind = ?1 ORDER BY sort_order, id LIMIT 1",
+                [kind],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db_err)?
+            .ok_or_else(|| "工程のセットが見つかりませんでした".into())
+    }
+
+    /// 同じセットの工程の ID（並び順）
+    fn set_stage_ids(&self, set_id: i64) -> Result<Vec<i64>> {
+        Ok(self.list_stages()?.into_iter().filter(|s| s.set_id == set_id).map(|s| s.id).collect())
+    }
+
+    fn stage_set_of(&self, stage_id: i64) -> Result<i64> {
+        self.conn
+            .query_row("SELECT set_id FROM stage_def WHERE id = ?1", [stage_id], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?
+            .ok_or_else(|| "工程が見つかりませんでした".into())
+    }
+
+    /// 漫画のセットに工程を追加する
+    #[cfg(test)]
+    pub fn add_stage(&self, name: &str, color: &str) -> Result<StageDef> {
+        self.add_stage_in_set(self.default_set(KIND_COMIC)?, name, color)
+    }
+
     /// 工程を追加する。これから登録する作品だけが使い、登録済みの作品には加えない
     /// （制作途中の作品に、未着手の工程が急に増えないようにするため）
-    pub fn add_stage(&self, name: &str, color: &str) -> Result<StageDef> {
+    pub fn add_stage_in_set(&self, set_id: i64, name: &str, color: &str) -> Result<StageDef> {
         let name = valid_name(name)?;
         let next: i64 = self
             .conn
@@ -374,8 +541,8 @@ impl Store {
             .map_err(db_err)?;
         self.conn
             .execute(
-                "INSERT INTO stage_def (name, color, sort_order) VALUES (?1, ?2, ?3)",
-                params![name, color, next],
+                "INSERT INTO stage_def (name, color, sort_order, set_id) VALUES (?1, ?2, ?3, ?4)",
+                params![name, color, next, set_id],
             )
             .map_err(db_err)?;
         self.stage(self.conn.last_insert_rowid())
@@ -399,7 +566,12 @@ impl Store {
         if hidden {
             let visible: i64 = self
                 .conn
-                .query_row("SELECT COUNT(*) FROM stage_def WHERE hidden = 0 AND id != ?1", [id], |r| r.get(0))
+                .query_row(
+                    "SELECT COUNT(*) FROM stage_def WHERE hidden = 0 AND id != ?1
+                     AND set_id = (SELECT set_id FROM stage_def WHERE id = ?1)",
+                    [id],
+                    |r| r.get(0),
+                )
                 .map_err(db_err)?;
             if visible == 0 {
                 return Err("工程は 1 つ以上表示しておく必要があります".into());
@@ -411,9 +583,9 @@ impl Store {
         Ok(())
     }
 
-    /// 工程を 1 つ上（delta = -1）または下（delta = 1）へ動かす。全作品の並び順にも反映する
+    /// 工程を同じセットの中で 1 つ上（delta = -1）または下（delta = 1）へ動かす。全作品の並び順にも反映する
     pub fn move_stage(&self, id: i64, delta: i64) -> Result<()> {
-        let mut ids: Vec<i64> = self.list_stages()?.into_iter().map(|s| s.id).collect();
+        let mut ids = self.set_stage_ids(self.stage_set_of(id)?)?;
         let Some(pos) = ids.iter().position(|&x| x == id) else {
             return Err("工程が見つかりませんでした".into());
         };
@@ -422,20 +594,15 @@ impl Store {
             return Ok(());
         }
         ids.swap(pos, to as usize);
-        for (i, sid) in ids.iter().enumerate() {
-            self.conn
-                .execute("UPDATE stage_def SET sort_order = ?2 WHERE id = ?1", params![sid, i as i64])
-                .map_err(db_err)?;
-            self.conn
-                .execute("UPDATE work_stage SET sort_order = ?2 WHERE stage_id = ?1", params![sid, i as i64])
-                .map_err(db_err)?;
-        }
-        Ok(())
+        self.set_stage_order(&ids)
     }
 
-    /// 工程をこの順番に並べる（ドラッグでの並べ替え用）。全作品の並び順にも反映する
+    /// 同じセットの工程をこの順番に並べる（ドラッグでの並べ替え用）。全作品の並び順にも反映する
     pub fn set_stage_order(&self, ids: &[i64]) -> Result<()> {
-        let mut all: Vec<i64> = self.list_stages()?.into_iter().map(|s| s.id).collect();
+        let Some(&first) = ids.first() else {
+            return Err("工程の並びが正しくありません".into());
+        };
+        let mut all = self.set_stage_ids(self.stage_set_of(first)?)?;
         let mut sorted = ids.to_vec();
         sorted.sort();
         all.sort();
@@ -462,7 +629,13 @@ impl Store {
 
     // ----- 作品 -----
 
+    /// 漫画の作品を、漫画の既定の工程セットで登録する
+    #[cfg(test)]
     pub fn add_work(&self, cmc_path: &str, comic: &Comic, now: i64) -> Result<i64> {
+        self.add_work_in_set(cmc_path, comic, self.default_set(KIND_COMIC)?, now)
+    }
+
+    pub fn add_work_in_set(&self, cmc_path: &str, comic: &Comic, set_id: i64, now: i64) -> Result<i64> {
         let exists: bool = self
             .conn
             .query_row("SELECT COUNT(*) > 0 FROM work WHERE cmc_path = ?1", [cmc_path], |r| r.get(0))
@@ -472,21 +645,34 @@ impl Store {
         }
         self.conn
             .execute(
-                "INSERT INTO work (title, cmc_path, created_at) VALUES (?1, ?2, ?3)",
+                "INSERT INTO work (title, kind, cmc_path, created_at) VALUES (?1, 'comic', ?2, ?3)",
                 params![comic.title, cmc_path, now],
             )
             .map_err(db_err)?;
         let work_id = self.conn.last_insert_rowid();
-        // 作品で使う工程は、登録時点で表示している工程
-        self.conn
-            .execute(
-                "INSERT INTO work_stage (work_id, stage_id, sort_order)
-                 SELECT ?1, id, sort_order FROM stage_def WHERE hidden = 0",
-                [work_id],
-            )
-            .map_err(db_err)?;
+        self.copy_stages(work_id, set_id)?;
         self.sync_pages(work_id, comic, now)?;
         Ok(work_id)
+    }
+
+    /// 作品で使う工程は、登録時点でそのセットの表示している工程
+    fn copy_stages(&self, work_id: i64, set_id: i64) -> Result<()> {
+        let n = self
+            .conn
+            .execute(
+                "INSERT INTO work_stage (work_id, stage_id, sort_order)
+                 SELECT ?1, id, sort_order FROM stage_def WHERE hidden = 0 AND set_id = ?2",
+                params![work_id, set_id],
+            )
+            .map_err(db_err)?;
+        if n == 0 {
+            return Err("選んだ工程のセットに、表示している工程がありません".into());
+        }
+        Ok(())
+    }
+
+    fn work_kind(&self, work_id: i64) -> Result<String> {
+        Ok(self.work_info(work_id)?.kind)
     }
 
     /// 別の場所の cmc が、この作品と同じものかを照らし合わせる（ページのファイル名で比べる）
@@ -503,6 +689,9 @@ impl Store {
 
     /// 作品の cmc の場所を変えて読み直す。記録はページのファイル名で引き継がれる
     pub fn relink_work(&self, work_id: i64, cmc_path: &str, comic: &Comic, now: i64) -> Result<SyncResult> {
+        if self.work_kind(work_id)? != KIND_COMIC {
+            return Err("イラストの作品は、ファイルごとに場所を指定してください".into());
+        }
         let other: Option<String> = self
             .conn
             .query_row("SELECT title FROM work WHERE cmc_path = ?1 AND id != ?2", params![cmc_path, work_id], |r| r.get(0))
@@ -529,14 +718,15 @@ impl Store {
     pub fn work_info(&self, work_id: i64) -> Result<WorkInfo> {
         self.conn
             .query_row(
-                "SELECT id, title, cmc_path, last_synced_at FROM work WHERE id = ?1",
+                "SELECT id, title, kind, cmc_path, last_synced_at FROM work WHERE id = ?1",
                 [work_id],
                 |r| {
                     Ok(WorkInfo {
                         id: r.get(0)?,
                         title: r.get(1)?,
-                        cmc_path: r.get(2)?,
-                        last_synced_at: r.get(3)?,
+                        kind: r.get(2)?,
+                        cmc_path: r.get(3)?,
+                        last_synced_at: r.get(4)?,
                     })
                 },
             )
@@ -549,7 +739,7 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT w.id, w.title, w.cmc_path,
+                "SELECT w.id, w.title, w.cmc_path, w.kind,
                     (SELECT COALESCE(SUM(span), 0) FROM page WHERE work_id = w.id AND missing = 0),
                     (SELECT COUNT(*) FROM work_stage ws JOIN stage_def s ON s.id = ws.stage_id
                         WHERE ws.work_id = w.id AND s.hidden = 0),
@@ -567,19 +757,20 @@ impl Store {
             .map_err(db_err)?;
         let now = now_ms();
         stmt.query_map([now], |r| {
-            let pages: i64 = r.get(3)?;
-            let stages: i64 = r.get(4)?;
-            let done: i64 = r.get(5)?;
+            let pages: i64 = r.get(4)?;
+            let stages: i64 = r.get(5)?;
+            let done: i64 = r.get(6)?;
             let total = pages * stages;
             Ok(WorkSummary {
                 id: r.get(0)?,
                 title: r.get(1)?,
                 cmc_path: r.get(2)?,
+                kind: r.get(3)?,
                 page_count: pages,
                 stage_count: stages,
                 progress: if total > 0 { done as f64 / total as f64 } else { 0.0 },
-                total_ms: r.get(6)?,
-                last_worked_at: r.get(7)?,
+                total_ms: r.get(7)?,
+                last_worked_at: r.get(8)?,
                 file_missing: false,
             })
         })
@@ -642,21 +833,25 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, file_name, number, span, missing FROM page
+                "SELECT id, file_name, number, span, missing, title FROM page
                  WHERE work_id = ?1 ORDER BY missing, order_index, id",
             )
             .map_err(db_err)?;
+        let cmc = work.cmc_path.clone();
         let mut pages: Vec<BoardPage> = stmt
             .query_map([work_id], |r| {
+                let file_name: String = r.get(1)?;
                 let number: i64 = r.get(2)?;
                 let span: i64 = r.get(3)?;
                 Ok(BoardPage {
                     id: r.get(0)?,
-                    file_name: r.get(1)?,
-                    label: page_label(number, span),
+                    path: page_path(cmc.as_deref(), &file_name).display().to_string(),
+                    file_name,
+                    label: row_label(r.get(5)?, number, span),
                     number,
                     span,
                     missing: r.get(4)?,
+                    found: true,
                     tags: Vec::new(),
                     cells: Vec::new(),
                 })
@@ -788,7 +983,7 @@ impl Store {
     pub fn active_session(&self) -> Result<Option<ActiveSession>> {
         self.conn
             .query_row(
-                "SELECT ss.id, w.id, w.title, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at
+                "SELECT ss.id, w.id, w.title, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, p.title
                  FROM work_session ss
                  JOIN page p ON p.id = ss.page_id
                  JOIN work w ON w.id = p.work_id
@@ -801,7 +996,7 @@ impl Store {
                         work_id: r.get(1)?,
                         work_title: r.get(2)?,
                         page_id: r.get(3)?,
-                        page_label: page_label(r.get(4)?, r.get(5)?),
+                        page_label: row_label(r.get(10)?, r.get(4)?, r.get(5)?),
                         stage_id: r.get(6)?,
                         stage_name: r.get(7)?,
                         stage_color: r.get(8)?,
@@ -845,7 +1040,7 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT ss.id, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, ss.ended_at, ss.edited
+                "SELECT ss.id, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, ss.ended_at, ss.edited, p.title
                  FROM work_session ss
                  JOIN page p ON p.id = ss.page_id
                  JOIN stage_def s ON s.id = ss.stage_id
@@ -857,7 +1052,7 @@ impl Store {
             Ok(SessionRow {
                 id: r.get(0)?,
                 page_id: r.get(1)?,
-                page_label: page_label(r.get(2)?, r.get(3)?),
+                page_label: row_label(r.get(10)?, r.get(2)?, r.get(3)?),
                 stage_id: r.get(4)?,
                 stage_name: r.get(5)?,
                 stage_color: r.get(6)?,
@@ -1021,15 +1216,19 @@ mod tests {
         (store, id)
     }
 
+    /// 漫画のセットの工程の ID（テストの作品は漫画なので）
     pub(crate) fn stage_ids(store: &Store) -> Vec<i64> {
-        store.list_stages().unwrap().iter().map(|s| s.id).collect()
+        store.set_stage_ids(store.default_set(KIND_COMIC).unwrap()).unwrap()
     }
 
     #[test]
-    fn 初期状態の工程は下書き_ペン入れ_トーン() {
+    fn 初期状態の工程は漫画とイラストのセット() {
         let store = Store::open_in_memory().unwrap();
-        let names: Vec<String> = store.list_stages().unwrap().into_iter().map(|s| s.name).collect();
-        assert_eq!(names, ["下書き", "ペン入れ", "トーン"]);
+        let names = |set: i64| -> Vec<String> {
+            store.list_stages().unwrap().into_iter().filter(|s| s.set_id == set).map(|s| s.name).collect()
+        };
+        assert_eq!(names(store.default_set(KIND_COMIC).unwrap()), ["下書き", "ペン入れ", "トーン"]);
+        assert_eq!(names(store.default_set(KIND_FILES).unwrap()), ["ラフ", "線画", "塗り", "仕上げ"]);
     }
 
     #[test]
@@ -1223,7 +1422,7 @@ mod tests {
         let r = store.relink_work(id, "E:/漫画/a.cmc", &moved, 0).unwrap();
         assert_eq!(r.added, 1);
         let board = store.board(id, 0).unwrap();
-        assert_eq!(board.work.cmc_path, "E:/漫画/a.cmc");
+        assert_eq!(board.work.cmc_path.as_deref(), Some("E:/漫画/a.cmc"));
         assert_eq!(board.pages.len(), 4);
         assert_eq!((board.pages[0].cells[0].total_ms, board.pages[0].cells[0].done), (10 * MIN, true));
     }
@@ -1244,6 +1443,73 @@ mod tests {
         assert!(err.contains("として登録されています"));
         // 自分と同じ場所なら（読み直しと同じなので）通る
         assert!(store.relink_work(id, "C:/a.cmc", &comic(&[("page0001.clip", 1)]), 0).is_ok());
+    }
+
+    #[test]
+    fn 版2のデータを版3に移しても記録は残る() {
+        // 0.1.2 までの形（版 2）のデータベースを作って、データを入れる
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        let old = Store { conn };
+        old.migrate(2).unwrap();
+        old.conn
+            .execute_batch(
+                "INSERT INTO work (id, title, cmc_path, created_at, deadline) VALUES (7, '旧作品', 'C:/old.cmc', 0, '2026-12-01');
+                 INSERT INTO work_stage (work_id, stage_id, sort_order) VALUES (7, 1, 0), (7, 2, 1), (7, 3, 2);
+                 INSERT INTO page (id, work_id, file_name, order_index, number) VALUES (70, 7, 'page0001.clip', 0, 1);
+                 INSERT INTO work_session (page_id, stage_id, started_at, ended_at) VALUES (70, 1, 0, 600000);
+                 INSERT INTO task_done (page_id, stage_id, done_at) VALUES (70, 1, 0);
+                 INSERT INTO page_tag (page_id, tag_id) VALUES (70, 1);",
+            )
+            .unwrap();
+
+        old.migrate(LATEST).unwrap();
+        let version: i64 = old.conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, 3);
+        let fk: bool = old.conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert!(fk, "移行のあとは外部キーが有効に戻っている");
+
+        let board = old.board(7, 0).unwrap();
+        assert_eq!((board.work.kind.as_str(), board.work.cmc_path.as_deref()), (KIND_COMIC, Some("C:/old.cmc")));
+        assert_eq!(board.pages[0].label, "p1");
+        assert_eq!((board.pages[0].cells[0].total_ms, board.pages[0].cells[0].done), (600000, true));
+        assert_eq!(board.pages[0].tags, [1]);
+        assert_eq!(old.schedule(7).unwrap().deadline.as_deref(), Some("2026-12-01"));
+        // 既存の工程は「漫画」セット、イラストのセットが増えている
+        let sets: Vec<String> = old.list_stage_sets().unwrap().into_iter().map(|s| s.name).collect();
+        assert_eq!(sets, ["漫画", "イラスト"]);
+        assert!(old.list_stages().unwrap().iter().filter(|s| s.set_id == 1).count() == 3);
+        // 作品を消すと、ページと記録も一緒に消える（外部キーの CASCADE が生きている）
+        old.remove_work(7).unwrap();
+        let left: i64 = old.conn.query_row("SELECT COUNT(*) FROM work_session", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
+    }
+
+    #[test]
+    fn 工程はセットごとに並べ替え_隠す() {
+        let store = Store::open_in_memory().unwrap();
+        let comic = store.default_set(KIND_COMIC).unwrap();
+        let illust = store.default_set(KIND_FILES).unwrap();
+        let ids = store.set_stage_ids(illust).unwrap();
+        store.move_stage(ids[3], -1).unwrap();
+        let names: Vec<String> = store
+            .list_stages()
+            .unwrap()
+            .into_iter()
+            .filter(|s| s.set_id == illust)
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(names, ["ラフ", "線画", "仕上げ", "塗り"]);
+        // 別のセットの工程を混ぜた並びは受け付けない
+        let mixed = [store.set_stage_ids(comic).unwrap()[0], ids[0], ids[1], ids[2], ids[3]];
+        assert!(store.set_stage_order(&mixed).is_err());
+        // 隠すときの「1 つ以上表示」はセットごとに数える
+        for id in &ids[..3] {
+            store.set_stage_hidden(*id, true).unwrap();
+        }
+        assert!(store.set_stage_hidden(ids[3], true).is_err());
+        let added = store.add_stage_in_set(illust, "下塗り", "#888888").unwrap();
+        assert_eq!(added.set_id, illust);
     }
 
     #[test]
@@ -1309,6 +1575,6 @@ mod tests {
             store.add_stage("ベタ", "#333333").unwrap();
         }
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.list_stages().unwrap().len(), 4);
+        assert_eq!(stage_ids(&store).len(), 4);
     }
 }

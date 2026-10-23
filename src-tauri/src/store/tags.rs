@@ -29,6 +29,8 @@ pub struct TagGroup {
     pub name: String,
     /// true ならグループ内で 1 つだけ選べる
     pub exclusive: bool,
+    /// 使う作品の種類："comic"（漫画）/ "files"（イラスト）/ "both"（両方）
+    pub applies: String,
     /// システムタグだけのグループ（タグの追加・名前変更はできない）
     pub system: bool,
     pub tags: Vec<Tag>,
@@ -41,6 +43,15 @@ const DEFAULT_TAGS: [SeedGroup; 3] = [
     ("特徴", false, &[("資料必要", 1.3, None), ("背景多め", 1.3, None), ("モブ多い", 1.2, None)]),
     ("自動", false, &[("見開き", 2.0, Some(SYSTEM_SPREAD))]),
 ];
+
+/// イラスト用の初期のタグ（版 3 で追加。どれも「どれか 1 つ」）
+const ILLUST_TAGS: [(&str, &[(&str, f64)]); 3] = [
+    ("規模", &[("小さめ", 0.6), ("普通", 1.0), ("大作", 2.0)]),
+    ("背景", &[("なし", 0.8), ("簡単", 1.0), ("しっかり", 1.5)]),
+    ("人数", &[("1人", 1.0), ("2〜3人", 1.5), ("大勢", 2.5)]),
+];
+
+const APPLIES: [&str; 3] = ["comic", "files", "both"];
 
 impl Store {
     pub(super) fn seed_tags(&self) -> Result<()> {
@@ -65,14 +76,31 @@ impl Store {
         Ok(())
     }
 
+    pub(super) fn seed_illust_tags(&self) -> Result<()> {
+        for (name, tags) in ILLUST_TAGS {
+            let group = self.add_tag_group(name, true, "files")?;
+            for (tag, factor) in tags {
+                self.add_tag(group, tag, *factor)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn list_tags(&self) -> Result<Vec<TagGroup>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, exclusive FROM tag_group ORDER BY sort_order, id")
+            .prepare("SELECT id, name, exclusive, applies FROM tag_group ORDER BY sort_order, id")
             .map_err(db_err)?;
         let mut groups: Vec<TagGroup> = stmt
             .query_map([], |r| {
-                Ok(TagGroup { id: r.get(0)?, name: r.get(1)?, exclusive: r.get(2)?, system: false, tags: Vec::new() })
+                Ok(TagGroup {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    exclusive: r.get(2)?,
+                    applies: r.get(3)?,
+                    system: false,
+                    tags: Vec::new(),
+                })
             })
             .and_then(|rows| rows.collect())
             .map_err(db_err)?;
@@ -161,23 +189,28 @@ impl Store {
         Ok(())
     }
 
-    pub fn add_tag_group(&self, name: &str, exclusive: bool) -> Result<i64> {
+    pub fn add_tag_group(&self, name: &str, exclusive: bool, applies: &str) -> Result<i64> {
         let name = valid(name)?;
+        check_applies(applies)?;
         self.conn
             .execute(
-                "INSERT INTO tag_group (name, exclusive, sort_order)
-                 VALUES (?1, ?2, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tag_group))",
-                params![name, exclusive],
+                "INSERT INTO tag_group (name, exclusive, applies, sort_order)
+                 VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tag_group))",
+                params![name, exclusive, applies],
             )
             .map_err(db_err)?;
         Ok(self.conn.last_insert_rowid())
     }
 
-    /// グループの名前と排他を変える。排他にしたとき、2 つ以上付いているページは最初のタグだけ残す
-    pub fn update_tag_group(&self, id: i64, name: &str, exclusive: bool) -> Result<()> {
+    /// グループの名前・排他・使う作品の種類を変える。排他にしたとき、2 つ以上付いているページは最初のタグだけ残す
+    pub fn update_tag_group(&self, id: i64, name: &str, exclusive: bool, applies: &str) -> Result<()> {
         let name = valid(name)?;
+        check_applies(applies)?;
         self.conn
-            .execute("UPDATE tag_group SET name = ?2, exclusive = ?3 WHERE id = ?1", params![id, name, exclusive])
+            .execute(
+                "UPDATE tag_group SET name = ?2, exclusive = ?3, applies = ?4 WHERE id = ?1",
+                params![id, name, exclusive, applies],
+            )
             .map_err(db_err)?;
         if exclusive {
             self.conn
@@ -247,6 +280,10 @@ fn valid(name: &str) -> Result<&str> {
     if name.is_empty() { Err("名前を入力してください".into()) } else { Ok(name) }
 }
 
+fn check_applies(applies: &str) -> Result<()> {
+    if APPLIES.contains(&applies) { Ok(()) } else { Err("使う作品の種類の指定が正しくありません".into()) }
+}
+
 fn check_factor(f: f64) -> Result<()> {
     if (0.1..=10.0).contains(&f) { Ok(()) } else { Err("倍率は ×0.1 〜 ×10 の範囲にしてください".into()) }
 }
@@ -274,14 +311,19 @@ mod tests {
     fn 初期状態のタグ() {
         let (store, _) = setup();
         let groups = store.list_tags().unwrap();
-        let summary: Vec<(String, bool, bool, usize)> =
-            groups.iter().map(|g| (g.name.clone(), g.exclusive, g.system, g.tags.len())).collect();
+        let summary: Vec<(&str, bool, bool, &str, usize)> = groups
+            .iter()
+            .map(|g| (g.name.as_str(), g.exclusive, g.system, g.applies.as_str(), g.tags.len()))
+            .collect();
         assert_eq!(
             summary,
             [
-                ("コマ数".to_string(), true, false, 3),
-                ("特徴".to_string(), false, false, 3),
-                ("自動".to_string(), false, true, 1)
+                ("コマ数", true, false, "comic", 3),
+                ("特徴", false, false, "both", 3),
+                ("自動", false, true, "comic", 1),
+                ("規模", true, false, "files", 3),
+                ("背景", true, false, "files", 3),
+                ("人数", true, false, "files", 3),
             ]
         );
     }
@@ -344,7 +386,8 @@ mod tests {
     #[test]
     fn タグとグループの追加と変更() {
         let (store, id) = setup();
-        let group = store.add_tag_group("背景", false).unwrap();
+        let group = store.add_tag_group("背景の色", false, "both").unwrap();
+        assert!(store.add_tag_group("x", false, "anime").is_err());
         let city = store.add_tag(group, "街", 1.4).unwrap();
         let nature = store.add_tag(group, "自然", 1.1).unwrap();
         assert!(store.add_tag(group, "海", 20.0).unwrap_err().contains("倍率"));
@@ -355,7 +398,7 @@ mod tests {
         let page = store.board(id, 0).unwrap().pages[0].id;
         store.set_page_tag(&[page], nature, true).unwrap();
         store.set_page_tag(&[page], city, true).unwrap();
-        store.update_tag_group(group, "背景の種類", true).unwrap();
+        store.update_tag_group(group, "背景の種類", true, "files").unwrap();
         assert_eq!(names(&store, id, 0), ["街"]);
 
         // システムタグは名前を変えられず、倍率だけ変わる

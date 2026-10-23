@@ -92,6 +92,54 @@ pub fn read_thumbnail(clip_path: &Path, max_width: u32) -> Result<Vec<u8>, Strin
     Ok(out)
 }
 
+/// .psd / .psb の画像リソース 1036 に埋め込まれた JPEG サムネイルを取り出す。
+/// CLIP STUDIO や Photoshop で保存したファイルには通常入っている（CLIP STUDIO の書き出しは 160×120）。
+/// 画像そのもの（合成画像）は大きい絵だと読むのが重いので、ここでは読まない
+pub fn read_psd_thumbnail(path: &Path) -> Result<Vec<u8>, String> {
+    let err = |e: std::io::Error| format!("画像ファイルを読めませんでした（{}）: {e}", path.display());
+    let mut f = File::open(path).map_err(err)?;
+    let mut header = [0u8; 26];
+    f.read_exact(&mut header).map_err(err)?;
+    if &header[0..4] != b"8BPS" {
+        return Err("Photoshop 形式（.psd）のファイルではありません".into());
+    }
+    let mut len = [0u8; 4];
+    f.read_exact(&mut len).map_err(err)?;
+    f.seek(SeekFrom::Current(u32::from_be_bytes(len) as i64)).map_err(err)?; // カラーモードのデータ
+    f.read_exact(&mut len).map_err(err)?;
+    let size = u32::from_be_bytes(len) as usize;
+    if size > 64 * 1024 * 1024 {
+        return Err("画像リソースが大きすぎます".into());
+    }
+    let mut res = vec![0u8; size];
+    f.read_exact(&mut res).map_err(err)?;
+
+    let mut pos = 0;
+    while pos + 12 <= res.len() {
+        if &res[pos..pos + 4] != b"8BIM" {
+            break;
+        }
+        let id = u16::from_be_bytes([res[pos + 4], res[pos + 5]]);
+        // 名前は Pascal 文字列で、長さのバイトを含めて偶数に揃える
+        let name_len = 1 + res[pos + 6] as usize;
+        let at = pos + 6 + name_len + name_len % 2;
+        if at + 4 > res.len() {
+            break;
+        }
+        let data_len = u32::from_be_bytes(res[at..at + 4].try_into().unwrap()) as usize;
+        let data = at + 4;
+        if data + data_len > res.len() {
+            break;
+        }
+        // 1036 のデータ：形式(4) 幅(4) 高さ(4) 行のバイト数(4) 全体の大きさ(4) 圧縮後の大きさ(4) ビット数(2) 面の数(2) → JPEG
+        if id == 1036 && data_len > 28 && res[data..data + 4] == [0, 0, 0, 1] {
+            return Ok(res[data + 28..data + data_len].to_vec());
+        }
+        pos = data + data_len + data_len % 2;
+    }
+    Err("サムネイルが入っていませんでした".into())
+}
+
 struct Node {
     main_id: i64,
     kind: i64,
@@ -287,6 +335,45 @@ mod tests {
         assert_eq!(img.width(), 240);
         // 元は 1240 × 1754 なので縦横比を保つ
         assert!((339..=340).contains(&img.height()), "height = {}", img.height());
+    }
+
+    /// テスト用の小さな .psd（サムネイルのリソースを入れるかどうかを選べる）
+    fn tiny_psd(with_thumb: bool) -> tempfile::NamedTempFile {
+        use std::io::Write;
+        let mut res = Vec::new();
+        // 関係のないリソースを先に置く（名前が空で、長さが奇数のデータ）
+        res.extend_from_slice(b"8BIM");
+        res.extend_from_slice(&1005u16.to_be_bytes());
+        res.extend_from_slice(&[0, 0]);
+        res.extend_from_slice(&3u32.to_be_bytes());
+        res.extend_from_slice(&[1, 2, 3, 0]);
+        if with_thumb {
+            let jpeg = [0xff, 0xd8, 0xff, 0xe0, 0x11, 0x22, 0xff, 0xd9];
+            res.extend_from_slice(b"8BIM");
+            res.extend_from_slice(&1036u16.to_be_bytes());
+            res.extend_from_slice(&[0, 0]);
+            res.extend_from_slice(&((28 + jpeg.len()) as u32).to_be_bytes());
+            res.extend_from_slice(&[0, 0, 0, 1]);
+            res.extend_from_slice(&[0; 24]);
+            res.extend_from_slice(&jpeg);
+        }
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"8BPS\0\x01").unwrap();
+        f.write_all(&[0; 20]).unwrap();
+        f.write_all(&0u32.to_be_bytes()).unwrap(); // カラーモードのデータ
+        f.write_all(&(res.len() as u32).to_be_bytes()).unwrap();
+        f.write_all(&res).unwrap();
+        f.write_all(&[0; 16]).unwrap(); // レイヤーと画像のデータ（読まない）
+        f
+    }
+
+    #[test]
+    fn psd_に埋め込まれたサムネイルを取り出せる() {
+        let f = tiny_psd(true);
+        let jpeg = read_psd_thumbnail(f.path()).unwrap();
+        assert_eq!(jpeg, [0xff, 0xd8, 0xff, 0xe0, 0x11, 0x22, 0xff, 0xd9]);
+        assert!(read_psd_thumbnail(tiny_psd(false).path()).unwrap_err().contains("入っていません"));
+        assert!(read_psd_thumbnail(&dummy_cmc()).unwrap_err().contains(".psd"));
     }
 
     #[test]
