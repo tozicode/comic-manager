@@ -7,3 +7,11 @@ src-tauri/gen/schemas/
 # CLIP STUDIO のバックアップ・一時ファイル
 *.bak
 *.tmp
+
+# エディタ・OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.log
+*.local
