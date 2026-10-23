@@ -85,8 +85,23 @@ pub fn idle_ms() -> u64 {
     0
 }
 
-/// Mac などはまだ対応していない（常に「操作中」とみなし、止め忘れの確認を出さない）
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub fn idle_ms() -> u64 {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGEventSourceSecondsSinceLastEventType(state_id: i32, event_type: u32) -> f64;
+    }
+    /// kCGEventSourceStateCombinedSessionState
+    const COMBINED_SESSION: i32 = 0;
+    /// kCGAnyInputEventType
+    const ANY_INPUT: u32 = !0;
+    // SAFETY: 値を渡して秒数を受け取るだけの関数で、ポインタは扱わない
+    let secs = unsafe { CGEventSourceSecondsSinceLastEventType(COMBINED_SESSION, ANY_INPUT) };
+    (secs.max(0.0) * 1000.0) as u64
+}
+
+/// その他の OS はまだ対応していない（常に「操作中」とみなし、止め忘れの確認を出さない）
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn idle_ms() -> u64 {
     0
 }

@@ -543,6 +543,19 @@ function shortcutFromKey(e: React.KeyboardEvent): string | null {
   return [...mods, code].join("+");
 }
 
+const IS_MAC = navigator.userAgent.includes("Mac");
+/** Mac の記号（⌃⌥⇧⌘） */
+const MAC_KEYS: Record<string, string> = { Ctrl: "⌃", Alt: "⌥", Shift: "⇧", Super: "⌘" };
+
+/** ショートカットの表示用の書き方。Mac ではキーボードの記号に置き換える（例: ⌃⌥Space） */
+function shortcutLabel(sc: string): string {
+  if (!IS_MAC) return sc;
+  return sc
+    .split("+")
+    .map((k) => MAC_KEYS[k] ?? k)
+    .join("");
+}
+
 function TimerSection() {
   const app = useApp();
   const [prefs, setPrefs] = useState<TimerPrefs | null>(null);
@@ -584,7 +597,7 @@ function TimerSection() {
           />
           <span>分</span>
         </label>
-        <p className="muted small-text">0 にすると確認しません。今は Windows のみ対応しています。</p>
+        <p className="muted small-text">0 にすると確認しません。</p>
         <label className="row">
           <input type="checkbox" checked={prefs.watchSaves} onChange={(e) => save({ ...prefs, watchSaves: e.target.checked })} />
           <span>計測中に別のページが CLIP STUDIO で保存されたら知らせる</span>
@@ -600,7 +613,7 @@ function TimerSection() {
           <input
             className="field shortcut"
             readOnly
-            value={prefs.shortcut || "（使わない）"}
+            value={prefs.shortcut ? shortcutLabel(prefs.shortcut) : "（使わない）"}
             placeholder="キーを押してください"
             onKeyDown={(e) => {
               e.preventDefault();
@@ -611,7 +624,9 @@ function TimerSection() {
           />
         </label>
         <p className="muted small-text">
-          欄をクリックしてから、Ctrl・Alt・Shift のどれかと一緒にキーを押すと変わります。Backspace で使わない設定にできます。
+          {IS_MAC
+            ? "欄をクリックしてから、control・option・shift・command のどれかと一緒にキーを押すと変わります。delete で使わない設定にできます。"
+            : "欄をクリックしてから、Ctrl・Alt・Shift のどれかと一緒にキーを押すと変わります。Backspace で使わない設定にできます。"}
           {saved && <span className="ok-text"> {saved}</span>}
         </p>
       </div>
