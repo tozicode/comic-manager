@@ -1605,3 +1605,8 @@ table.rec {
 .ok-text {
   color: var(--ok);
 }
+
+/* ===== ステップ5：データ ===== */
+.path-text {
+  word-break: break-all;
+}

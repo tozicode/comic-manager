@@ -898,6 +898,17 @@ impl Store {
         Ok(())
     }
 
+    /// データベースをまるごと 1 つのファイルに書き出す（使用中でも一貫した内容になる）
+    pub fn backup_to(&self, dest: &Path) -> Result<()> {
+        if dest.exists() {
+            std::fs::remove_file(dest).map_err(|e| format!("同じ名前のファイルを置き換えられませんでした: {e}"))?;
+        }
+        self.conn
+            .execute("VACUUM INTO ?1", [dest.to_string_lossy()])
+            .map_err(|e| format!("バックアップを作れませんでした: {e}"))?;
+        Ok(())
+    }
+
     pub fn delete_session(&self, id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM work_session WHERE id = ?1", [id]).map_err(db_err)?;
         Ok(())
@@ -1131,6 +1142,20 @@ mod tests {
         // 開始より前や未来にはしない
         store.set_session_end(stopped.session_id, -5, 30 * MIN).unwrap();
         assert_eq!(store.list_sessions(id, 0).unwrap()[0].ended_at, Some(0));
+    }
+
+    #[test]
+    fn バックアップから同じ内容を開ける() {
+        let (store, id) = setup();
+        let page = store.board(id, 0).unwrap().pages[0].id;
+        store.add_session(page, stage_ids(&store)[0], 0, 10 * MIN, MIN * 100).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("backup.db");
+        store.backup_to(&dest).unwrap();
+        // 同じ名前でもう一度作っても置き換わる
+        store.backup_to(&dest).unwrap();
+        let copy = Store::open(&dest).unwrap();
+        assert_eq!(copy.list_works().unwrap()[0].total_ms, 10 * MIN);
     }
 
     #[test]

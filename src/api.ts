@@ -183,4 +183,8 @@ export const api = {
   setMiniCompact: (compact: boolean) => invoke<void>("set_mini_compact", { compact }),
   setMiniOnTop: (onTop: boolean) => invoke<void>("set_mini_on_top", { onTop }),
   focusMain: () => invoke<void>("focus_main"),
+
+  dataInfo: () => invoke<{ dbPath: string; version: string }>("data_info"),
+  backupData: (dest: string) => invoke<void>("backup_data", { dest }),
+  revealData: () => invoke<void>("reveal_data"),
 };

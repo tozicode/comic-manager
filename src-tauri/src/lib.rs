@@ -9,6 +9,7 @@ use std::time::SystemTime;
 
 use base64::Engine;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 use store::{Store, now_ms};
 
@@ -17,6 +18,8 @@ const THUMBNAIL_WIDTH: u32 = 240;
 
 struct AppState {
     store: Mutex<Store>,
+    /// データベースのファイルの場所（設定画面に表示し、バックアップに使う）
+    db_path: PathBuf,
     /// ページファイルのパス → (更新日時, data URL)。ファイルが保存し直されたら作り直す
     thumbnails: Mutex<HashMap<PathBuf, (SystemTime, String)>>,
 }
@@ -334,6 +337,33 @@ async fn focus_main(app: AppHandle) -> Cmd<()> {
     desktop::focus_main(&app)
 }
 
+// ----- ステップ5：データ -----
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DataInfo {
+    db_path: String,
+    version: String,
+}
+
+#[tauri::command]
+fn data_info(app: AppHandle, state: State<AppState>) -> DataInfo {
+    DataInfo { db_path: state.db_path.display().to_string(), version: app.package_info().version.to_string() }
+}
+
+#[tauri::command]
+fn backup_data(state: State<AppState>, dest: String) -> Cmd<()> {
+    with_store(&state, |s| s.backup_to(Path::new(&dest)))
+}
+
+/// データの保存場所をエクスプローラーで開く
+#[tauri::command]
+fn reveal_data(app: AppHandle, state: State<AppState>) -> Cmd<()> {
+    app.opener()
+        .reveal_item_in_dir(&state.db_path)
+        .map_err(|e| format!("保存場所を開けませんでした: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -353,7 +383,7 @@ pub fn run() {
             {
                 eprintln!("{e}");
             }
-            app.manage(AppState { store: Mutex::new(store), thumbnails: Mutex::new(HashMap::new()) });
+            app.manage(AppState { store: Mutex::new(store), db_path: path, thumbnails: Mutex::new(HashMap::new()) });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -406,6 +436,9 @@ pub fn run() {
             set_mini_compact,
             set_mini_on_top,
             focus_main,
+            data_info,
+            backup_data,
+            reveal_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

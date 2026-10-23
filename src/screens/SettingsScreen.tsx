@@ -1,14 +1,16 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { api, StageDef, Tag, TagGroup, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { dayKey, dayLabel } from "../format";
 
-type Section = "stages" | "tags" | "hours" | "timer";
+type Section = "stages" | "tags" | "hours" | "timer" | "data";
 const SECTIONS: { key: Section; label: string }[] = [
   { key: "stages", label: "工程" },
   { key: "tags", label: "タグ" },
   { key: "hours", label: "作業時間・休み" },
   { key: "timer", label: "タイマー" },
+  { key: "data", label: "データ" },
 ];
 
 /** 新しい工程に順番に割り当てる色 */
@@ -47,8 +49,10 @@ export function SettingsScreen() {
           <TagsSection />
         ) : section === "hours" ? (
           <HoursSection />
-        ) : (
+        ) : section === "timer" ? (
           <TimerSection />
+        ) : (
+          <DataSection />
         )}
       </div>
     </div>
@@ -549,6 +553,68 @@ function TimerSection() {
           {saved && <span className="ok-text"> {saved}</span>}
         </p>
       </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// データ
+// ---------------------------------------------------------------------------
+
+function DataSection() {
+  const app = useApp();
+  const [info, setInfo] = useState<{ dbPath: string; version: string } | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.dataInfo().then(setInfo).catch(app.showError);
+  }, [app.showError]);
+
+  const backup = async () => {
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+    const dest = await saveDialog({
+      title: "バックアップの保存先",
+      defaultPath: `otosazu-backup-${stamp}.db`,
+      filters: [{ name: "Otosazu のデータ", extensions: ["db"] }],
+    });
+    if (!dest) return;
+    try {
+      await api.backupData(dest);
+      setNote(`バックアップを作りました：${dest}`);
+    } catch (e) {
+      app.showError(e);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-title">データ</div>
+      <div className="card pad form">
+        <div className="row">
+          <span className="grow">
+            作業記録・工程・タグなどは、すべてこのファイルに保存されています。
+            <br />
+            <span className="muted small-text path-text">{info?.dbPath}</span>
+          </span>
+          <button className="btn small" onClick={() => api.revealData().catch(app.showError)}>
+            保存場所を開く
+          </button>
+        </div>
+        <div className="row">
+          <span className="grow">
+            今のデータを 1 つのファイルに書き出します。PC を買い替えるときや、不具合を相談するときに使えます。
+          </span>
+          <button className="btn small primary" onClick={backup}>
+            バックアップを作る…
+          </button>
+        </div>
+        {note && <p className="ok-text small-text">{note}</p>}
+        <p className="muted small-text">
+          バックアップから戻すときは、Otosazu を閉じてから、上の保存場所にある otosazu.db をバックアップのファイルで置き換えてください。
+        </p>
+      </div>
+      <p className="muted small-text">Otosazu {info?.version}（試用版）</p>
     </>
   );
 }
