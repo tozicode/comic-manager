@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
-import { api, BoardPage, StageRef, TagGroup } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup } from "../api";
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { Dialog } from "../components/Dialog";
 import { TagPopover } from "../components/TagPopover";
 import { Thumb } from "../components/Thumb";
 import { Forecast, loadChosenPlan, useForecast } from "../forecast";
-import { clock, dayLabel, hours, time } from "../format";
+import { clock, dayLabel, duration, hours, time } from "../format";
+
+/** 同期で見つかった見開きの変化（1 件ずつ確認する） */
+type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSplit };
 
 type Filter = "all" | "open";
 
@@ -23,6 +26,10 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [selected, setSelected] = useState<number[]>([]);
   /** タグを編集しているページ（"bulk" ならチェックしたページをまとめて） */
   const [tagging, setTagging] = useState<number | "bulk" | null>(null);
+  const [changes, setChanges] = useState<SpreadChange[]>([]);
+  const [splitHalf, setSplitHalf] = useState(true);
+  /** 消えたページの記録の移動先 */
+  const [moveTo, setMoveTo] = useState<Record<number, number>>({});
 
   // 作品を開いたときに cmc を読み直す
   useEffect(() => {
@@ -34,16 +41,31 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     api.listTags().then(setTags).catch(app.showError);
   }, [app.version, app.showError]);
 
+  // 同期は同時に 1 つだけ（開発時の StrictMode で effect が 2 回走っても、見開きの検知を取りこぼさない）
+  const syncing = useRef(false);
   const sync = async (manual: boolean) => {
+    if (syncing.current) return;
+    syncing.current = true;
     try {
       const r = await api.syncWork(workId);
       const parts = [];
       if (r.added > 0) parts.push(`${r.added} ページ増えました`);
       if (r.missing > 0) parts.push(`${r.missing} ページが CLIP STUDIO から消えています`);
       setSyncNote(parts.length ? parts.join("・") : manual ? "変更はありませんでした" : null);
+      const found = [
+        ...r.merges.map((m): SpreadChange => ({ kind: "merge", m })),
+        ...r.splits.map((s): SpreadChange => ({ kind: "split", s })),
+      ];
+      // 見開きの変化は同期の前後を比べて一度だけ見つかるので、確認待ちのものを空で上書きしない
+      if (found.length > 0) {
+        setChanges((prev) => [...prev, ...found]);
+        setSplitHalf(true);
+      }
       app.refresh();
     } catch (e) {
       setSyncNote(`cmc を読み直せませんでした（${e}）。前回読み込んだページ一覧を表示しています`);
+    } finally {
+      syncing.current = false;
     }
   };
 
@@ -271,11 +293,103 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                       {stage.name} {hours(page.cells[i].totalMs)}
                     </td>
                   ))}
+                  <td>
+                    <div className="row tight">
+                      <select
+                        className="field"
+                        value={moveTo[page.id] ?? ""}
+                        onChange={(e) => setMoveTo({ ...moveTo, [page.id]: Number(e.target.value) })}
+                      >
+                        <option value="">移す先のページ…</option>
+                        {pages.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="btn small"
+                        disabled={!moveTo[page.id]}
+                        onClick={() => run(() => api.mergePages(page.id, moveTo[page.id]))}
+                      >
+                        記録を移す
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </>
+      )}
+
+      {changes[0]?.kind === "merge" && (
+        <Dialog
+          label="cmc を読み直したら見開きになっていました"
+          title={`${changes[0].m.toLabel} が見開きになりました`}
+          onClose={() => setChanges(changes.slice(1))}
+          actions={
+            <>
+              <button className="btn" onClick={() => setChanges(changes.slice(1))}>
+                あとで決める
+              </button>
+              <button
+                className="btn primary"
+                autoFocus
+                onClick={() => {
+                  const m = (changes[0] as { m: PageMerge }).m;
+                  setChanges(changes.slice(1));
+                  run(() => api.mergePages(m.fromPageId, m.toPageId));
+                }}
+              >
+                まとめる
+              </button>
+            </>
+          }
+        >
+          <p>
+            消えたページ（{changes[0].m.fromFileName}）の作業記録 <b>{duration(changes[0].m.ms)}</b> とタグを、見開きページ（
+            {changes[0].m.toLabel}）にまとめますか？
+          </p>
+          <p className="muted small-text">「あとで決める」を選ぶと、ボードの下の「CLIP STUDIO から消えたページ」に残ります。</p>
+        </Dialog>
+      )}
+      {changes[0]?.kind === "split" && (
+        <Dialog
+          label="cmc を読み直したら見開きが解除されていました"
+          title={`見開きが ${changes[0].s.label} と ${changes[0].s.newLabel} に分かれました`}
+          onClose={() => setChanges(changes.slice(1))}
+          actions={
+            <button
+              className="btn primary"
+              autoFocus
+              onClick={() => {
+                const s = (changes[0] as { s: PageSplit }).s;
+                setChanges(changes.slice(1));
+                run(() => api.splitPage(s.pageId, s.newPageId, splitHalf));
+              }}
+            >
+              決定
+            </button>
+          }
+        >
+          <p>
+            見開きのときの作業記録 <b>{duration(changes[0].s.ms)}</b> をどう扱いますか？（完了とタグは両方のページに付けます）
+          </p>
+          <button className={`choice${splitHalf ? " on" : ""}`} onClick={() => setSplitHalf(true)}>
+            <span className="radio" />
+            <span>
+              <b>半分ずつ分ける</b>（{changes[0].s.label} に {duration(changes[0].s.ms / 2)}、{changes[0].s.newLabel} に{" "}
+              {duration(changes[0].s.ms / 2)}）
+            </span>
+          </button>
+          <button className={`choice${splitHalf ? "" : " on"}`} onClick={() => setSplitHalf(false)}>
+            <span className="radio" />
+            <span>
+              <b>元のページ（{changes[0].s.label}）に残す</b>
+            </span>
+          </button>
+        </Dialog>
       )}
 
       {undo && (

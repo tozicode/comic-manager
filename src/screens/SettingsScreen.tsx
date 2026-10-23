@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
-import { api, StageDef, Tag, TagGroup } from "../api";
+import { DragEvent, useEffect, useRef, useState } from "react";
+import { api, StageDef, Tag, TagGroup, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { dayKey, dayLabel } from "../format";
 
-type Section = "stages" | "tags" | "hours";
+type Section = "stages" | "tags" | "hours" | "timer";
 const SECTIONS: { key: Section; label: string }[] = [
   { key: "stages", label: "工程" },
   { key: "tags", label: "タグ" },
   { key: "hours", label: "作業時間・休み" },
+  { key: "timer", label: "タイマー" },
 ];
 
 /** 新しい工程に順番に割り当てる色 */
@@ -39,7 +40,17 @@ export function SettingsScreen() {
           </button>
         ))}
       </nav>
-      <div>{section === "stages" ? <StagesSection /> : section === "tags" ? <TagsSection /> : <HoursSection />}</div>
+      <div>
+        {section === "stages" ? (
+          <StagesSection />
+        ) : section === "tags" ? (
+          <TagsSection />
+        ) : section === "hours" ? (
+          <HoursSection />
+        ) : (
+          <TimerSection />
+        )}
+      </div>
     </div>
   );
 }
@@ -53,10 +64,34 @@ function StagesSection() {
   const run = useRun();
   const [stages, setStages] = useState<StageDef[]>([]);
   const [newName, setNewName] = useState("");
+  /** ドラッグ中の並び（離したら保存する） */
+  const [dragOrder, setDragOrder] = useState<StageDef[] | null>(null);
+  const dragging = useRef<number | null>(null);
 
   useEffect(() => {
     api.listStages().then(setStages).catch(app.showError);
   }, [app.version, app.showError]);
+
+  const list = dragOrder ?? stages;
+  const onDragOver = (e: DragEvent, overId: number) => {
+    const id = dragging.current;
+    if (id === null || id === overId) return;
+    e.preventDefault();
+    const from = list.findIndex((s) => s.id === id);
+    const to = list.findIndex((s) => s.id === overId);
+    const next = [...list];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    setDragOrder(next);
+  };
+  const onDragEnd = () => {
+    const order = dragOrder;
+    dragging.current = null;
+    setDragOrder(null);
+    if (order && order.some((s, i) => s.id !== stages[i]?.id)) {
+      setStages(order);
+      run(() => api.setStageOrder(order.map((s) => s.id)));
+    }
+  };
 
   const add = async () => {
     if (!newName.trim()) return;
@@ -75,12 +110,16 @@ function StagesSection() {
         </span>
       </div>
       <div className="slist">
-        {stages.map((s, i) => (
+        {list.map((s, i) => (
           <StageRow
             key={`${s.id}-${s.name}-${s.color}-${s.hintMinutes}`}
             stage={s}
             first={i === 0}
-            last={i === stages.length - 1}
+            last={i === list.length - 1}
+            dragging={dragOrder !== null && dragging.current === s.id}
+            onDragStart={() => (dragging.current = s.id)}
+            onDragOver={(e) => onDragOver(e, s.id)}
+            onDragEnd={onDragEnd}
             onSave={(name, color, hint) => run(() => api.updateStage(s.id, name, color, hint))}
             onMove={(delta) => run(() => api.moveStage(s.id, delta))}
             onHidden={(hidden) => run(() => api.setStageHidden(s.id, hidden))}
@@ -111,12 +150,17 @@ type RowProps = {
   stage: StageDef;
   first: boolean;
   last: boolean;
+  dragging: boolean;
+  onDragStart: () => void;
+  onDragOver: (e: DragEvent) => void;
+  onDragEnd: () => void;
   onSave: (name: string, color: string, hintMinutes: number) => void;
   onMove: (delta: number) => void;
   onHidden: (hidden: boolean) => void;
 };
 
-function StageRow({ stage, first, last, onSave, onMove, onHidden }: RowProps) {
+function StageRow({ stage, first, last, dragging, onDragStart, onDragOver, onDragEnd, onSave, onMove, onHidden }: RowProps) {
+  const card = useRef<HTMLDivElement>(null);
   const [name, setName] = useState(stage.name);
   const [hint, setHint] = useState(String(stage.hintMinutes));
 
@@ -127,7 +171,25 @@ function StageRow({ stage, first, last, onSave, onMove, onHidden }: RowProps) {
   };
 
   return (
-    <div className={`card sitem${stage.hidden ? " archived" : ""}`}>
+    <div
+      ref={card}
+      className={`card sitem${stage.hidden ? " archived" : ""}${dragging ? " dragging" : ""}`}
+      onDragOver={onDragOver}
+      onDrop={(e) => e.preventDefault()}
+    >
+      <span
+        className="handle"
+        draggable
+        title="ドラッグで並べ替え"
+        onDragStart={(e) => {
+          if (card.current) e.dataTransfer.setDragImage(card.current, 20, 20);
+          e.dataTransfer.effectAllowed = "move";
+          onDragStart();
+        }}
+        onDragEnd={onDragEnd}
+      >
+        ⋮⋮
+      </span>
       <div className="move">
         <button className="mini" title="上へ" disabled={first} onClick={() => onMove(-1)}>
           ▲
@@ -397,6 +459,95 @@ function HoursSection() {
             ＋ 休みにする
           </button>
         </div>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// タイマー
+// ---------------------------------------------------------------------------
+
+/** キー入力からショートカットの文字列を作る（例: Ctrl+Alt+Space） */
+function shortcutFromKey(e: React.KeyboardEvent): string | null {
+  const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Super"].filter(Boolean);
+  if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return null; // 修飾キーだけはまだ途中
+  if (mods.length === 0) return null; // 普段の入力とぶつからないよう、修飾キーを必須にする
+  const code = e.code.replace(/^Key/, "").replace(/^Digit/, "");
+  return [...mods, code].join("+");
+}
+
+function TimerSection() {
+  const app = useApp();
+  const [prefs, setPrefs] = useState<TimerPrefs | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getTimerPrefs().then(setPrefs).catch(app.showError);
+  }, [app.version, app.showError]);
+
+  if (!prefs) return <p className="muted">読み込み中…</p>;
+
+  const save = async (next: TimerPrefs) => {
+    setPrefs(next);
+    try {
+      await api.setTimerPrefs(next);
+      setSaved("保存しました");
+      app.refresh();
+    } catch (e) {
+      app.showError(e);
+      api.getTimerPrefs().then(setPrefs).catch(() => {});
+    }
+  };
+
+  return (
+    <>
+      <div className="section-title">止め忘れの確認</div>
+      <div className="card pad form">
+        <label className="row">
+          <span className="grow">PC の操作がこの時間なかったら、計測を一時停止して「休憩していましたか？」と聞く</span>
+          <input
+            className="field num"
+            type="number"
+            min={0}
+            max={240}
+            value={prefs.idleMinutes}
+            onChange={(e) => setPrefs({ ...prefs, idleMinutes: Number(e.target.value) })}
+            onBlur={() => save(prefs)}
+            style={{ width: 70 }}
+          />
+          <span>分</span>
+        </label>
+        <p className="muted small-text">0 にすると確認しません。今は Windows のみ対応しています。</p>
+        <label className="row">
+          <input type="checkbox" checked={prefs.watchSaves} onChange={(e) => save({ ...prefs, watchSaves: e.target.checked })} />
+          <span>計測中に別のページが CLIP STUDIO で保存されたら知らせる</span>
+        </label>
+      </div>
+
+      <div className="section-title" style={{ marginTop: 22 }}>
+        ショートカット
+      </div>
+      <div className="card pad form">
+        <label className="row">
+          <span className="grow">どのアプリを使っていても、このキーで一時停止 / 再開する</span>
+          <input
+            className="field shortcut"
+            readOnly
+            value={prefs.shortcut || "（使わない）"}
+            placeholder="キーを押してください"
+            onKeyDown={(e) => {
+              e.preventDefault();
+              if (e.key === "Backspace" || e.key === "Delete") return save({ ...prefs, shortcut: "" });
+              const sc = shortcutFromKey(e);
+              if (sc) save({ ...prefs, shortcut: sc });
+            }}
+          />
+        </label>
+        <p className="muted small-text">
+          欄をクリックしてから、Ctrl・Alt・Shift のどれかと一緒にキーを押すと変わります。Backspace で使わない設定にできます。
+          {saved && <span className="ok-text"> {saved}</span>}
+        </p>
       </div>
     </>
   );

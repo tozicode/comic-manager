@@ -56,13 +56,17 @@ export type Forecast = {
  * 予測に必要なデータを読み込み、計算する。データが変わるたびに読み直す。
  * hoursOverride を渡すと、保存前の曜日ごとの作業時間で計算する（スライダー操作中など）
  */
-export function useForecast(workId: number, hoursOverride?: number[] | null): Forecast | null {
+export function useForecast(workId: number | null, hoursOverride?: number[] | null): Forecast | null {
   const app = useApp();
   const [data, setData] = useState<{ board: Board; prediction: Prediction; schedule: WorkSchedule; spans: Span[] } | null>(
     null,
   );
 
   useEffect(() => {
+    if (!workId) {
+      setData(null);
+      return;
+    }
     let cancelled = false;
     const from = addDays(startOfDay(Date.now()), -PACE_DAYS).getTime();
     Promise.all([api.getBoard(workId), api.getPrediction(workId), api.getSchedule(workId), api.listSpans(from)])
@@ -73,7 +77,7 @@ export function useForecast(workId: number, hoursOverride?: number[] | null): Fo
     };
   }, [workId, app.version, app.showError]);
 
-  if (!data) return null;
+  if (!data || !workId || data.board.work.id !== workId) return null;
   const cal = hoursOverride ? { weekdayHours: hoursOverride, daysOff: data.schedule.daysOff } : undefined;
   return computeForecast(data.board, data.prediction, data.schedule, data.spans, Date.now(), cal);
 }

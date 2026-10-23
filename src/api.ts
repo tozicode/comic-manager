@@ -57,6 +57,7 @@ export type ActiveSession = {
 };
 
 export type StopResult = {
+  sessionId: number;
   pageId: number;
   pageLabel: string;
   stageId: number;
@@ -112,7 +113,12 @@ export type WorkSchedule = {
   daysOff: string[];
 };
 
-export type SyncResult = { added: number; missing: number };
+export type PageMerge = { fromPageId: number; fromFileName: string; toPageId: number; toLabel: string; ms: number };
+export type PageSplit = { pageId: number; label: string; newPageId: number; newLabel: string; ms: number };
+
+export type SyncResult = { added: number; missing: number; merges: PageMerge[]; splits: PageSplit[] };
+
+export type TimerPrefs = { idleMinutes: number; shortcut: string; watchSaves: boolean };
 
 export const api = {
   listWorks: () => invoke<WorkSummary[]>("list_works"),
@@ -162,4 +168,19 @@ export const api = {
   setDayOff: (date: string, off: boolean) => invoke<void>("set_day_off", { date, off }),
   /** [全作品の既定の作業時間（月〜日）, 休みの日] */
   getCalendar: () => invoke<[number[], string[]]>("get_calendar"),
+
+  stopTimerAt: (at: number) => invoke<StopResult | null>("stop_timer_at", { at }),
+  setSessionEnd: (id: number, endedAt: number) => invoke<void>("set_session_end", { id, endedAt }),
+  idleMs: () => invoke<number>("idle_ms"),
+  pageMtimes: (workId: number) => invoke<[number, number][]>("page_mtimes", { workId }),
+  mergePages: (from: number, to: number) => invoke<void>("merge_pages", { from, to }),
+  splitPage: (pageId: number, newPageId: number, half: boolean) => invoke<void>("split_page", { pageId, newPageId, half }),
+  setStageOrder: (ids: number[]) => invoke<void>("set_stage_order", { ids }),
+  getTimerPrefs: () => invoke<TimerPrefs>("get_timer_prefs"),
+  setTimerPrefs: (prefs: TimerPrefs) => invoke<void>("set_timer_prefs", { prefs }),
+  openMini: () => invoke<void>("open_mini"),
+  closeMini: () => invoke<void>("close_mini"),
+  setMiniCompact: (compact: boolean) => invoke<void>("set_mini_compact", { compact }),
+  setMiniOnTop: (onTop: boolean) => invoke<void>("set_mini_on_top", { onTop }),
+  focusMain: () => invoke<void>("focus_main"),
 };

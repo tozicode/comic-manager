@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, WorkSummary } from "./api";
-import { AppProvider, useApp } from "./app-context";
+import { AppProvider, isMini, useApp } from "./app-context";
 import { Dialog } from "./components/Dialog";
 import { Sidebar } from "./components/Sidebar";
 import { TimerChip } from "./components/TimerChip";
+import { SaveToast, Watchers } from "./components/Watchers";
+import { MiniApp } from "./MiniApp";
 import { duration } from "./format";
 import { BoardScreen } from "./screens/BoardScreen";
 import { RecordsScreen } from "./screens/RecordsScreen";
@@ -73,7 +75,12 @@ function Shell() {
       <div className="main">
         <header className="topbar">
           <h1>{TITLES[screen]}</h1>
-          <TimerChip onOpenWork={(id) => openWork(id)} />
+          <div className="row">
+            <button className="btn small ghost" title="CLIP STUDIO の上に小さなタイマーを出す" onClick={() => api.openMini().catch(app.showError)}>
+              ⧉ ミニタイマー
+            </button>
+            <TimerChip onOpenWork={(id) => openWork(id)} />
+          </div>
         </header>
         <div className="content">
           {app.error && (
@@ -98,6 +105,8 @@ function Shell() {
         </div>
       </div>
 
+      <Watchers />
+      <SaveToast />
       {app.stopped && (
         <Dialog
           label="タイマーを止めました"
@@ -133,9 +142,5 @@ const TITLES: Record<Screen, string> = {
 };
 
 export default function App() {
-  return (
-    <AppProvider>
-      <Shell />
-    </AppProvider>
-  );
+  return <AppProvider>{isMini ? <MiniApp /> : <Shell />}</AppProvider>;
 }
