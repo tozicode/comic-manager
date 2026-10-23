@@ -15,3 +15,6 @@ src-tauri/gen/schemas/
 .DS_Store
 *.log
 *.local
+
+# 配布物（インストーラー・説明書の PDF・zip）
+release/

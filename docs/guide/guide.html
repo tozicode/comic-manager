@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>Otosazu はじめにお読みください</title>
+<style>
+  /* 印刷（PDF 化）向けの説明書。npm run guide で PDF にする */
+  @page { size: A4; margin: 16mm 16mm 18mm; }
+  :root { --accent: #c8553d; --text: #2b2723; --muted: #7a7169; --border: #e2dcd3; --soft: #f6f3ee; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.75;
+    color: var(--text);
+  }
+  header { display: flex; align-items: center; gap: 14px; padding-bottom: 10px; border-bottom: 3px solid var(--accent); margin-bottom: 14px; }
+  header img { width: 56px; height: 56px; }
+  header h1 { margin: 0; font-size: 20pt; letter-spacing: .03em; }
+  header p { margin: 0; color: var(--muted); }
+  h2 { font-size: 13pt; margin: 18px 0 6px; padding-left: 10px; border-left: 5px solid var(--accent); break-after: avoid; }
+  h3 { font-size: 11pt; margin: 12px 0 4px; break-after: avoid; }
+  p { margin: 4px 0; }
+  ol, ul { margin: 4px 0; padding-left: 1.5em; }
+  li { margin: 2px 0; }
+  .box { padding: 8px 12px; border-radius: 8px; background: var(--soft); border: 1px solid var(--border); margin: 8px 0; break-inside: avoid; }
+  .warn { background: #faefd9; border-color: #efd9a8; }
+  .key { display: inline-block; padding: 0 6px; border: 1px solid #b3aaa1; border-bottom-width: 2px; border-radius: 4px; font-size: 9.5pt; background: #fff; }
+  .btn { display: inline-block; padding: 0 8px; border-radius: 5px; background: var(--accent); color: #fff; font-size: 9.5pt; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0; }
+  td, th { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); white-space: nowrap; }
+  .muted { color: var(--muted); }
+  footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--muted); font-size: 9pt; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="../../src-tauri/icons/source.svg" alt="" />
+  <div>
+    <h1>Otosazu（オトサズ）</h1>
+    <p>原稿を落とさず描き上げる ── 漫画制作のスケジュール管理ソフト ／ はじめにお読みください（試用版 0.1.0）</p>
+  </div>
+</header>
+
+<p>
+  Otosazu は、CLIP STUDIO PAINT の漫画ファイルと連動して、<b>ページ × 工程（下書き・ペン入れ・トーンなど）ごとの作業時間</b>を記録するソフトです。
+  記録がたまるほど「このペースだと何日に完成するか」「締切に間に合わせるには今日なにをどれだけやるか」を正確に出せるようになります。
+</p>
+
+<h2>使える環境</h2>
+<ul>
+  <li>Windows 10 / 11 のパソコン</li>
+  <li>CLIP STUDIO PAINT で作った<b>漫画ファイル（拡張子 .cmc）</b>。iPad 版の CLIP STUDIO のファイルは、今のところ読めません</li>
+</ul>
+
+<h2>インストールのしかた</h2>
+<ol>
+  <li>お渡しした <b>Otosazu_0.1.0_x64-setup.exe</b> をダブルクリックします。</li>
+  <li>
+    「Windows によって PC が保護されました」という青い画面が出たら、<b>「詳細情報」</b>をクリックしてから<b>「実行」</b>を押してください。
+    <div class="box warn">
+      これは、まだ公式の署名（有料の証明書）を付けていない試用版のために出る表示です。お渡しした本人から受け取ったファイルであれば、そのまま進めて大丈夫です。
+    </div>
+  </li>
+  <li>インストーラーの案内に沿って進めます。管理者のパスワードは必要ありません。終わるとスタートメニューに「Otosazu」が追加されます。</li>
+</ol>
+
+<h2>はじめの使い方</h2>
+<h3>1. 作品を登録する</h3>
+<p>
+  Otosazu を開き、<span class="btn">作品を追加</span> から CLIP STUDIO の漫画ファイル（.cmc）を選びます。ページの一覧とサムネイルが読み込まれます。
+  CLIP STUDIO でページを増やしたり並べ替えたりしても、作品を開くたびに自動で反映されます。
+</p>
+<div class="box">Otosazu は漫画ファイルを<b>読むだけ</b>で、書き換えることはありません。CLIP STUDIO で開いている最中でも安心して使えます。</div>
+
+<h3>2. 作業時間を記録する</h3>
+<p>
+  「進捗ボード」には、ページ（縦）× 工程（横）のマス目が並びます。<b>これから作業するマスをクリックすると計測が始まります</b>。
+  右上のタイマーで一時停止・停止ができ、止めると「この工程は完了しましたか？」と聞かれます。
+</p>
+<ul>
+  <li><b>ミニタイマー</b>：右上の「⧉ ミニタイマー」で、CLIP STUDIO の上に小さなタイマーを常に表示できます。</li>
+  <li><b>ショートカット</b>：どのアプリを使っていても <span class="key">Ctrl</span> + <span class="key">Alt</span> + <span class="key">Space</span> で一時停止 / 再開できます（設定で変えられます）。</li>
+  <li><b>止め忘れ対策</b>：10 分間パソコンを操作しないと計測が一時停止し、「休憩していましたか？」と聞かれます。資料を読んでいたなら「作業していた」を選べば記録に含まれます。</li>
+  <li>計測中に別のページを CLIP STUDIO で保存すると、「そのページを作業していますか？」と知らせます。</li>
+</ul>
+
+<h3>3. ページにタグを付ける</h3>
+<p>
+  ページ名の横の「＋」から、「コマ多」「資料必要」「背景多め」などのタグを付けられます。タグは完成予測に使われます（例：コマ多 ＝ 1.3 倍かかる見込み）。
+  見開きページには「見開き」タグが自動で付きます。タグの種類や倍率は「設定 → タグ」で自由に変えられます。
+</p>
+
+<h3>4. 完成日を見る・締切から逆算する</h3>
+<table>
+  <tr><th>完成日を見る</th><td>曜日ごとの作業時間（例：平日 3 時間・土日 6 時間）を決めると、「早ければ／おそらく／遅ければ」の 3 つの完成見込み日を出します。</td></tr>
+  <tr><th>目標から逆算する</th><td>締切日を入れると、1 日に必要な作業時間と<b>今日のノルマ</b>を出し、「ペン入れの日」「混ぜる」など今日の進め方の案を並べます。気分で選んでください（どれを選んでも完成日は変わりません）。</td></tr>
+</table>
+
+<h3>5. 工程を自分好みにする</h3>
+<p>
+  工程ははじめ「下書き・ペン入れ・トーン」の 3 つです。「設定 → 工程」でネーム・ベタ・仕上げなどを追加したり、並べ替えたりできます。
+  追加した工程は、<b>これから登録する作品</b>で使われます。
+</p>
+
+<h2>試用中のお願い</h2>
+<ul>
+  <li>使いにくいところ、分かりにくい言葉、「こうだったらいいのに」と思ったことを、気軽にメモしておいてください。</li>
+  <li>
+    おかしな動きがあったときは、<b>「設定 → データ → バックアップを作る」</b>で作ったファイルを添えて、お渡しした本人まで連絡いただけると原因を調べやすくなります。
+  </li>
+  <li>完成予測は、記録が少ないうちは大まかな目安です。数ページ分の記録がたまると精度が上がります。</li>
+</ul>
+
+<h2>データとアンインストール</h2>
+<ul>
+  <li>記録は、パソコンの中の 1 つのファイルに保存されています。場所は「設定 → データ → 保存場所を開く」で確認できます。</li>
+  <li>アンインストールは、Windows の「設定 → アプリ → インストールされているアプリ」から「Otosazu」を選びます。記録のファイルはそのまま残るので、入れ直せば続きから使えます。</li>
+</ul>
+
+<footer>Otosazu 試用版 0.1.0 ／ © 2026 tozicode</footer>
+</body>
+</html>
