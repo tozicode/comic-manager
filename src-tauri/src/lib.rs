@@ -1,4 +1,5 @@
 mod cmc;
+mod desktop;
 mod store;
 
 use std::collections::HashMap;
@@ -7,7 +8,7 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 
 use base64::Engine;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 use store::{Store, now_ms};
 
@@ -243,11 +244,102 @@ fn set_day_off(state: State<AppState>, date: String, off: bool) -> Cmd<()> {
     with_store(&state, |s| s.set_day_off(&date, off))
 }
 
+// ----- ステップ4：止め忘れ・保存の検知・見開き・ミニ窓 -----
+
+/// 指定した時刻で計測を止める（止め忘れの確認で、操作が無くなった時刻に戻すため）
+#[tauri::command]
+fn stop_timer_at(state: State<AppState>, at: i64) -> Cmd<Option<store::StopResult>> {
+    with_store(&state, |s| s.stop_timer(at.min(now_ms())))
+}
+
+#[tauri::command]
+fn set_session_end(state: State<AppState>, id: i64, ended_at: i64) -> Cmd<()> {
+    with_store(&state, |s| s.set_session_end(id, ended_at, now_ms()))
+}
+
+/// 最後にキーボードかマウスを操作してからの経過時間（ミリ秒）
+#[tauri::command]
+fn idle_ms() -> u64 {
+    desktop::idle_ms()
+}
+
+/// 作品のページファイルの更新日時（ページ ID, ミリ秒）。保存の検知に使う
+#[tauri::command]
+fn page_mtimes(state: State<AppState>, work_id: i64) -> Cmd<Vec<(i64, i64)>> {
+    let (cmc_path, files) = with_store(&state, |s| Ok((s.work_info(work_id)?.cmc_path, s.page_files(work_id)?)))?;
+    Ok(files
+        .into_iter()
+        .filter_map(|(id, file)| {
+            let modified = std::fs::metadata(cmc::page_path(Path::new(&cmc_path), &file)).and_then(|m| m.modified()).ok()?;
+            let ms = modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64;
+            Some((id, ms))
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn merge_pages(state: State<AppState>, from: i64, to: i64) -> Cmd<()> {
+    with_store(&state, |s| s.merge_pages(from, to))
+}
+
+#[tauri::command]
+fn split_page(state: State<AppState>, page_id: i64, new_page_id: i64, half: bool) -> Cmd<()> {
+    with_store(&state, |s| s.split_page(page_id, new_page_id, half))
+}
+
+#[tauri::command]
+fn set_stage_order(state: State<AppState>, ids: Vec<i64>) -> Cmd<()> {
+    with_store(&state, |s| s.set_stage_order(&ids))
+}
+
+#[tauri::command]
+fn get_timer_prefs(state: State<AppState>) -> Cmd<store::TimerPrefs> {
+    with_store(&state, |s| s.timer_prefs())
+}
+
+/// タイマーの設定を保存する。ショートカットが登録できないときは保存しない
+#[tauri::command]
+fn set_timer_prefs(app: AppHandle, state: State<AppState>, prefs: store::TimerPrefs) -> Cmd<()> {
+    let old = with_store(&state, |s| s.timer_prefs())?;
+    if let Err(e) = desktop::register_shortcut(&app, &prefs.shortcut) {
+        let _ = desktop::register_shortcut(&app, &old.shortcut);
+        return Err(e);
+    }
+    with_store(&state, |s| s.set_timer_prefs(&prefs))
+}
+
+/// Windows では同期コマンドの中で窓を作るとデッドロックするため、窓の操作は async にする
+#[tauri::command]
+async fn open_mini(app: AppHandle) -> Cmd<()> {
+    desktop::open_mini(&app)
+}
+
+#[tauri::command]
+async fn close_mini(app: AppHandle) -> Cmd<()> {
+    desktop::close_mini(&app)
+}
+
+#[tauri::command]
+async fn set_mini_compact(app: AppHandle, compact: bool) -> Cmd<()> {
+    desktop::set_mini_compact(&app, compact)
+}
+
+#[tauri::command]
+async fn set_mini_on_top(app: AppHandle, on_top: bool) -> Cmd<()> {
+    desktop::set_mini_on_top(&app, on_top)
+}
+
+#[tauri::command]
+async fn focus_main(app: AppHandle) -> Cmd<()> {
+    desktop::focus_main(&app)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // 開発・確認用に、環境変数 OTOSAZU_DB で保存先を差し替えられる
             let path = match std::env::var_os("OTOSAZU_DB") {
@@ -255,6 +347,12 @@ pub fn run() {
                 None => app.path().app_data_dir()?.join("otosazu.db"),
             };
             let store = Store::open(&path)?;
+            // ショートカットが他のアプリと重なっていても、起動は続ける（設定画面で変えられる）
+            if let Ok(prefs) = store.timer_prefs()
+                && let Err(e) = desktop::register_shortcut(app.handle(), &prefs.shortcut)
+            {
+                eprintln!("{e}");
+            }
             app.manage(AppState { store: Mutex::new(store), thumbnails: Mutex::new(HashMap::new()) });
             Ok(())
         })
@@ -294,6 +392,20 @@ pub fn run() {
             set_work_order,
             set_day_off,
             get_calendar,
+            stop_timer_at,
+            set_session_end,
+            idle_ms,
+            page_mtimes,
+            merge_pages,
+            split_page,
+            set_stage_order,
+            get_timer_prefs,
+            set_timer_prefs,
+            open_mini,
+            close_mini,
+            set_mini_compact,
+            set_mini_on_top,
+            focus_main,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -10,11 +10,15 @@ use serde::Serialize;
 
 use crate::cmc::Comic;
 
+mod pages;
 mod predict;
+mod prefs;
 mod schedule;
 mod tags;
 
+pub use pages::{PageMerge, PageSplit};
 pub use predict::Prediction;
+pub use prefs::TimerPrefs;
 pub use schedule::WorkSchedule;
 pub use tags::TagGroup;
 
@@ -120,6 +124,8 @@ pub struct ActiveSession {
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct StopResult {
+    /// 止めた作業記録の ID
+    pub session_id: i64,
     pub page_id: i64,
     pub page_label: String,
     pub stage_id: i64,
@@ -161,6 +167,10 @@ pub struct Span {
 pub struct SyncResult {
     pub added: i64,
     pub missing: i64,
+    /// 見開きになって消えたページ（記録をまとめるか確認する）
+    pub merges: Vec<PageMerge>,
+    /// 見開きが単ページに戻ったページ（記録の分け方を確認する）
+    pub splits: Vec<PageSplit>,
 }
 
 pub fn page_label(number: i64, span: i64) -> String {
@@ -407,6 +417,26 @@ impl Store {
         Ok(())
     }
 
+    /// 工程をこの順番に並べる（ドラッグでの並べ替え用）。全作品の並び順にも反映する
+    pub fn set_stage_order(&self, ids: &[i64]) -> Result<()> {
+        let mut all: Vec<i64> = self.list_stages()?.into_iter().map(|s| s.id).collect();
+        let mut sorted = ids.to_vec();
+        sorted.sort();
+        all.sort();
+        if sorted != all {
+            return Err("工程の並びが正しくありません".into());
+        }
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        for (i, id) in ids.iter().enumerate() {
+            tx.execute("UPDATE stage_def SET sort_order = ?2 WHERE id = ?1", params![id, i as i64])
+                .map_err(db_err)?;
+            tx.execute("UPDATE work_stage SET sort_order = ?2 WHERE stage_id = ?1", params![id, i as i64])
+                .map_err(db_err)?;
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(())
+    }
+
     fn stage(&self, id: i64) -> Result<StageDef> {
         self.list_stages()?
             .into_iter()
@@ -511,6 +541,7 @@ impl Store {
     /// cmc の内容をページ一覧に反映する。ページはファイル名で突き合わせる。
     /// cmc から消えたページは記録を残したまま `missing` にする
     pub fn sync_pages(&self, work_id: i64, comic: &Comic, now: i64) -> Result<SyncResult> {
+        let old = self.page_states(work_id)?;
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let before: i64 = tx
             .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1", [work_id], |r| r.get(0))
@@ -537,7 +568,9 @@ impl Store {
         tx.execute("UPDATE work SET last_synced_at = ?2 WHERE id = ?1", params![work_id, now])
             .map_err(db_err)?;
         tx.commit().map_err(db_err)?;
-        Ok(SyncResult { added: after - before, missing })
+        let new = self.page_states(work_id)?;
+        let (merges, splits) = self.detect_spread_changes(&old, &new, now)?;
+        Ok(SyncResult { added: after - before, missing, merges, splits })
     }
 
     /// 消えたページのうち、作業記録も完了も無いものを削除する
@@ -692,6 +725,7 @@ impl Store {
             )
             .map_err(db_err)?;
         Ok(Some(StopResult {
+            session_id: active.id,
             page_id: active.page_id,
             page_label: active.page_label,
             stage_id: active.stage_id,
@@ -849,6 +883,21 @@ impl Store {
         Ok(())
     }
 
+    /// 止め忘れの確認で、止めた記録の終了時刻を動かす（手修正の印は付けない）
+    pub fn set_session_end(&self, id: i64, ended_at: i64, now: i64) -> Result<()> {
+        let started: i64 = self
+            .conn
+            .query_row("SELECT started_at FROM work_session WHERE id = ?1 AND ended_at IS NOT NULL", [id], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?
+            .ok_or_else(|| "作業記録が見つかりませんでした".to_string())?;
+        let end = ended_at.clamp(started, now);
+        self.conn
+            .execute("UPDATE work_session SET ended_at = ?2 WHERE id = ?1", params![id, end])
+            .map_err(db_err)?;
+        Ok(())
+    }
+
     pub fn delete_session(&self, id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM work_session WHERE id = ?1", [id]).map_err(db_err)?;
         Ok(())
@@ -947,7 +996,7 @@ mod tests {
         let result = store
             .sync_pages(id, &comic(&[("page0004.clip", 1), ("page0001.clip", 1), ("page0005.clip", 1)]), 10)
             .unwrap();
-        assert_eq!(result, SyncResult { added: 1, missing: 1 });
+        assert_eq!((result.added, result.missing), (1, 1));
         let board = store.board(id, 0).unwrap();
         let files: Vec<(&str, bool)> = board.pages.iter().map(|p| (p.file_name.as_str(), p.missing)).collect();
         assert_eq!(
@@ -1056,6 +1105,32 @@ mod tests {
         store.update_stage(added.id, "ネーム（ラフ）", "#000000", 30).unwrap();
         let s = store.list_stages().unwrap().into_iter().find(|s| s.id == added.id).unwrap();
         assert_eq!((s.name.as_str(), s.hint_minutes, s.hidden), ("ネーム（ラフ）", 30, true));
+    }
+
+    #[test]
+    fn 工程をまとめて並べ替える() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        store.set_stage_order(&[st[2], st[0], st[1]]).unwrap();
+        let names: Vec<String> = store.board(id, 0).unwrap().stages.into_iter().map(|s| s.name).collect();
+        assert_eq!(names, ["トーン", "下書き", "ペン入れ"]);
+        assert!(store.set_stage_order(&[st[0], st[1]]).is_err());
+    }
+
+    #[test]
+    fn 止めた記録の終了時刻を動かす() {
+        let (store, id) = setup();
+        let page = store.board(id, 0).unwrap().pages[0].id;
+        store.start_timer(page, stage_ids(&store)[0], 0).unwrap();
+        // 10 分から操作がなく、30 分に気づいて止めた
+        let stopped = store.stop_timer(10 * MIN).unwrap().unwrap();
+        // 「作業していた」なら気づいた時刻まで伸ばす
+        store.set_session_end(stopped.session_id, 30 * MIN, 30 * MIN).unwrap();
+        let row = &store.list_sessions(id, 0).unwrap()[0];
+        assert_eq!((row.ended_at, row.edited), (Some(30 * MIN), false));
+        // 開始より前や未来にはしない
+        store.set_session_end(stopped.session_id, -5, 30 * MIN).unwrap();
+        assert_eq!(store.list_sessions(id, 0).unwrap()[0].ended_at, Some(0));
     }
 
     #[test]
