@@ -35,7 +35,25 @@ fn with_store<T>(state: &State<AppState>, f: impl FnOnce(&Store) -> store::Resul
 
 #[tauri::command]
 fn list_works(state: State<AppState>) -> Cmd<Vec<store::WorkSummary>> {
-    with_store(&state, |s| s.list_works())
+    let mut works = with_store(&state, |s| s.list_works())?;
+    for w in &mut works {
+        w.file_missing = !Path::new(&w.cmc_path).exists();
+    }
+    Ok(works)
+}
+
+/// 別の場所の cmc がこの作品と同じものかを照らし合わせる
+#[tauri::command]
+fn check_relink(state: State<AppState>, work_id: i64, cmc_path: String) -> Cmd<store::RelinkCheck> {
+    let comic = cmc::read_comic(Path::new(&cmc_path))?;
+    with_store(&state, |s| s.check_relink(work_id, &comic))
+}
+
+/// 作品の cmc の場所を指定し直す（移動・名前の変更のあとに使う）
+#[tauri::command]
+fn relink_work(state: State<AppState>, work_id: i64, cmc_path: String) -> Cmd<store::SyncResult> {
+    let comic = cmc::read_comic(Path::new(&cmc_path))?;
+    with_store(&state, |s| s.relink_work(work_id, &cmc_path, &comic, now_ms()))
 }
 
 #[tauri::command]
@@ -53,6 +71,9 @@ fn remove_work(state: State<AppState>, work_id: i64) -> Cmd<()> {
 #[tauri::command]
 fn sync_work(state: State<AppState>, work_id: i64) -> Cmd<store::SyncResult> {
     let path = with_store(&state, |s| s.work_info(work_id))?.cmc_path;
+    if !Path::new(&path).exists() {
+        return Err(format!("漫画ファイルが見つかりません（前の場所：{path}）"));
+    }
     let comic = cmc::read_comic(Path::new(&path))?;
     with_store(&state, |s| {
         let result = s.sync_pages(work_id, &comic, now_ms())?;
@@ -439,6 +460,8 @@ pub fn run() {
             data_info,
             backup_data,
             reveal_data,
+            check_relink,
+            relink_work,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, WorkSummary } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
+import { useRelink } from "../components/Relink";
 import { useForecast } from "../forecast";
 import { dayLabel, hours } from "../format";
 
@@ -12,6 +13,7 @@ export function WorksScreen({ works, onOpen }: Props) {
   const app = useApp();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<WorkSummary | null>(null);
+  const relink = useRelink();
 
   const addWork = async () => {
     const selected = await open({
@@ -87,6 +89,14 @@ export function WorksScreen({ works, onOpen }: Props) {
               <div className="path" title={w.cmcPath}>
                 {w.cmcPath}
               </div>
+              {w.fileMissing && (
+                <div className="file-missing" onClick={(e) => e.stopPropagation()}>
+                  <span className="grow">⚠ この場所に漫画ファイルが見つかりません</span>
+                  <button className="btn small primary" onClick={() => relink.start(w.id, w.title)}>
+                    場所を指定し直す
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -97,6 +107,7 @@ export function WorksScreen({ works, onOpen }: Props) {
         </button>
       </div>
 
+      {relink.dialog}
       {removing && (
         <Dialog
           title={`「${removing.title}」を外しますか？`}

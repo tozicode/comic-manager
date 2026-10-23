@@ -3,6 +3,7 @@ import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup } from "../api
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { Dialog } from "../components/Dialog";
+import { useRelink } from "../components/Relink";
 import { TagPopover } from "../components/TagPopover";
 import { Thumb } from "../components/Thumb";
 import { Forecast, loadChosenPlan, useForecast } from "../forecast";
@@ -22,6 +23,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [tags, setTags] = useState<TagGroup[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [syncNote, setSyncNote] = useState<string | null>(null);
+  /** cmc を読み直せなかった（移動・名前の変更など） */
+  const [syncFailed, setSyncFailed] = useState(false);
   const [undo, setUndo] = useState<{ page: BoardPage; stage: StageRef } | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   /** タグを編集しているページ（"bulk" ならチェックしたページをまとめて） */
@@ -61,13 +64,30 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         setChanges((prev) => [...prev, ...found]);
         setSplitHalf(true);
       }
+      setSyncFailed(false);
       app.refresh();
     } catch (e) {
-      setSyncNote(`cmc を読み直せませんでした（${e}）。前回読み込んだページ一覧を表示しています`);
+      setSyncNote(`${e}。前回読み込んだページ一覧を表示しています。`);
+      setSyncFailed(true);
     } finally {
       syncing.current = false;
     }
   };
+
+  // 場所を指定し直したら、読み直したときと同じように結果を知らせる
+  const relink = useRelink((r) => {
+    const found = [
+      ...r.merges.map((m): SpreadChange => ({ kind: "merge", m })),
+      ...r.splits.map((s): SpreadChange => ({ kind: "split", s })),
+    ];
+    if (found.length > 0) setChanges((prev) => [...prev, ...found]);
+    setSyncFailed(false);
+    setSyncNote(
+      ["漫画ファイルの場所を指定し直しました", r.added > 0 && `${r.added} ページ増えました`, r.missing > 0 && `${r.missing} ページが見つかりません`]
+        .filter(Boolean)
+        .join("・"),
+    );
+  });
 
   const run = async (f: () => Promise<unknown>) => {
     try {
@@ -80,6 +100,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
 
   if (!forecast) return <p className="muted">読み込み中…</p>;
   const { board } = forecast;
+  const startRelink = () => relink.start(workId, board.work.title);
 
   const pages = board.pages.filter((p) => !p.missing);
   const missing = board.pages.filter((p) => p.missing);
@@ -112,13 +133,26 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           {board.work.lastSyncedAt && <>最終同期 {time(board.work.lastSyncedAt)} · </>}
           cmc から {pageCount} ページ
         </div>
-        <button className="btn small ghost" onClick={() => sync(true)}>
-          ⟳ cmc を読み直す
-        </button>
+        <div className="row tight">
+          <button className="btn small ghost" onClick={startRelink} title="cmc を移動したり名前を変えたりしたとき">
+            📁 場所を変更
+          </button>
+          <button className="btn small ghost" onClick={() => sync(true)}>
+            ⟳ cmc を読み直す
+          </button>
+        </div>
       </div>
       {syncNote && (
-        <div className="notice info">
-          <span className="grow">{syncNote}</span>
+        <div className={`notice ${syncFailed ? "warn" : "info"}`}>
+          <span className="grow">
+            {syncNote}
+            {syncFailed && " 漫画ファイルを移動したり名前を変えたりした場合は、場所を指定し直すと記録をそのまま引き継げます。"}
+          </span>
+          {syncFailed && (
+            <button className="btn small primary" onClick={startRelink}>
+              場所を指定し直す
+            </button>
+          )}
           <button className="btn small ghost" onClick={() => setSyncNote(null)}>
             閉じる
           </button>
@@ -392,6 +426,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         </Dialog>
       )}
 
+      {relink.dialog}
       {undo && (
         <Dialog
           title={`${undo.page.label} の${undo.stage.name}を未完了に戻しますか？`}

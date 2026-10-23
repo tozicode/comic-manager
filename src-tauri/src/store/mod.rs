@@ -57,6 +57,22 @@ pub struct WorkSummary {
     pub progress: f64,
     pub total_ms: i64,
     pub last_worked_at: Option<i64>,
+    /// 登録した場所に cmc が見つからない（移動・名前の変更など）。画面に返す直前に調べる
+    pub file_missing: bool,
+}
+
+/// 別の場所の cmc につなぎ直す前の照らし合わせ
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RelinkCheck {
+    /// 新しい cmc の作品名
+    pub title: String,
+    /// 新しい cmc のページ数（ファイルの数）
+    pub new_pages: i64,
+    /// 今の作品のページ数（消えたページを除く）
+    pub old_pages: i64,
+    /// ファイル名が一致したページ数
+    pub matched: i64,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -473,6 +489,38 @@ impl Store {
         Ok(work_id)
     }
 
+    /// 別の場所の cmc が、この作品と同じものかを照らし合わせる（ページのファイル名で比べる）
+    pub fn check_relink(&self, work_id: i64, comic: &Comic) -> Result<RelinkCheck> {
+        let old: Vec<String> = self.page_files(work_id)?.into_iter().map(|(_, f)| f).collect();
+        let matched = comic.pages.iter().filter(|p| old.contains(&p.file_name)).count();
+        Ok(RelinkCheck {
+            title: comic.title.clone(),
+            new_pages: comic.pages.len() as i64,
+            old_pages: old.len() as i64,
+            matched: matched as i64,
+        })
+    }
+
+    /// 作品の cmc の場所を変えて読み直す。記録はページのファイル名で引き継がれる
+    pub fn relink_work(&self, work_id: i64, cmc_path: &str, comic: &Comic, now: i64) -> Result<SyncResult> {
+        let other: Option<String> = self
+            .conn
+            .query_row("SELECT title FROM work WHERE cmc_path = ?1 AND id != ?2", params![cmc_path, work_id], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?;
+        if let Some(title) = other {
+            return Err(format!(
+                "この漫画ファイルは「{title}」として登録されています。そちらを作品一覧から外してから、もう一度選んでください"
+            ));
+        }
+        self.conn
+            .execute("UPDATE work SET cmc_path = ?2 WHERE id = ?1", params![work_id, cmc_path])
+            .map_err(db_err)?;
+        let result = self.sync_pages(work_id, comic, now)?;
+        self.remove_empty_missing_pages(work_id)?;
+        Ok(result)
+    }
+
     pub fn remove_work(&self, work_id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM work WHERE id = ?1", [work_id]).map_err(db_err)?;
         Ok(())
@@ -532,6 +580,7 @@ impl Store {
                 progress: if total > 0 { done as f64 / total as f64 } else { 0.0 },
                 total_ms: r.get(6)?,
                 last_worked_at: r.get(7)?,
+                file_missing: false,
             })
         })
         .and_then(|rows| rows.collect())
@@ -1156,6 +1205,45 @@ mod tests {
         store.backup_to(&dest).unwrap();
         let copy = Store::open(&dest).unwrap();
         assert_eq!(copy.list_works().unwrap()[0].total_ms, 10 * MIN);
+    }
+
+    #[test]
+    fn 場所を変えても記録を引き継ぐ() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let page = store.board(id, 0).unwrap().pages[0].id;
+        store.add_session(page, st[0], 0, 10 * MIN, 100 * MIN).unwrap();
+        store.set_task_done(page, st[0], true, 0).unwrap();
+
+        // 移動先では 1 ページ増えている
+        let moved = comic(&[("page0001.clip", 1), ("page0002.clip", 2), ("page0004.clip", 1), ("page0005.clip", 1)]);
+        let check = store.check_relink(id, &moved).unwrap();
+        assert_eq!((check.old_pages, check.new_pages, check.matched), (3, 4, 3));
+
+        let r = store.relink_work(id, "E:/漫画/a.cmc", &moved, 0).unwrap();
+        assert_eq!(r.added, 1);
+        let board = store.board(id, 0).unwrap();
+        assert_eq!(board.work.cmc_path, "E:/漫画/a.cmc");
+        assert_eq!(board.pages.len(), 4);
+        assert_eq!((board.pages[0].cells[0].total_ms, board.pages[0].cells[0].done), (10 * MIN, true));
+    }
+
+    #[test]
+    fn 別の作品と照らし合わせるとほとんど一致しない() {
+        let (store, id) = setup();
+        let other = comic(&[("page0101.clip", 1), ("page0102.clip", 1)]);
+        let check = store.check_relink(id, &other).unwrap();
+        assert_eq!(check.matched, 0);
+    }
+
+    #[test]
+    fn 別の作品として登録済みのcmcにはつなぎ直せない() {
+        let (store, id) = setup();
+        store.add_work("C:/b.cmc", &comic(&[("x.clip", 1)]), 0).unwrap();
+        let err = store.relink_work(id, "C:/b.cmc", &comic(&[("x.clip", 1)]), 0).unwrap_err();
+        assert!(err.contains("として登録されています"));
+        // 自分と同じ場所なら（読み直しと同じなので）通る
+        assert!(store.relink_work(id, "C:/a.cmc", &comic(&[("page0001.clip", 1)]), 0).is_ok());
     }
 
     #[test]

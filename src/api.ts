@@ -20,7 +20,11 @@ export type WorkSummary = {
   progress: number;
   totalMs: number;
   lastWorkedAt: number | null;
+  /** 登録した場所に cmc が見つからない */
+  fileMissing: boolean;
 };
+
+export type RelinkCheck = { title: string; newPages: number; oldPages: number; matched: number };
 
 export type StageRef = { id: number; name: string; color: string };
 
@@ -187,4 +191,6 @@ export const api = {
   dataInfo: () => invoke<{ dbPath: string; version: string }>("data_info"),
   backupData: (dest: string) => invoke<void>("backup_data", { dest }),
   revealData: () => invoke<void>("reveal_data"),
+  checkRelink: (workId: number, cmcPath: string) => invoke<RelinkCheck>("check_relink", { workId, cmcPath }),
+  relinkWork: (workId: number, cmcPath: string) => invoke<SyncResult>("relink_work", { workId, cmcPath }),
 };

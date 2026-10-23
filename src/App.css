@@ -485,6 +485,10 @@ select {
 .work-card:hover {
   border-color: var(--faint);
 }
+/* 長いパスでカードの幅が押し広げられないように */
+.work-card > .grow {
+  min-width: 0;
+}
 .work-card h3 {
   margin: 0;
   font-size: 16px;
@@ -1609,4 +1613,18 @@ table.rec {
 /* ===== ステップ5：データ ===== */
 .path-text {
   word-break: break-all;
+}
+
+/* ===== 0.1.1：漫画ファイルの場所の指定し直し ===== */
+.file-missing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #7a5214;
+  background: #faefd9;
+  cursor: default;
 }
