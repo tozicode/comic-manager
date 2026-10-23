@@ -691,7 +691,7 @@ function DataSection() {
           バックアップから戻すときは、Otosazu を閉じてから、上の保存場所にある otosazu.db をバックアップのファイルで置き換えてください。
         </p>
       </div>
-      <p className="muted small-text">Otosazu {info?.version}（試用版）</p>
+      <p className="muted small-text">Otosazu {info?.version}</p>
     </>
   );
 }

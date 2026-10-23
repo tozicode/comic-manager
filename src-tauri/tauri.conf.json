@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Otosazu",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "identifier": "app.otosazu",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -38,8 +38,8 @@
     "publisher": "tozicode",
     "copyright": "© 2026 tozicode",
     "category": "Productivity",
-    "shortDescription": "漫画制作スケジュール管理ソフト",
-    "longDescription": "CLIP STUDIO PAINT の漫画ファイルと連動して、ページ×工程ごとの作業時間を記録し、完成日を予測します。",
+    "shortDescription": "漫画・イラスト制作のスケジュール管理ソフト",
+    "longDescription": "CLIP STUDIO PAINT の漫画・イラストのファイルと連動して、ページ×工程ごとの作業時間を記録し、完成日を予測します。",
     "windows": {
       "nsis": {
         "installMode": "currentUser",
