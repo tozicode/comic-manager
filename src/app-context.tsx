@@ -4,7 +4,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, u
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ActiveSession, api, StopResult } from "./api";
-import { setTimeFormat } from "./format";
+import { setDayStartHour, setTimeFormat } from "./format";
 
 /** 一時停止中のタスク（再開ボタン用）。アプリを閉じても残るよう localStorage に置く */
 export type PausedTask = { workId: number; pageId: number; pageLabel: string; stageId: number; stageName: string };
@@ -110,16 +110,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reloadActive();
   }, [reloadActive]);
 
-  // 時間の表記。表記が変わったら、画面全体を描き直すために version を進める
+  // 時間の表記と 1 日の区切り。変わったら、画面全体を描き直すために version を進める
   const [timeFormat, setTimeFormatState] = useState<string | null>(null);
   useEffect(() => {
-    api
-      .getDisplayPrefs()
-      .then((p) => {
+    Promise.all([api.getDisplayPrefs(), api.getDayStartHour()])
+      .then(([p, dayStart]) => {
         setTimeFormat(p.timeFormat);
+        setDayStartHour(dayStart);
+        const key = `${p.timeFormat}|${dayStart}`;
         setTimeFormatState((old) => {
-          if (old !== null && old !== p.timeFormat) setVersion((v) => v + 1);
-          return p.timeFormat;
+          if (old !== null && old !== key) setVersion((v) => v + 1);
+          return key;
         });
       })
       .catch(() => {});

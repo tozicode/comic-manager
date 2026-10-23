@@ -2,7 +2,7 @@ import { DragEvent, useEffect, useRef, useState } from "react";
 import { api, DisplayPrefs, StageDef, StageSet, Tag, TagApplies, TagGroup, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { dayKey, dayLabel, estimate, hours, TimeFormat } from "../format";
+import { dayKey, dayLabel, estimate, hours, startOfDay, TimeFormat } from "../format";
 
 type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data";
 const SECTIONS: { key: Section; label: string }[] = [
@@ -429,8 +429,10 @@ function HoursSection() {
   const [hours, setHours] = useState<number[] | null>(null);
   const [daysOff, setDaysOff] = useState<string[]>([]);
   const [newDay, setNewDay] = useState("");
+  const [dayStart, setDayStart] = useState<number | null>(null);
 
   useEffect(() => {
+    api.getDayStartHour().then(setDayStart).catch(app.showError);
     api
       .getCalendar()
       .then(([h, d]) => {
@@ -441,7 +443,7 @@ function HoursSection() {
   }, [app.version, app.showError]);
 
   if (!hours) return <p className="muted">読み込み中…</p>;
-  const today = dayKey(new Date());
+  const today = dayKey(startOfDay(Date.now()));
   const upcoming = daysOff.filter((d) => d >= today);
 
   return (
@@ -468,6 +470,30 @@ function HoursSection() {
         </div>
         <p className="muted small-text" style={{ margin: "8px 0 0" }}>
           作品ごとに変えたいときは、スケジュール画面の「完成日を見る」で調整できます。
+        </p>
+      </div>
+
+      <div className="section-title" style={{ marginTop: 22 }}>
+        1日の区切り
+      </div>
+      <div className="card pad form">
+        <label className="row">
+          <span className="grow">この時刻から次の日のこの時刻までを「1日」として数えます</span>
+          <select
+            className="field num"
+            value={dayStart ?? 0}
+            onChange={(e) => run(() => api.setDayStartHour(Number(e.target.value)))}
+          >
+            {Array.from({ length: 13 }, (_, h) => (
+              <option key={h} value={h}>
+                {h === 0 ? "0時（午前0時）" : `朝${h}時`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="muted small-text">
+          夜型で深夜まで作業する場合に変えてください。たとえば朝5時にすると、深夜2時の作業は前の日の作業として数え、
+          「今日のノルマ」も朝5時に切り替わります。記録はそのままで、過去の分も新しい区切りで数え直します。
         </p>
       </div>
 

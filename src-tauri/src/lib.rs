@@ -306,6 +306,16 @@ fn set_work_order(state: State<AppState>, work_id: i64, order: String) -> Cmd<()
     with_store(&state, |s| s.set_work_order(work_id, &order))
 }
 
+#[tauri::command]
+fn get_day_start_hour(state: State<AppState>) -> Cmd<i64> {
+    with_store(&state, |s| s.day_start_hour())
+}
+
+#[tauri::command]
+fn set_day_start_hour(state: State<AppState>, hour: i64) -> Cmd<()> {
+    with_store(&state, |s| s.set_day_start_hour(hour))
+}
+
 /// 全作品の既定の作業時間（月〜日）と休みの日
 #[tauri::command]
 fn get_calendar(state: State<AppState>) -> Cmd<([f64; 7], Vec<String>)> {
@@ -529,6 +539,8 @@ pub fn run() {
             set_file_order,
             relink_file,
             list_stage_sets,
+            get_day_start_hour,
+            set_day_start_hour,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

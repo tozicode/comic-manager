@@ -197,6 +197,9 @@ export const api = {
   setDayOff: (date: string, off: boolean) => invoke<void>("set_day_off", { date, off }),
   /** [全作品の既定の作業時間（月〜日）, 休みの日] */
   getCalendar: () => invoke<[number[], string[]]>("get_calendar"),
+  /** 1 日の区切り（時）。0〜12 */
+  getDayStartHour: () => invoke<number>("get_day_start_hour"),
+  setDayStartHour: (hour: number) => invoke<void>("set_day_start_hour", { hour }),
 
   stopTimerAt: (at: number) => invoke<StopResult | null>("stop_timer_at", { at }),
   setSessionEnd: (id: number, endedAt: number) => invoke<void>("set_session_end", { id, endedAt }),

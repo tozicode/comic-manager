@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, Board, Prediction, Span, TaskPrediction, WorkSchedule } from "./api";
 import { useApp } from "./app-context";
-import { dailyTotals, dayKey, startOfDay } from "./format";
+import { dailyTotals, dayKey, dayStartMs, startOfDay } from "./format";
 import {
   addDays,
   buildPlans,
@@ -68,7 +68,7 @@ export function useForecast(workId: number | null, hoursOverride?: number[] | nu
       return;
     }
     let cancelled = false;
-    const from = addDays(startOfDay(Date.now()), -PACE_DAYS).getTime();
+    const from = dayStartMs(addDays(startOfDay(Date.now()), -PACE_DAYS));
     Promise.all([api.getBoard(workId), api.getPrediction(workId), api.getSchedule(workId), api.listSpans(from)])
       .then(([board, prediction, schedule, spans]) => !cancelled && setData({ board, prediction, schedule, spans }))
       .catch(app.showError);
@@ -182,7 +182,7 @@ export function loadChosenPlan(workId: number): ChosenPlan | null {
   try {
     const raw = localStorage.getItem(planKey(workId));
     const plan = raw ? (JSON.parse(raw) as ChosenPlan) : null;
-    return plan && plan.date === dayKey(new Date()) ? plan : null;
+    return plan && plan.date === dayKey(startOfDay(Date.now())) ? plan : null;
   } catch {
     return null;
   }

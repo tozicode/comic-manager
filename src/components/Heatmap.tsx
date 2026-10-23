@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, Span } from "../api";
 import { useApp } from "../app-context";
-import { dailyTotals, dayKey, dayLabel, hours, startOfDay } from "../format";
+import { dailyTotals, dayKey, dayLabel, dayStartMs, hours, startOfDay } from "../format";
 
 const WEEKS = 26;
 const HOUR = 3_600_000;
@@ -28,7 +28,7 @@ export function Heatmap({ selected, onSelect }: { selected: string | null; onSel
   first.setDate(monday.getDate() - (WEEKS - 1) * 7);
 
   useEffect(() => {
-    api.listSpans(first.getTime()).then(setSpans).catch(app.showError);
+    api.listSpans(dayStartMs(first)).then(setSpans).catch(app.showError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.version, app.showError]);
 

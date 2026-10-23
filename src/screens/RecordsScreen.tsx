@@ -3,7 +3,7 @@ import { api, Board, SessionRow, UNIT } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { Heatmap } from "../components/Heatmap";
-import { dayKey, dayLabel, fromInputs, hours, startOfDay, time } from "../format";
+import { dayKey, dayLabel, dayStartMs, fromInputs, hours, startOfDay, time, timeInDay } from "../format";
 
 const DAY = 86_400_000;
 const PERIODS = [
@@ -21,7 +21,7 @@ function toDraft(row: SessionRow): Draft {
     id: row.id,
     pageId: row.pageId,
     stageId: row.stageId,
-    date: dayKey(new Date(row.startedAt)),
+    date: dayKey(startOfDay(row.startedAt)),
     start: time(row.startedAt),
     end: row.endedAt ? time(row.endedAt) : "",
     running: row.endedAt === null,
@@ -35,7 +35,7 @@ function draftRange(d: Draft): { start: number; end: number | null } | string {
   if (d.running) return { start, end: null };
   let end = fromInputs(d.date, d.end);
   if (end === null) return "終了時刻を入力してください";
-  if (end <= start) end += DAY;
+  if (end <= start) end += DAY; // 区切りをまたいで翌日まで作業した場合
   return { start, end };
 }
 
@@ -49,7 +49,9 @@ export function RecordsScreen({ workId }: { workId: number }) {
   const [deleting, setDeleting] = useState<SessionRow | null>(null);
 
   const days = PERIODS[period].days;
-  const from = days ? startOfDay(Date.now()).getTime() - (days - 1) * DAY : 0;
+  const today = startOfDay(Date.now());
+  const dayStart = (n: number) => dayStartMs(new Date(today.getFullYear(), today.getMonth(), today.getDate() - n));
+  const from = days ? dayStart(days - 1) : 0;
 
   useEffect(() => {
     api.getBoard(workId).then(setBoard).catch(app.showError);
@@ -59,8 +61,8 @@ export function RecordsScreen({ workId }: { workId: number }) {
   // ヒートマップで選んだ日へスクロールする（期間外なら期間を広げる）
   const selectDay = (key: string) => {
     setSelectedDay(key);
-    const t = new Date(`${key}T00:00`).getTime();
-    if (t < from) setPeriod(PERIODS.findIndex((p) => p.days === 0 || startOfDay(Date.now()).getTime() - (p.days - 1) * DAY <= t));
+    const t = dayStartMs(new Date(`${key}T00:00`));
+    if (t < from) setPeriod(PERIODS.findIndex((p) => p.days === 0 || dayStart(p.days - 1) <= t));
   };
   useEffect(() => {
     if (!selectedDay) return;
@@ -95,16 +97,16 @@ export function RecordsScreen({ workId }: { workId: number }) {
     const page = board?.pages.find((p) => !p.missing);
     const stage = board?.stages[0];
     if (!page || !stage) return null;
-    return { id: null, pageId: page.id, stageId: stage.id, date: dayKey(new Date()), start: "", end: "", running: false };
+    return { id: null, pageId: page.id, stageId: stage.id, date: dayKey(today), start: "", end: "", running: false };
   };
 
   // 日ごとにまとめる（日付は開始時刻で決める）
   const groups = new Map<string, SessionRow[]>();
   for (const row of rows) {
-    const key = dayKey(new Date(row.startedAt));
+    const key = dayKey(startOfDay(row.startedAt));
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
-  const todayKey = dayKey(new Date());
+  const todayKey = dayKey(today);
 
   const editor = (d: Draft) => (
     <>
@@ -202,6 +204,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
 
       {groups.size === 0 && <p className="muted center">この期間の作業記録はありません</p>}
       {[...groups.entries()].map(([key, list]) => {
+        const groupDay = new Date(`${key}T00:00`);
         const total = list.reduce((n, r) => n + (r.endedAt ?? app.now) - r.startedAt, 0);
         return (
           <div key={key} id={`day-${key}`} className={`rec-day${key === selectedDay ? " selected" : ""}`}>
@@ -223,7 +226,8 @@ export function RecordsScreen({ workId }: { workId: number }) {
                   ) : (
                     <tr key={row.id}>
                       <td className="num">
-                        {time(row.startedAt)} – {row.endedAt ? time(row.endedAt) : <span className="tag sys">計測中</span>}
+                        {timeInDay(row.startedAt, groupDay)} –{" "}
+                        {row.endedAt ? timeInDay(row.endedAt, groupDay) : <span className="tag sys">計測中</span>}
                       </td>
                       <td>{row.pageLabel}</td>
                       <td>
@@ -267,7 +271,8 @@ export function RecordsScreen({ workId }: { workId: number }) {
           }
         >
           <p>
-            {dayLabel(new Date(deleting.startedAt))} {time(deleting.startedAt)} – {deleting.endedAt && time(deleting.endedAt)}{" "}
+            {dayLabel(startOfDay(deleting.startedAt))} {timeInDay(deleting.startedAt, startOfDay(deleting.startedAt))} –{" "}
+            {deleting.endedAt && timeInDay(deleting.endedAt, startOfDay(deleting.startedAt))}{" "}
             {deleting.pageLabel} {deleting.stageName}（{hours((deleting.endedAt ?? 0) - deleting.startedAt)}）
           </p>
         </Dialog>

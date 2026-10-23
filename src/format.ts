@@ -60,10 +60,30 @@ export function dayLabel(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}（${WEEKDAYS[d.getDay()]}）`;
 }
 
-/** ローカル時刻での日付の 0 時 */
+// 1 日の区切り（仕様書 5.11）。0 なら午前 0 時、5 なら朝 5 時〜翌 4:59 を 1 日とする。
+// AppProvider が起動時と設定の変更時に setDayStartHour で入れ替える
+let dayStartHour = 0;
+
+export function setDayStartHour(h: number) {
+  dayStartHour = h;
+}
+
+export function getDayStartHour(): number {
+  return dayStartHour;
+}
+
+/**
+ * その時刻が属する「日」（区切りに沿った日付）。日付だけを表す Date（その暦日の 0 時）で返す。
+ * 区切りが朝 5 時なら、10/24 の 2:00 は 10/23 になる
+ */
 export function startOfDay(ms: number): Date {
-  const d = new Date(ms);
+  const d = new Date(ms - dayStartHour * HOUR);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** その日（区切りに沿った日付）が始まる時刻 */
+export function dayStartMs(day: Date): number {
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), dayStartHour).getTime();
 }
 
 /** 日付を比べるためのキー（2026-10-23） */
@@ -71,15 +91,24 @@ export function dayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** <input type="date"> と <input type="time"> の値から時刻を作る */
+/**
+ * <input type="date"> と <input type="time"> の値から時刻を作る。
+ * 日付は区切りに沿った日付なので、区切りより前の時刻（深夜）は次の暦日の時刻として扱う
+ */
 export function fromInputs(date: string, hm: string): number | null {
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = hm.split(":").map(Number);
   if ([y, mo, d, h, mi].some((n) => Number.isNaN(n))) return null;
-  return new Date(y, mo - 1, d, h, mi).getTime();
+  return new Date(y, mo - 1, d + (h < dayStartHour ? 1 : 0), h, mi).getTime();
 }
 
-/** 作業記録を日ごとに分割して合計する（日をまたぐ記録は 0 時で分ける） */
+/** 作業記録の時刻。その日（区切りに沿った日付）より後の暦日なら「翌」を付ける（例：翌01:40） */
+export function timeInDay(ms: number, day: Date): string {
+  const next = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
+  return `${ms >= next ? "翌" : ""}${time(ms)}`;
+}
+
+/** 作業記録を日ごとに分割して合計する（日をまたぐ記録は 1 日の区切りで分ける） */
 export function dailyTotals<T extends { startedAt: number; endedAt: number | null }>(
   spans: T[],
   now: number,
@@ -91,7 +120,7 @@ export function dailyTotals<T extends { startedAt: number; endedAt: number | nul
     const end = span.endedAt ?? now;
     while (start < end) {
       const day = startOfDay(start);
-      const next = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
+      const next = dayStartMs(new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1));
       const piece = Math.min(end, next) - start;
       const k = dayKey(day);
       const entry = result.get(k) ?? { total: 0, byKey: new Map() };

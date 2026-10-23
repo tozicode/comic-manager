@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { estimate, hours } from "./format";
+import { afterEach, describe, expect, it } from "vitest";
+import { dailyTotals, dayKey, dayStartMs, estimate, fromInputs, hours, setDayStartHour, startOfDay, timeInDay } from "./format";
 
 const MIN = 60_000;
 const H = 60 * MIN;
@@ -38,5 +38,48 @@ describe("時間の表記", () => {
 
   it("既定は時間と分", () => {
     expect(hours(90 * MIN)).toBe("1時間30分");
+  });
+});
+
+describe("1日の区切り", () => {
+  // 2026/10/23（金）
+  const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime();
+  afterEach(() => setDayStartHour(0));
+
+  it("0 時区切り（既定）では暦どおり", () => {
+    expect(dayKey(startOfDay(at(24, 2)))).toBe("2026-10-24");
+    expect(fromInputs("2026-10-23", "01:30")).toBe(at(23, 1, 30));
+  });
+
+  it("朝 5 時区切りでは、深夜 2 時は前の日", () => {
+    setDayStartHour(5);
+    expect(dayKey(startOfDay(at(24, 2)))).toBe("2026-10-23");
+    expect(dayKey(startOfDay(at(24, 4, 59)))).toBe("2026-10-23");
+    expect(dayKey(startOfDay(at(24, 5)))).toBe("2026-10-24");
+    // 曜日も区切りに沿った日付で決まる（土曜の深夜 2 時は金曜）
+    expect(startOfDay(at(24, 2)).getDay()).toBe(5);
+    expect(dayStartMs(new Date(2026, 9, 23))).toBe(at(23, 5));
+  });
+
+  it("日をまたぐ記録は区切りで分ける", () => {
+    setDayStartHour(5);
+    const totals = dailyTotals([{ startedAt: at(23, 23), endedAt: at(24, 7) }], 0);
+    expect(totals.get("2026-10-23")!.total).toBe(6 * H); // 23:00〜翌 5:00
+    expect(totals.get("2026-10-24")!.total).toBe(2 * H); // 5:00〜7:00
+  });
+
+  it("入力した深夜の時刻は次の暦日として扱い、表示には「翌」を付ける", () => {
+    setDayStartHour(5);
+    expect(fromInputs("2026-10-23", "01:30")).toBe(at(24, 1, 30));
+    expect(fromInputs("2026-10-23", "23:10")).toBe(at(23, 23, 10));
+    const day = new Date(2026, 9, 23);
+    expect(timeInDay(at(24, 1, 40), day)).toBe("翌01:40");
+    expect(timeInDay(at(23, 23, 10), day)).toBe("23:10");
+  });
+
+  it("締切日はその日の区切りまで", () => {
+    setDayStartHour(5);
+    // 12/1 の 4 時はまだ 11/30（締切日）のうち
+    expect(dayKey(startOfDay(new Date(2026, 11, 1, 4).getTime()))).toBe("2026-11-30");
   });
 });

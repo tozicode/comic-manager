@@ -10,6 +10,8 @@ use super::{Result, Store, db_err};
 pub type WeekHours = [f64; 7];
 
 const DEFAULT_HOURS_KEY: &str = "default_weekday_hours";
+/// 1 日の区切り（時）。0 なら午前 0 時、5 なら朝 5 時から次の日の 4:59 までを 1 日とする
+const DAY_START_KEY: &str = "day_start_hour";
 const DEFAULT_HOURS: WeekHours = [3.0, 3.0, 3.0, 3.0, 3.0, 6.0, 6.0];
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -117,6 +119,29 @@ impl Store {
         Ok(())
     }
 
+    pub fn day_start_hour(&self) -> Result<i64> {
+        let raw: Option<String> = self
+            .conn
+            .query_row("SELECT value FROM setting WHERE key = ?1", [DAY_START_KEY], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?;
+        Ok(raw.and_then(|s| s.parse().ok()).unwrap_or(0))
+    }
+
+    pub fn set_day_start_hour(&self, hour: i64) -> Result<()> {
+        if !(0..=12).contains(&hour) {
+            return Err("1 日の区切りは 0〜12 時にしてください".into());
+        }
+        self.conn
+            .execute(
+                "INSERT INTO setting (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![DAY_START_KEY, hour.to_string()],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
     pub fn days_off(&self) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare("SELECT date FROM day_off ORDER BY date").map_err(db_err)?;
         stmt.query_map([], |r| r.get(0)).and_then(|rows| rows.collect()).map_err(db_err)
@@ -203,6 +228,11 @@ mod tests {
         assert_eq!((s.deadline, s.days_off.len()), (None, 1));
 
         assert!(store.set_deadline(id, Some("11/30")).is_err());
+
+        assert_eq!(store.day_start_hour().unwrap(), 0);
+        store.set_day_start_hour(5).unwrap();
+        assert_eq!(store.day_start_hour().unwrap(), 5);
+        assert!(store.set_day_start_hour(13).is_err());
         assert!(store.set_work_order(id, "random").is_err());
     }
 }
