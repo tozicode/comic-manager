@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-type Props = { cmcPath: string; fileName: string; spread?: boolean; width?: number };
+type Props = {
+  /** ページのファイルの場所 */
+  path: string;
+  /** 見開き（横に 2 ページ分） */
+  spread?: boolean;
+  /** イラストのように縦横の比率が決まっていない絵（正方形の枠に収める） */
+  free?: boolean;
+  width?: number;
+};
 
 /** ページのサムネイル。画面に入ってから読み込む */
-export function Thumb({ cmcPath, fileName, spread = false, width = 36 }: Props) {
+export function Thumb({ path, spread = false, free = false, width = 36 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
@@ -20,19 +28,21 @@ export function Thumb({ cmcPath, fileName, spread = false, width = 36 }: Props) 
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
+    setUrl(null);
     api
-      .loadThumbnail(cmcPath, fileName)
+      .loadThumbnail(path)
       .then((u) => !cancelled && setUrl(u))
       .catch(() => {
-        // 読めないページは枠だけ表示する
+        // 読めないファイル（見つからない・サムネイルが無い）は枠だけ表示する
       });
     return () => {
       cancelled = true;
     };
-  }, [visible, cmcPath, fileName]);
+  }, [visible, path]);
 
+  const cls = `thumb${spread ? " spread" : ""}${free ? " free" : ""}`;
   return (
-    <div ref={ref} className={`thumb${spread ? " spread" : ""}`} style={{ width: spread ? width * 2 : width }}>
+    <div ref={ref} className={cls} style={{ width: spread ? width * 2 : free ? width * 1.4 : width }}>
       {url && <img src={url} alt="" />}
     </div>
   );

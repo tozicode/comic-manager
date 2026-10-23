@@ -1,5 +1,5 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { api, DisplayPrefs, StageDef, Tag, TagGroup, TimerPrefs } from "../api";
+import { api, DisplayPrefs, StageDef, StageSet, Tag, TagApplies, TagGroup, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { dayKey, dayLabel, estimate, hours, TimeFormat } from "../format";
@@ -69,16 +69,28 @@ export function SettingsScreen() {
 function StagesSection() {
   const app = useApp();
   const run = useRun();
-  const [stages, setStages] = useState<StageDef[]>([]);
+  const [allStages, setAllStages] = useState<StageDef[]>([]);
+  const [sets, setSets] = useState<StageSet[]>([]);
+  const [setId, setSetId] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
   /** ドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<StageDef[] | null>(null);
   const dragging = useRef<number | null>(null);
 
   useEffect(() => {
-    api.listStages().then(setStages).catch(app.showError);
+    api.listStages().then(setAllStages).catch(app.showError);
+    api
+      .listStageSets()
+      .then((list) => {
+        setSets(list);
+        setSetId((cur) => cur ?? list[0]?.id ?? null);
+      })
+      .catch(app.showError);
   }, [app.version, app.showError]);
 
+  // 工程はセット（漫画・イラスト）ごとに並べ替え・追加する
+  const stages = allStages.filter((st) => st.setId === setId);
+  const unit = sets.find((st) => st.id === setId)?.unit ?? "ページ";
   const list = dragOrder ?? stages;
   const onDragOver = (e: DragEvent, overId: number) => {
     const id = dragging.current;
@@ -95,14 +107,13 @@ function StagesSection() {
     dragging.current = null;
     setDragOrder(null);
     if (order && order.some((s, i) => s.id !== stages[i]?.id)) {
-      setStages(order);
       run(() => api.setStageOrder(order.map((s) => s.id)));
     }
   };
 
   const add = async () => {
-    if (!newName.trim()) return;
-    await run(() => api.addStage(newName, PALETTE[stages.length % PALETTE.length]));
+    if (!newName.trim() || setId === null) return;
+    await run(() => api.addStage(setId, newName, PALETTE[stages.length % PALETTE.length]));
     setNewName("");
   };
 
@@ -116,6 +127,13 @@ function StagesSection() {
           追加した工程は、これから登録する作品で使われます。並べ替えと隠すは、登録済みの作品にも反映されます
         </span>
       </div>
+      <div className="seg" style={{ marginBottom: 10 }}>
+        {sets.map((st) => (
+          <button key={st.id} className={st.id === setId ? "on" : ""} onClick={() => setSetId(st.id)}>
+            {st.name}
+          </button>
+        ))}
+      </div>
       <div className="slist">
         {list.map((s, i) => (
           <StageRow
@@ -127,6 +145,7 @@ function StagesSection() {
             onDragStart={() => (dragging.current = s.id)}
             onDragOver={(e) => onDragOver(e, s.id)}
             onDragEnd={onDragEnd}
+            unit={unit}
             onSave={(name, color, hint) => run(() => api.updateStage(s.id, name, color, hint))}
             onMove={(delta) => run(() => api.moveStage(s.id, delta))}
             onHidden={(hidden) => run(() => api.setStageHidden(s.id, hidden))}
@@ -135,7 +154,7 @@ function StagesSection() {
         <div className="row">
           <input
             className="field"
-            placeholder="新しい工程の名前（例：ネーム、ベタ、仕上げ）"
+            placeholder={`新しい工程の名前（例：${sets.find((st) => st.id === setId)?.kind === "files" ? "下塗り、背景、エフェクト" : "ネーム、ベタ、仕上げ"}）`}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && add()}
@@ -155,6 +174,8 @@ function StagesSection() {
 
 type RowProps = {
   stage: StageDef;
+  /** 1 単位の呼び方（ページ・枚） */
+  unit: string;
   first: boolean;
   last: boolean;
   dragging: boolean;
@@ -166,7 +187,7 @@ type RowProps = {
   onHidden: (hidden: boolean) => void;
 };
 
-function StageRow({ stage, first, last, dragging, onDragStart, onDragOver, onDragEnd, onSave, onMove, onHidden }: RowProps) {
+function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver, onDragEnd, onSave, onMove, onHidden }: RowProps) {
   const card = useRef<HTMLDivElement>(null);
   const [name, setName] = useState(stage.name);
   const [hint, setHint] = useState(String(stage.hintMinutes));
@@ -231,7 +252,7 @@ function StageRow({ stage, first, last, dragging, onDragStart, onDragOver, onDra
           onBlur={() => save()}
           style={{ width: 70 }}
         />
-        分 / ページ
+        分 / {unit}
       </label>
       <button className="btn small" onClick={() => onHidden(!stage.hidden)}>
         {stage.hidden ? "表示する" : "隠す"}
@@ -256,7 +277,7 @@ function TagsSection() {
 
   const addGroup = () => {
     if (!newGroup.trim()) return;
-    run(() => api.addTagGroup(newGroup, false));
+    run(() => api.addTagGroup(newGroup, false, "both"));
     setNewGroup("");
   };
 
@@ -269,7 +290,7 @@ function TagsSection() {
         <span className="muted small-text">倍率は予測に使う目安です（×1.3 なら 3 割長くかかる）</span>
       </div>
       {groups.map((g) => (
-        <GroupCard key={`${g.id}-${g.name}-${g.exclusive}`} group={g} run={run} />
+        <GroupCard key={`${g.id}-${g.name}-${g.exclusive}-${g.applies}`} group={g} run={run} />
       ))}
       <div className="row">
         <input
@@ -285,7 +306,7 @@ function TagsSection() {
         </button>
       </div>
       <p className="muted small-text">
-        「どれか1つだけ」にしたグループは、ページに 1 つだけ付けられます（選び直すと入れ替わる）。隠したタグはボードに出ず、予測にも使いません。
+        「どれか1つだけ」にしたグループは、ページに 1 つだけ付けられます（選び直すと入れ替わる）。「漫画だけ」「イラストだけ」にしたグループは、その種類の作品でだけ出ます。隠したタグはボードに出ず、予測にも使いません。
       </p>
     </>
   );
@@ -312,16 +333,28 @@ function GroupCard({ group, run }: { group: TagGroup; run: Run }) {
               className="field group-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onBlur={() => name.trim() !== group.name && run(() => api.updateTagGroup(group.id, name, group.exclusive))}
+              onBlur={() =>
+                name.trim() !== group.name && run(() => api.updateTagGroup(group.id, name, group.exclusive, group.applies))
+              }
             />
             <label className="small-text row tight">
               <input
                 type="checkbox"
                 checked={group.exclusive}
-                onChange={(e) => run(() => api.updateTagGroup(group.id, group.name, e.target.checked))}
+                onChange={(e) => run(() => api.updateTagGroup(group.id, group.name, e.target.checked, group.applies))}
               />
               どれか1つだけ
             </label>
+            <select
+              className="field small-text"
+              title="このグループを使う作品の種類"
+              value={group.applies}
+              onChange={(e) => run(() => api.updateTagGroup(group.id, group.name, group.exclusive, e.target.value as TagApplies))}
+            >
+              <option value="both">漫画とイラスト</option>
+              <option value="comic">漫画だけ</option>
+              <option value="files">イラストだけ</option>
+            </select>
           </div>
         )}
       </div>

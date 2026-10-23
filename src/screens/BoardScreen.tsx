@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup } from "../api";
+import { DragEvent, useEffect, useRef, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup, UNIT } from "../api";
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { Dialog } from "../components/Dialog";
@@ -13,6 +14,9 @@ import { clock, dayLabel, estimate, hours, time } from "../format";
 type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSplit };
 
 type Filter = "all" | "open";
+
+/** イラストとして登録できるファイル */
+const ILLUST_FILTER = [{ name: "イラスト（.clip / .psd）", extensions: ["clip", "psd", "psb"] }];
 
 const HOUR = 3_600_000;
 
@@ -35,6 +39,11 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [splitHalf, setSplitHalf] = useState(true);
   /** 消えたページの記録の移動先 */
   const [moveTo, setMoveTo] = useState<Record<number, number>>({});
+  /** イラストの作品で外そうとしているファイル */
+  const [removing, setRemoving] = useState<BoardPage | null>(null);
+  /** イラストのファイルのドラッグ中の並び（離したら保存する） */
+  const [dragOrder, setDragOrder] = useState<number[] | null>(null);
+  const dragging = useRef<number | null>(null);
 
   // 作品を開いたときに cmc を読み直す
   useEffect(() => {
@@ -46,6 +55,9 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     api.listTags().then(setTags).catch(app.showError);
   }, [app.version, app.showError]);
 
+  const forecastRef = useRef(forecast);
+  forecastRef.current = forecast;
+
   // 同期は同時に 1 つだけ（開発時の StrictMode で effect が 2 回走っても、見開きの検知を取りこぼさない）
   const syncing = useRef(false);
   const sync = async (manual: boolean) => {
@@ -53,9 +65,16 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     syncing.current = true;
     try {
       const r = await api.syncWork(workId);
+      // 作品を開いた直後はまだ予測を読み込んでいないので、種類は作品の情報から確かめる
+      const files = (forecastRef.current?.board ?? (await api.getBoard(workId))).work.kind === "files";
       const parts = [];
       if (r.added > 0) parts.push(`${r.added} ページ増えました`);
-      if (r.missing > 0) parts.push(`${r.missing} ページが CLIP STUDIO から消えています`);
+      if (r.missing > 0)
+        parts.push(
+          files
+            ? `${r.missing} 個のファイルが見つかりません。行の「場所を指定」から指定し直すと、記録をそのまま引き継げます`
+            : `${r.missing} ページが CLIP STUDIO から消えています`,
+        );
       setSyncNote(parts.length ? parts.join("・") : manual ? "変更はありませんでした" : null);
       const found = [
         ...r.merges.map((m): SpreadChange => ({ kind: "merge", m })),
@@ -103,6 +122,46 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   if (!forecast) return <p className="muted">読み込み中…</p>;
   const { board } = forecast;
   const startRelink = () => relink.start(workId, board.work.title);
+  const isFiles = board.work.kind === "files";
+  const unit = UNIT[board.work.kind];
+  // 付け外しの画面には、この作品の種類で使うタググループだけを出す
+  const usableTags = tags.filter((g) => g.applies === "both" || g.applies === board.work.kind);
+
+  const addFiles = async () => {
+    const picked = await openDialog({ title: "ファイルを追加", multiple: true, directory: false, filters: ILLUST_FILTER });
+    const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+    if (paths.length === 0) return;
+    try {
+      const n = await api.addFiles(workId, paths);
+      setSyncNote(n > 0 ? `${n} 個のファイルを追加しました` : "選んだファイルはすでに登録されています");
+      app.refresh();
+    } catch (e) {
+      app.showError(e);
+    }
+  };
+
+  const relinkFile = async (page: BoardPage) => {
+    const picked = await openDialog({ title: `「${page.label}」のファイルを選ぶ`, multiple: false, directory: false, filters: ILLUST_FILTER });
+    if (typeof picked !== "string") return;
+    await run(() => api.relinkFile(page.id, picked));
+  };
+
+  // ファイルのドラッグでの並べ替え（イラストのみ）
+  const rowOrder = dragOrder ?? board.pages.map((p) => p.id);
+  const onRowDragOver = (e: DragEvent, overId: number) => {
+    const id = dragging.current;
+    if (id === null || id === overId) return;
+    e.preventDefault();
+    const next = [...rowOrder];
+    next.splice(next.indexOf(overId), 0, next.splice(next.indexOf(id), 1)[0]);
+    setDragOrder(next);
+  };
+  const onRowDragEnd = () => {
+    const order = dragOrder;
+    dragging.current = null;
+    setDragOrder(null);
+    if (order && order.some((id, i) => id !== board.pages[i]?.id)) run(() => api.setFileOrder(workId, order));
+  };
 
   const pages = board.pages.filter((p) => !p.missing);
   const missing = board.pages.filter((p) => p.missing);
@@ -118,7 +177,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     return cell.totalMs > 0 ? "doing" : "todo";
   };
 
-  const shown = filter === "open" ? pages.filter((p) => p.cells.some((c) => !c.done)) : pages;
+  const ordered = isFiles ? rowOrder.map((id) => pages.find((p) => p.id === id)!).filter(Boolean) : pages;
+  const shown = filter === "open" ? ordered.filter((p) => p.cells.some((c) => !c.done)) : ordered;
   const allChecked = shown.length > 0 && shown.every((p) => selected.includes(p.id));
 
   // まとめて付けるときは、選んだ全ページに付いているタグを「付いている」とみなす
@@ -133,14 +193,20 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       <div className="board-head">
         <div className="muted small-text">
           {board.work.lastSyncedAt && <>最終同期 {time(board.work.lastSyncedAt)} · </>}
-          cmc から {pageCount} ページ
+          {isFiles ? `${pageCount} 枚のファイル` : `cmc から ${pageCount} ページ`}
         </div>
         <div className="row tight">
-          <button className="btn small ghost" onClick={startRelink} title="cmc を移動したり名前を変えたりしたとき">
-            📁 場所を変更
-          </button>
+          {isFiles ? (
+            <button className="btn small ghost" onClick={addFiles}>
+              ＋ ファイルを追加
+            </button>
+          ) : (
+            <button className="btn small ghost" onClick={startRelink} title="cmc を移動したり名前を変えたりしたとき">
+              📁 場所を変更
+            </button>
+          )}
           <button className="btn small ghost" onClick={() => sync(true)}>
-            ⟳ cmc を読み直す
+            {isFiles ? "⟳ 読み直す" : "⟳ cmc を読み直す"}
           </button>
         </div>
       </div>
@@ -196,12 +262,14 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         </span>
         <div style={{ position: "relative" }}>
           <button className="btn small" disabled={selected.length === 0} onClick={() => setTagging("bulk")}>
-            {selected.length > 0 ? `選んだ ${selected.length} ページにタグを付ける` : "ページを選ぶとまとめてタグを付けられます"}
+            {selected.length > 0
+              ? `選んだ ${selected.length} ${unit.count}にタグを付ける`
+              : `${unit.row}を選ぶとまとめてタグを付けられます`}
           </button>
           {tagging === "bulk" && (
             <TagPopover
-              title={`${selected.length} ページのタグ`}
-              groups={tags}
+              title={`${selected.length} ${unit.count}のタグ`}
+              groups={usableTags}
               active={activeTags}
               onToggle={toggleTag}
               onClose={() => setTagging(null)}
@@ -239,9 +307,9 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                 onChange={() => setSelected(allChecked ? [] : shown.map((p) => p.id))}
               />
             </th>
-            <th>ページ</th>
+            <th>{unit.row}</th>
             {board.stages.map((s) => (
-              <th key={s.id} style={{ width: 180 }}>
+              <th key={s.id} style={{ width: board.stages.length >= 4 ? 140 : 180 }}>
                 <span className="sdot" style={{ background: s.color }} />
                 {s.name}
               </th>
@@ -250,7 +318,12 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         </thead>
         <tbody>
           {shown.map((page) => (
-            <tr key={page.id} className={selected.includes(page.id) ? "selected" : ""}>
+            <tr
+              key={page.id}
+              className={`${selected.includes(page.id) ? "selected" : ""}${dragOrder && dragging.current === page.id ? " dragging" : ""}`}
+              onDragOver={isFiles ? (e) => onRowDragOver(e, page.id) : undefined}
+              onDrop={(e) => e.preventDefault()}
+            >
               <td>
                 <input
                   type="checkbox"
@@ -262,28 +335,59 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
               </td>
               <td style={{ position: "relative" }}>
                 <div className="pcell">
-                  <Thumb cmcPath={board.work.cmcPath} fileName={page.fileName} spread={page.span === 2} />
-                  <span className="pno">{page.label}</span>
-                  <div className="tags">
-                    {page.tags.map((id) => {
-                      const t = tagName(id);
-                      return (
-                        t && (
-                          <span key={id} className={`tag${t.system ? " sys" : ""}`}>
-                            {t.name}
-                          </span>
-                        )
-                      );
-                    })}
-                    <button className="tag add" title="タグを付ける" onClick={() => setTagging(page.id)}>
-                      ＋
-                    </button>
+                  {isFiles && (
+                    <span
+                      className="handle"
+                      draggable
+                      title="ドラッグで並べ替え"
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        dragging.current = page.id;
+                      }}
+                      onDragEnd={onRowDragEnd}
+                    >
+                      ⋮⋮
+                    </span>
+                  )}
+                  <Thumb path={page.path} spread={page.span === 2} free={isFiles} />
+                  <div className={isFiles ? "pinfo" : "pinfo inline"}>
+                    <span className={`pno${isFiles ? " name" : ""}`} title={isFiles ? page.path : undefined}>
+                      {page.label}
+                    </span>
+                    {!page.found &&
+                      (isFiles ? (
+                        <button className="lost" title="このファイルが見つかりません" onClick={() => relinkFile(page)}>
+                          ⚠ 場所を指定
+                        </button>
+                      ) : (
+                        <span className="lost">⚠ 見つかりません</span>
+                      ))}
+                    <div className="tags">
+                      {page.tags.map((id) => {
+                        const t = tagName(id);
+                        return (
+                          t && (
+                            <span key={id} className={`tag${t.system ? " sys" : ""}`}>
+                              {t.name}
+                            </span>
+                          )
+                        );
+                      })}
+                      <button className="tag add" title="タグを付ける" onClick={() => setTagging(page.id)}>
+                        ＋
+                      </button>
+                    </div>
                   </div>
+                  {isFiles && (
+                    <button className="mini remove" title="このファイルを作品から外す" onClick={() => setRemoving(page)}>
+                      ×
+                    </button>
+                  )}
                 </div>
                 {tagging === page.id && (
                   <TagPopover
                     title={`${page.label} のタグ`}
-                    groups={tags}
+                    groups={usableTags}
                     active={page.tags}
                     onToggle={toggleTag}
                     onClose={() => setTagging(null)}
@@ -429,6 +533,35 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       )}
 
       {relink.dialog}
+      {removing && (
+        <Dialog
+          title={`「${removing.label}」を作品から外しますか？`}
+          onClose={() => setRemoving(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setRemoving(null)}>
+                やめる
+              </button>
+              <button
+                className="btn danger"
+                onClick={() => {
+                  const page = removing;
+                  setRemoving(null);
+                  run(() => api.removeFile(page.id));
+                }}
+              >
+                外す
+              </button>
+            </>
+          }
+        >
+          <p>
+            このファイルの作業記録（{hours(removing.cells.reduce((n, c) => n + c.totalMs, 0))}）も Otosazu から消えます。
+            <br />
+            ファイルそのものは消えません。
+          </p>
+        </Dialog>
+      )}
       {undo && (
         <Dialog
           title={`${undo.page.label} の${undo.stage.name}を未完了に戻しますか？`}
@@ -668,10 +801,14 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
           </div>
         </>
       ) : (
-        <div className="line">
-          <span>未着手</span>
-          <span className="num">予測 {estimate(predictedMs)}</span>
-        </div>
+        <>
+          <div className="line">
+            <span>未着手</span>
+          </div>
+          <div className="line">
+            <span className="num">予測 {estimate(predictedMs)}</span>
+          </div>
+        </>
       )}
       <div className="cell-actions">
         <button

@@ -616,7 +616,7 @@ table.board {
   margin-right: 6px;
 }
 .board td {
-  padding: 6px 12px;
+  padding: 6px 8px;
   border-bottom: 1px solid #f0ebe4;
   vertical-align: middle;
 }
@@ -1633,4 +1633,73 @@ table.rec {
   color: #7a5214;
   background: #faefd9;
   cursor: default;
+}
+
+/* ===== イラストの作品 ===== */
+/* 縦横の比率が決まっていない絵は、正方形の枠に収める */
+.thumb.free {
+  aspect-ratio: 1;
+}
+.pcell .pno.name {
+  min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pcell .handle {
+  color: var(--faint);
+  cursor: grab;
+  letter-spacing: -2px;
+}
+.board tr.dragging td {
+  opacity: 0.4;
+}
+.pcell .lost {
+  padding: 1px 10px;
+  border: 1px solid #efd9a8;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #7a5214;
+  background: #faefd9;
+  white-space: nowrap;
+}
+button.lost {
+  cursor: pointer;
+}
+button.lost:hover {
+  border-color: var(--warn);
+}
+/* ファイルを外す × は行の右端に重ねて出し、列の幅を取らない */
+.pcell .mini.remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  visibility: hidden;
+}
+.board tr:hover .mini.remove {
+  visibility: visible;
+}
+
+/* 工程が多くても、マスが潰れて文字が縦に並ばないように */
+.board .cell {
+  min-width: 104px;
+}
+
+/* ページの列：漫画は 1 行、イラストはファイル名の下にタグなどを並べる 2 段 */
+.pinfo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.pinfo.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.pinfo .lost + .tags,
+.pinfo .tags {
+  flex-wrap: wrap;
 }

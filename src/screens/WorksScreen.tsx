@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, WorkSummary } from "../api";
+import { api, StageSet, UNIT, WorkKind, WorkSummary } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { useRelink } from "../components/Relink";
@@ -14,26 +14,6 @@ export function WorksScreen({ works, onOpen }: Props) {
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<WorkSummary | null>(null);
   const relink = useRelink();
-
-  const addWork = async () => {
-    const selected = await open({
-      title: "漫画ファイルを選ぶ",
-      multiple: false,
-      directory: false,
-      filters: [{ name: "CLIP STUDIO 漫画ファイル", extensions: ["cmc"] }],
-    });
-    if (typeof selected !== "string") return;
-    setAdding(true);
-    try {
-      const id = await api.addWork(selected);
-      app.refresh();
-      onOpen(id);
-    } catch (e) {
-      app.showError(e);
-    } finally {
-      setAdding(false);
-    }
-  };
 
   const removeWork = async (work: WorkSummary) => {
     setRemoving(null);
@@ -49,9 +29,9 @@ export function WorksScreen({ works, onOpen }: Props) {
     <>
       {works.length === 0 && (
         <p className="lead">
-          はじめに、CLIP STUDIO PAINT で作った漫画ファイル（.cmc）を登録しましょう。
+          はじめに、CLIP STUDIO PAINT で描いている作品を登録しましょう。
           <br />
-          ページの一覧を読み込んで、ページ × 工程ごとに作業時間を記録できるようになります。
+          漫画（.cmc）ならページ × 工程、イラスト（.clip・.psd）ならファイル × 工程ごとに作業時間を記録できます。
         </p>
       )}
       <div className="works">
@@ -72,7 +52,9 @@ export function WorksScreen({ works, onOpen }: Props) {
                 </button>
               </div>
               <div className="muted small-text">
-                {w.pageCount}ページ · {w.stageCount}工程
+                {w.kind === "files" ? "イラスト · " : ""}
+                {w.pageCount}
+                {UNIT[w.kind].count} · {w.stageCount}工程
               </div>
               <div className="bar" style={{ marginTop: 10 }}>
                 <span style={{ width: `${w.progress * 100}%`, background: "var(--accent)" }} />
@@ -86,28 +68,51 @@ export function WorksScreen({ works, onOpen }: Props) {
                 <dt>最後の作業</dt>
                 <dd>{w.lastWorkedAt ? dayLabel(new Date(w.lastWorkedAt)) : "まだありません"}</dd>
               </dl>
-              <div className="path" title={w.cmcPath}>
-                {w.cmcPath}
-              </div>
+              {w.cmcPath && (
+                <div className="path" title={w.cmcPath}>
+                  {w.cmcPath}
+                </div>
+              )}
               {w.fileMissing && (
                 <div className="file-missing" onClick={(e) => e.stopPropagation()}>
-                  <span className="grow">⚠ この場所に漫画ファイルが見つかりません</span>
-                  <button className="btn small primary" onClick={() => relink.start(w.id, w.title)}>
-                    場所を指定し直す
-                  </button>
+                  {w.kind === "files" ? (
+                    <>
+                      <span className="grow">⚠ 見つからないファイルがあります</span>
+                      <button className="btn small primary" onClick={() => onOpen(w.id)}>
+                        作品を開く
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="grow">⚠ この場所に漫画ファイルが見つかりません</span>
+                      <button className="btn small primary" onClick={() => relink.start(w.id, w.title)}>
+                        場所を指定し直す
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           </div>
         ))}
-        <button className="work-add" onClick={addWork} disabled={adding}>
+        <button className="work-add" onClick={() => setAdding(true)}>
           <span className="plus">＋</span>
-          <b>{adding ? "読み込み中…" : "作品を追加"}</b>
-          <span className="small-text">CLIP STUDIO の漫画ファイル（.cmc）を選ぶ</span>
+          <b>作品を追加</b>
+          <span className="small-text">漫画（.cmc）／イラスト（.clip・.psd）</span>
         </button>
       </div>
 
       {relink.dialog}
+      {adding && (
+        <AddWorkDialog
+          onClose={() => setAdding(false)}
+          onAdded={(id) => {
+            setAdding(false);
+            app.refresh();
+            onOpen(id);
+          }}
+        />
+      )}
       {removing && (
         <Dialog
           title={`「${removing.title}」を外しますか？`}
@@ -126,7 +131,7 @@ export function WorksScreen({ works, onOpen }: Props) {
           <p>
             この作品の作業記録（{hours(removing.totalMs)}）も Otosazu から消えます。
             <br />
-            CLIP STUDIO の漫画ファイルそのものは消えません。
+            {removing.kind === "files" ? "イラストのファイル" : "CLIP STUDIO の漫画ファイル"}そのものは消えません。
           </p>
         </Dialog>
       )}
@@ -173,5 +178,112 @@ function WorkOutlook({ workId }: { workId: number }) {
         </>
       )}
     </>
+  );
+}
+
+/** 作品を追加するダイアログ：種類と工程のセットを選んでから、ファイルを選ぶ */
+function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (workId: number) => void }) {
+  const app = useApp();
+  const [kind, setKind] = useState<WorkKind>("comic");
+  const [sets, setSets] = useState<StageSet[]>([]);
+  const [setId, setSetId] = useState<number | null>(null);
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.listStageSets().then(setSets).catch(app.showError);
+  }, [app.showError]);
+
+  // 種類を変えたら、その種類の既定のセットを選び直す
+  useEffect(() => {
+    const first = sets.find((st) => st.kind === kind) ?? sets[0];
+    if (first) setSetId(first.id);
+  }, [kind, sets]);
+
+  const pick = async () => {
+    if (setId === null) return;
+    const picked = await open(
+      kind === "comic"
+        ? { title: "漫画ファイルを選ぶ", multiple: false, directory: false, filters: [{ name: "CLIP STUDIO 漫画ファイル", extensions: ["cmc"] }] }
+        : {
+            title: "イラストのファイルを選ぶ（複数選べます）",
+            multiple: true,
+            directory: false,
+            filters: [{ name: "イラスト（.clip / .psd）", extensions: ["clip", "psd", "psb"] }],
+          },
+    );
+    const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+    if (paths.length === 0) return;
+    setBusy(true);
+    try {
+      if (kind === "comic") {
+        onAdded(await api.addWork(paths[0], setId));
+      } else {
+        // 作品名を入れていなければ、最初のファイル名を使う
+        const name = title.trim() || (paths[0].split(/[\\/]/).pop() ?? "").replace(/\.[^.]+$/, "");
+        onAdded(await api.addFilesWork(name, paths, setId));
+      }
+    } catch (e) {
+      app.showError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title="作品を追加"
+      onClose={onClose}
+      actions={
+        <>
+          <button className="btn" onClick={onClose}>
+            やめる
+          </button>
+          <button className="btn primary" onClick={pick} disabled={busy || setId === null}>
+            {busy ? "読み込み中…" : kind === "comic" ? "漫画ファイルを選ぶ…" : "ファイルを選ぶ…"}
+          </button>
+        </>
+      }
+    >
+      <button className={`choice${kind === "comic" ? " on" : ""}`} onClick={() => setKind("comic")}>
+        <span className="radio" />
+        <span>
+          <b>漫画</b>
+          <br />
+          <span className="muted">CLIP STUDIO の漫画ファイル（.cmc）。ページの一覧を自動で読み込みます</span>
+        </span>
+      </button>
+      <button className={`choice${kind === "files" ? " on" : ""}`} onClick={() => setKind("files")}>
+        <span className="radio" />
+        <span>
+          <b>イラスト</b>
+          <br />
+          <span className="muted">.clip / .psd を 1 つ以上。連作や表紙と挿絵などをまとめて 1 つの作品にできます</span>
+        </span>
+      </button>
+      <div className="form" style={{ marginTop: 8 }}>
+        {kind === "files" && (
+          <label className="row">
+            <span style={{ width: 90 }}>作品名</span>
+            <input
+              className="field grow"
+              placeholder="空欄なら最初のファイル名"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+        )}
+        <label className="row">
+          <span style={{ width: 90 }}>工程</span>
+          <select className="field grow" value={setId ?? ""} onChange={(e) => setSetId(Number(e.target.value))}>
+            {sets.map((st) => (
+              <option key={st.id} value={st.id}>
+                {st.name}のセット
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </Dialog>
   );
 }

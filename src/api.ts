@@ -2,8 +2,14 @@
 // 型は src-tauri/src/store.rs の構造体に対応する。時刻はすべて UNIX 時間のミリ秒。
 import { invoke } from "@tauri-apps/api/core";
 
+/** 作品の種類：漫画（cmc）とイラスト（.clip / .psd を束ねたもの） */
+export type WorkKind = "comic" | "files";
+
+export type StageSet = { id: number; name: string; unit: string; kind: WorkKind };
+
 export type StageDef = {
   id: number;
+  setId: number;
   name: string;
   color: string;
   sortOrder: number;
@@ -14,13 +20,15 @@ export type StageDef = {
 export type WorkSummary = {
   id: number;
   title: string;
-  cmcPath: string;
+  kind: WorkKind;
+  /** 漫画の cmc の場所（イラストは null） */
+  cmcPath: string | null;
   pageCount: number;
   stageCount: number;
   progress: number;
   totalMs: number;
   lastWorkedAt: number | null;
-  /** 登録した場所に cmc が見つからない */
+  /** 登録した場所にファイルが見つからない（イラストはどれか 1 つでも） */
   fileMissing: boolean;
 };
 
@@ -35,17 +43,22 @@ export type Cell = { stageId: number; done: boolean; totalMs: number };
 export type BoardPage = {
   id: number;
   fileName: string;
+  /** ページのファイルの場所 */
+  path: string;
   label: string;
   number: number;
   span: number;
+  /** cmc から消えたページ（漫画のみ） */
   missing: boolean;
+  /** ファイルが今の場所にあるか */
+  found: boolean;
   /** 付いているタグの ID（自動の「見開き」も含む） */
   tags: number[];
   cells: Cell[];
 };
 
 export type Board = {
-  work: { id: number; title: string; cmcPath: string; lastSyncedAt: number | null };
+  work: { id: number; title: string; kind: WorkKind; cmcPath: string | null; lastSyncedAt: number | null };
   stages: StageRef[];
   pages: BoardPage[];
 };
@@ -89,7 +102,10 @@ export type Span = { workId: number; startedAt: number; endedAt: number | null; 
 
 export type Tag = { id: number; groupId: number; name: string; initialFactor: number; system: boolean; hidden: boolean };
 
-export type TagGroup = { id: number; name: string; exclusive: boolean; system: boolean; tags: Tag[] };
+/** タググループを使う作品の種類 */
+export type TagApplies = "comic" | "files" | "both";
+
+export type TagGroup = { id: number; name: string; exclusive: boolean; applies: TagApplies; system: boolean; tags: Tag[] };
 
 export type TaskPrediction = {
   pageId: number;
@@ -128,13 +144,19 @@ export type TimerPrefs = { idleMinutes: number; shortcut: string; watchSaves: bo
 
 export const api = {
   listWorks: () => invoke<WorkSummary[]>("list_works"),
-  addWork: (cmcPath: string) => invoke<number>("add_work", { cmcPath }),
+  addWork: (cmcPath: string, setId: number) => invoke<number>("add_work", { cmcPath, setId }),
+  addFilesWork: (title: string, paths: string[], setId: number) => invoke<number>("add_files_work", { title, paths, setId }),
+  addFiles: (workId: number, paths: string[]) => invoke<number>("add_files", { workId, paths }),
+  removeFile: (pageId: number) => invoke<void>("remove_file", { pageId }),
+  setFileOrder: (workId: number, pageIds: number[]) => invoke<void>("set_file_order", { workId, pageIds }),
+  relinkFile: (pageId: number, path: string) => invoke<void>("relink_file", { pageId, path }),
+  listStageSets: () => invoke<StageSet[]>("list_stage_sets"),
   removeWork: (workId: number) => invoke<void>("remove_work", { workId }),
   syncWork: (workId: number) => invoke<SyncResult>("sync_work", { workId }),
   getBoard: (workId: number) => invoke<Board>("get_board", { workId }),
   setTaskDone: (pageId: number, stageId: number, done: boolean) =>
     invoke<void>("set_task_done", { pageId, stageId, done }),
-  loadThumbnail: (cmcPath: string, fileName: string) => invoke<string>("load_thumbnail", { cmcPath, fileName }),
+  loadThumbnail: (path: string) => invoke<string>("load_thumbnail", { path }),
 
   getActiveSession: () => invoke<ActiveSession | null>("get_active_session"),
   startTimer: (pageId: number, stageId: number) => invoke<ActiveSession>("start_timer", { pageId, stageId }),
@@ -149,7 +171,7 @@ export const api = {
   deleteSession: (id: number) => invoke<void>("delete_session", { id }),
 
   listStages: () => invoke<StageDef[]>("list_stages"),
-  addStage: (name: string, color: string) => invoke<StageDef>("add_stage", { name, color }),
+  addStage: (setId: number, name: string, color: string) => invoke<StageDef>("add_stage", { setId, name, color }),
   updateStage: (id: number, name: string, color: string, hintMinutes: number) =>
     invoke<StageDef>("update_stage", { id, name, color, hintMinutes }),
   setStageHidden: (id: number, hidden: boolean) => invoke<void>("set_stage_hidden", { id, hidden }),
@@ -157,9 +179,10 @@ export const api = {
 
   listTags: () => invoke<TagGroup[]>("list_tags"),
   setPageTag: (pageIds: number[], tagId: number, on: boolean) => invoke<void>("set_page_tag", { pageIds, tagId, on }),
-  addTagGroup: (name: string, exclusive: boolean) => invoke<number>("add_tag_group", { name, exclusive }),
-  updateTagGroup: (id: number, name: string, exclusive: boolean) =>
-    invoke<void>("update_tag_group", { id, name, exclusive }),
+  addTagGroup: (name: string, exclusive: boolean, applies: TagApplies) =>
+    invoke<number>("add_tag_group", { name, exclusive, applies }),
+  updateTagGroup: (id: number, name: string, exclusive: boolean, applies: TagApplies) =>
+    invoke<void>("update_tag_group", { id, name, exclusive, applies }),
   addTag: (groupId: number, name: string, initialFactor: number) =>
     invoke<number>("add_tag", { groupId, name, initialFactor }),
   updateTag: (id: number, name: string, initialFactor: number) => invoke<void>("update_tag", { id, name, initialFactor }),
@@ -197,4 +220,10 @@ export const api = {
   relinkWork: (workId: number, cmcPath: string) => invoke<SyncResult>("relink_work", { workId, cmcPath }),
   getDisplayPrefs: () => invoke<DisplayPrefs>("get_display_prefs"),
   setDisplayPrefs: (prefs: DisplayPrefs) => invoke<void>("set_display_prefs", { prefs }),
+};
+
+/** 作品の種類ごとの言葉 */
+export const UNIT: Record<WorkKind, { row: string; count: string }> = {
+  comic: { row: "ページ", count: "ページ" },
+  files: { row: "ファイル", count: "枚" },
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, Board, SessionRow } from "../api";
+import { api, Board, SessionRow, UNIT } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { Heatmap } from "../components/Heatmap";
@@ -162,7 +162,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
   const header = (
     <tr>
       <th style={{ width: 230 }}>時間</th>
-      <th style={{ width: 110 }}>ページ</th>
+      <th style={{ width: 110 }}>{board ? UNIT[board.work.kind].row : "ページ"}</th>
       <th style={{ width: 130 }}>工程</th>
       <th style={{ width: 110 }}>長さ</th>
       <th />

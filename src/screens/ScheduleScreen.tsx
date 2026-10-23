@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, UNIT } from "../api";
 import { useApp } from "../app-context";
 import { ChosenPlan, Forecast, loadChosenPlan, saveChosenPlan, useForecast } from "../forecast";
 import { dayKey, dayLabel, estimate, hours } from "../format";
@@ -284,9 +284,10 @@ function ProgressChart({ forecast }: { forecast: Forecast }) {
 
 function StageBases({ forecast }: { forecast: Forecast }) {
   const { board, prediction } = forecast;
+  const unit = UNIT[board.work.kind];
   return (
     <details className="bases">
-      <summary className="small-text muted">予測の内訳（1ページあたりの基準時間）</summary>
+      <summary className="small-text muted">予測の内訳（1{unit.count}あたりの基準時間）</summary>
       <table>
         <tbody>
           {prediction.stages.map((b) => {
@@ -295,13 +296,15 @@ function StageBases({ forecast }: { forecast: Forecast }) {
               <tr key={b.stageId}>
                 <td>{stage?.name}</td>
                 <td className="num">{estimate(b.baseMs)}</td>
-                <td className="muted">{b.fromHint ? "実績がまだ無いので、設定の目安の時間" : `完了した ${b.samples} ページの実績から`}</td>
+                <td className="muted">{b.fromHint ? "実績がまだ無いので、設定の目安の時間" : `完了した ${b.samples} ${unit.count}の実績から`}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <p className="muted small-text">各ページの予測 = 基準時間 × そのページのタグの倍率（見開き ×2.0 など）</p>
+      <p className="muted small-text">
+        各{unit.row}の予測 = 基準時間 × その{unit.row}のタグの倍率{board.work.kind === "comic" ? "（見開き ×2.0 など）" : ""}
+      </p>
     </details>
   );
 }
@@ -427,7 +430,7 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
             onChange={(e) => run(() => api.setWorkOrder(workId, e.target.value))}
           >
             <option value="stage">工程ごとに進める</option>
-            <option value="page">ページごとに仕上げる</option>
+            <option value="page">{UNIT[board.work.kind].row}ごとに仕上げる</option>
           </select>
         </label>
       </div>
