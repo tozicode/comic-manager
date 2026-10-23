@@ -1,0 +1,1070 @@
+//! アプリのデータ（作品・ページ・工程・作業記録）を保存する SQLite データベース。
+//!
+//! 時刻はすべて UNIX 時間のミリ秒（i64）で保存する。日付への変換は画面側（ローカル時刻）で行う。
+//! テストしやすいよう、現在時刻 `now` は呼び出し側から渡す。
+
+use std::path::Path;
+
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::Serialize;
+
+use crate::cmc::Comic;
+
+pub type Result<T> = std::result::Result<T, String>;
+
+fn db_err(e: rusqlite::Error) -> String {
+    format!("データベースの操作に失敗しました: {e}")
+}
+
+// ---------------------------------------------------------------------------
+// 画面に返すデータ
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StageDef {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub sort_order: i64,
+    /// 実績がまだ無いときに使う、1ページあたりの目安時間（分）
+    pub hint_minutes: i64,
+    pub hidden: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkSummary {
+    pub id: i64,
+    pub title: String,
+    pub cmc_path: String,
+    /// 見開きを 2 ページと数えたページ数
+    pub page_count: i64,
+    pub stage_count: i64,
+    /// 0.0〜1.0。完了したタスクの割合（見開きは 2 ページ分の重み）
+    pub progress: f64,
+    pub total_ms: i64,
+    pub last_worked_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkInfo {
+    pub id: i64,
+    pub title: String,
+    pub cmc_path: String,
+    pub last_synced_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StageRef {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Cell {
+    pub stage_id: i64,
+    pub done: bool,
+    pub total_ms: i64,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardPage {
+    pub id: i64,
+    pub file_name: String,
+    pub label: String,
+    pub number: i64,
+    pub span: i64,
+    pub missing: bool,
+    /// 工程の順（`Board::stages` と同じ並び）
+    pub cells: Vec<Cell>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Board {
+    pub work: WorkInfo,
+    pub stages: Vec<StageRef>,
+    pub pages: Vec<BoardPage>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveSession {
+    pub id: i64,
+    pub work_id: i64,
+    pub work_title: String,
+    pub page_id: i64,
+    pub page_label: String,
+    pub stage_id: i64,
+    pub stage_name: String,
+    pub stage_color: String,
+    pub started_at: i64,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StopResult {
+    pub page_id: i64,
+    pub page_label: String,
+    pub stage_id: i64,
+    pub stage_name: String,
+    /// 今回の計測時間
+    pub duration_ms: i64,
+    /// このタスクの合計時間
+    pub total_ms: i64,
+    pub already_done: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionRow {
+    pub id: i64,
+    pub page_id: i64,
+    pub page_label: String,
+    pub stage_id: i64,
+    pub stage_name: String,
+    pub stage_color: String,
+    pub started_at: i64,
+    /// 計測中なら None
+    pub ended_at: Option<i64>,
+    pub edited: bool,
+}
+
+/// ヒートマップ用。全作品の作業記録を工程つきで返す
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Span {
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+    pub stage_name: String,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncResult {
+    pub added: i64,
+    pub missing: i64,
+}
+
+pub fn page_label(number: i64, span: i64) -> String {
+    if span == 2 {
+        format!("p{}-{}", number, number + 1)
+    } else {
+        format!("p{number}")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// データベース本体
+// ---------------------------------------------------------------------------
+
+pub struct Store {
+    conn: Connection,
+}
+
+/// 初期状態の工程（名前, 色, 目安の分）
+const DEFAULT_STAGES: [(&str, &str, i64); 3] = [
+    ("下書き", "#5b7fb8", 60),
+    ("ペン入れ", "#c8553d", 90),
+    ("トーン", "#4f8a5b", 60),
+];
+
+impl Store {
+    pub fn open(path: &Path) -> Result<Self> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("データの保存先を作れませんでした: {e}"))?;
+        }
+        Self::init(Connection::open(path).map_err(db_err)?)
+    }
+
+    #[cfg(test)]
+    pub fn open_in_memory() -> Result<Self> {
+        Self::init(Connection::open_in_memory().map_err(db_err)?)
+    }
+
+    fn init(conn: Connection) -> Result<Self> {
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
+            .map_err(db_err)?;
+        let store = Self { conn };
+        store.migrate()?;
+        Ok(store)
+    }
+
+    /// `PRAGMA user_version` でスキーマの版を管理する
+    fn migrate(&self) -> Result<()> {
+        let version: i64 = self
+            .conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .map_err(db_err)?;
+        if version < 1 {
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE stage_def (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        color TEXT NOT NULL,
+                        sort_order INTEGER NOT NULL,
+                        hint_minutes INTEGER NOT NULL DEFAULT 60,
+                        hidden INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE TABLE work (
+                        id INTEGER PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        cmc_path TEXT NOT NULL UNIQUE,
+                        created_at INTEGER NOT NULL,
+                        last_synced_at INTEGER
+                    );
+                    CREATE TABLE work_stage (
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        stage_id INTEGER NOT NULL REFERENCES stage_def(id),
+                        sort_order INTEGER NOT NULL,
+                        PRIMARY KEY (work_id, stage_id)
+                    );
+                    CREATE TABLE page (
+                        id INTEGER PRIMARY KEY,
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        file_name TEXT NOT NULL,
+                        order_index INTEGER NOT NULL,
+                        number INTEGER NOT NULL,
+                        span INTEGER NOT NULL DEFAULT 1,
+                        memo TEXT NOT NULL DEFAULT '',
+                        missing INTEGER NOT NULL DEFAULT 0,
+                        UNIQUE (work_id, file_name)
+                    );
+                    CREATE TABLE task_done (
+                        page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+                        stage_id INTEGER NOT NULL REFERENCES stage_def(id),
+                        done_at INTEGER NOT NULL,
+                        PRIMARY KEY (page_id, stage_id)
+                    );
+                    CREATE TABLE work_session (
+                        id INTEGER PRIMARY KEY,
+                        page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+                        stage_id INTEGER NOT NULL REFERENCES stage_def(id),
+                        started_at INTEGER NOT NULL,
+                        ended_at INTEGER,
+                        edited INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE INDEX work_session_task ON work_session (page_id, stage_id);
+                    CREATE INDEX work_session_started ON work_session (started_at);
+                    PRAGMA user_version = 1;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+            for (i, (name, color, hint)) in DEFAULT_STAGES.iter().enumerate() {
+                self.conn
+                    .execute(
+                        "INSERT INTO stage_def (name, color, sort_order, hint_minutes) VALUES (?1, ?2, ?3, ?4)",
+                        params![name, color, i as i64, hint],
+                    )
+                    .map_err(db_err)?;
+            }
+        }
+        Ok(())
+    }
+
+    // ----- 工程 -----
+
+    pub fn list_stages(&self) -> Result<Vec<StageDef>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, color, sort_order, hint_minutes, hidden FROM stage_def ORDER BY sort_order, id")
+            .map_err(db_err)?;
+        stmt.query_map([], |r| {
+            Ok(StageDef {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                color: r.get(2)?,
+                sort_order: r.get(3)?,
+                hint_minutes: r.get(4)?,
+                hidden: r.get(5)?,
+            })
+        })
+        .and_then(|rows| rows.collect())
+        .map_err(db_err)
+    }
+
+    /// 工程を追加する。既存の作品にも末尾に追加する（隠せば非表示にできる）
+    pub fn add_stage(&self, name: &str, color: &str) -> Result<StageDef> {
+        let name = valid_name(name)?;
+        let next: i64 = self
+            .conn
+            .query_row("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM stage_def", [], |r| r.get(0))
+            .map_err(db_err)?;
+        self.conn
+            .execute(
+                "INSERT INTO stage_def (name, color, sort_order) VALUES (?1, ?2, ?3)",
+                params![name, color, next],
+            )
+            .map_err(db_err)?;
+        let id = self.conn.last_insert_rowid();
+        self.conn
+            .execute(
+                "INSERT INTO work_stage (work_id, stage_id, sort_order) SELECT id, ?1, ?2 FROM work",
+                params![id, next],
+            )
+            .map_err(db_err)?;
+        self.stage(id)
+    }
+
+    pub fn update_stage(&self, id: i64, name: &str, color: &str, hint_minutes: i64) -> Result<StageDef> {
+        let name = valid_name(name)?;
+        if hint_minutes < 1 {
+            return Err("目安の時間は 1 分以上にしてください".into());
+        }
+        self.conn
+            .execute(
+                "UPDATE stage_def SET name = ?2, color = ?3, hint_minutes = ?4 WHERE id = ?1",
+                params![id, name, color, hint_minutes],
+            )
+            .map_err(db_err)?;
+        self.stage(id)
+    }
+
+    pub fn set_stage_hidden(&self, id: i64, hidden: bool) -> Result<()> {
+        if hidden {
+            let visible: i64 = self
+                .conn
+                .query_row("SELECT COUNT(*) FROM stage_def WHERE hidden = 0 AND id != ?1", [id], |r| r.get(0))
+                .map_err(db_err)?;
+            if visible == 0 {
+                return Err("工程は 1 つ以上表示しておく必要があります".into());
+            }
+        }
+        self.conn
+            .execute("UPDATE stage_def SET hidden = ?2 WHERE id = ?1", params![id, hidden])
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// 工程を 1 つ上（delta = -1）または下（delta = 1）へ動かす。全作品の並び順にも反映する
+    pub fn move_stage(&self, id: i64, delta: i64) -> Result<()> {
+        let mut ids: Vec<i64> = self.list_stages()?.into_iter().map(|s| s.id).collect();
+        let Some(pos) = ids.iter().position(|&x| x == id) else {
+            return Err("工程が見つかりませんでした".into());
+        };
+        let to = pos as i64 + delta;
+        if to < 0 || to >= ids.len() as i64 {
+            return Ok(());
+        }
+        ids.swap(pos, to as usize);
+        for (i, sid) in ids.iter().enumerate() {
+            self.conn
+                .execute("UPDATE stage_def SET sort_order = ?2 WHERE id = ?1", params![sid, i as i64])
+                .map_err(db_err)?;
+            self.conn
+                .execute("UPDATE work_stage SET sort_order = ?2 WHERE stage_id = ?1", params![sid, i as i64])
+                .map_err(db_err)?;
+        }
+        Ok(())
+    }
+
+    fn stage(&self, id: i64) -> Result<StageDef> {
+        self.list_stages()?
+            .into_iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| "工程が見つかりませんでした".into())
+    }
+
+    // ----- 作品 -----
+
+    pub fn add_work(&self, cmc_path: &str, comic: &Comic, now: i64) -> Result<i64> {
+        let exists: bool = self
+            .conn
+            .query_row("SELECT COUNT(*) > 0 FROM work WHERE cmc_path = ?1", [cmc_path], |r| r.get(0))
+            .map_err(db_err)?;
+        if exists {
+            return Err("この漫画ファイルはすでに登録されています".into());
+        }
+        self.conn
+            .execute(
+                "INSERT INTO work (title, cmc_path, created_at) VALUES (?1, ?2, ?3)",
+                params![comic.title, cmc_path, now],
+            )
+            .map_err(db_err)?;
+        let work_id = self.conn.last_insert_rowid();
+        // 作品で使う工程は、登録時点で表示している工程
+        self.conn
+            .execute(
+                "INSERT INTO work_stage (work_id, stage_id, sort_order)
+                 SELECT ?1, id, sort_order FROM stage_def WHERE hidden = 0",
+                [work_id],
+            )
+            .map_err(db_err)?;
+        self.sync_pages(work_id, comic, now)?;
+        Ok(work_id)
+    }
+
+    pub fn remove_work(&self, work_id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM work WHERE id = ?1", [work_id]).map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn work_info(&self, work_id: i64) -> Result<WorkInfo> {
+        self.conn
+            .query_row(
+                "SELECT id, title, cmc_path, last_synced_at FROM work WHERE id = ?1",
+                [work_id],
+                |r| {
+                    Ok(WorkInfo {
+                        id: r.get(0)?,
+                        title: r.get(1)?,
+                        cmc_path: r.get(2)?,
+                        last_synced_at: r.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(db_err)?
+            .ok_or_else(|| "作品が見つかりませんでした".into())
+    }
+
+    pub fn list_works(&self) -> Result<Vec<WorkSummary>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT w.id, w.title, w.cmc_path,
+                    (SELECT COALESCE(SUM(span), 0) FROM page WHERE work_id = w.id AND missing = 0),
+                    (SELECT COUNT(*) FROM work_stage ws JOIN stage_def s ON s.id = ws.stage_id
+                        WHERE ws.work_id = w.id AND s.hidden = 0),
+                    (SELECT COALESCE(SUM(p.span), 0) FROM task_done t
+                        JOIN page p ON p.id = t.page_id
+                        JOIN work_stage ws ON ws.work_id = p.work_id AND ws.stage_id = t.stage_id
+                        JOIN stage_def s ON s.id = t.stage_id
+                        WHERE p.work_id = w.id AND p.missing = 0 AND s.hidden = 0),
+                    (SELECT COALESCE(SUM(COALESCE(ss.ended_at, ?1) - ss.started_at), 0)
+                        FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
+                    (SELECT MAX(COALESCE(ss.ended_at, ss.started_at))
+                        FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id)
+                 FROM work w ORDER BY w.created_at DESC",
+            )
+            .map_err(db_err)?;
+        let now = now_ms();
+        stmt.query_map([now], |r| {
+            let pages: i64 = r.get(3)?;
+            let stages: i64 = r.get(4)?;
+            let done: i64 = r.get(5)?;
+            let total = pages * stages;
+            Ok(WorkSummary {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                cmc_path: r.get(2)?,
+                page_count: pages,
+                stage_count: stages,
+                progress: if total > 0 { done as f64 / total as f64 } else { 0.0 },
+                total_ms: r.get(6)?,
+                last_worked_at: r.get(7)?,
+            })
+        })
+        .and_then(|rows| rows.collect())
+        .map_err(db_err)
+    }
+
+    /// cmc の内容をページ一覧に反映する。ページはファイル名で突き合わせる。
+    /// cmc から消えたページは記録を残したまま `missing` にする
+    pub fn sync_pages(&self, work_id: i64, comic: &Comic, now: i64) -> Result<SyncResult> {
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let before: i64 = tx
+            .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1", [work_id], |r| r.get(0))
+            .map_err(db_err)?;
+        tx.execute("UPDATE page SET missing = 1 WHERE work_id = ?1", [work_id])
+            .map_err(db_err)?;
+        for (i, p) in comic.pages.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO page (work_id, file_name, order_index, number, span, memo, missing)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)
+                 ON CONFLICT (work_id, file_name) DO UPDATE SET
+                    order_index = excluded.order_index, number = excluded.number,
+                    span = excluded.span, memo = excluded.memo, missing = 0",
+                params![work_id, p.file_name, i as i64, p.number, p.span, p.memo],
+            )
+            .map_err(db_err)?;
+        }
+        let after: i64 = tx
+            .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1", [work_id], |r| r.get(0))
+            .map_err(db_err)?;
+        let missing: i64 = tx
+            .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1 AND missing = 1", [work_id], |r| r.get(0))
+            .map_err(db_err)?;
+        tx.execute("UPDATE work SET last_synced_at = ?2 WHERE id = ?1", params![work_id, now])
+            .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        Ok(SyncResult { added: after - before, missing })
+    }
+
+    /// 消えたページのうち、作業記録も完了も無いものを削除する
+    pub fn remove_empty_missing_pages(&self, work_id: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "DELETE FROM page WHERE work_id = ?1 AND missing = 1
+                 AND NOT EXISTS (SELECT 1 FROM work_session WHERE page_id = page.id)
+                 AND NOT EXISTS (SELECT 1 FROM task_done WHERE page_id = page.id)",
+                [work_id],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn board(&self, work_id: i64, now: i64) -> Result<Board> {
+        let work = self.work_info(work_id)?;
+        let stages = self.work_stages(work_id)?;
+
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, file_name, number, span, missing FROM page
+                 WHERE work_id = ?1 ORDER BY missing, order_index, id",
+            )
+            .map_err(db_err)?;
+        let mut pages: Vec<BoardPage> = stmt
+            .query_map([work_id], |r| {
+                let number: i64 = r.get(2)?;
+                let span: i64 = r.get(3)?;
+                Ok(BoardPage {
+                    id: r.get(0)?,
+                    file_name: r.get(1)?,
+                    label: page_label(number, span),
+                    number,
+                    span,
+                    missing: r.get(4)?,
+                    cells: Vec::new(),
+                })
+            })
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)?;
+
+        let mut totals = self
+            .conn
+            .prepare(
+                "SELECT ss.page_id, ss.stage_id, SUM(COALESCE(ss.ended_at, ?2) - ss.started_at)
+                 FROM work_session ss JOIN page p ON p.id = ss.page_id
+                 WHERE p.work_id = ?1 GROUP BY ss.page_id, ss.stage_id",
+            )
+            .map_err(db_err)?;
+        let totals: Vec<(i64, i64, i64)> = totals
+            .query_map(params![work_id, now], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)?;
+        let mut dones = self
+            .conn
+            .prepare("SELECT t.page_id, t.stage_id FROM task_done t JOIN page p ON p.id = t.page_id WHERE p.work_id = ?1")
+            .map_err(db_err)?;
+        let dones: Vec<(i64, i64)> = dones
+            .query_map([work_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)?;
+
+        for page in &mut pages {
+            page.cells = stages
+                .iter()
+                .map(|s| Cell {
+                    stage_id: s.id,
+                    done: dones.contains(&(page.id, s.id)),
+                    total_ms: totals
+                        .iter()
+                        .find(|(p, st, _)| *p == page.id && *st == s.id)
+                        .map(|t| t.2)
+                        .unwrap_or(0),
+                })
+                .collect();
+        }
+        Ok(Board { work, stages, pages })
+    }
+
+    /// 作品で使う工程（隠した工程は除く）を並び順で返す
+    fn work_stages(&self, work_id: i64) -> Result<Vec<StageRef>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT s.id, s.name, s.color FROM work_stage ws JOIN stage_def s ON s.id = ws.stage_id
+                 WHERE ws.work_id = ?1 AND s.hidden = 0 ORDER BY ws.sort_order, s.id",
+            )
+            .map_err(db_err)?;
+        stmt.query_map([work_id], |r| Ok(StageRef { id: r.get(0)?, name: r.get(1)?, color: r.get(2)? }))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)
+    }
+
+    pub fn set_task_done(&self, page_id: i64, stage_id: i64, done: bool, now: i64) -> Result<()> {
+        if done {
+            self.conn
+                .execute(
+                    "INSERT OR IGNORE INTO task_done (page_id, stage_id, done_at) VALUES (?1, ?2, ?3)",
+                    params![page_id, stage_id, now],
+                )
+                .map_err(db_err)?;
+        } else {
+            self.conn
+                .execute("DELETE FROM task_done WHERE page_id = ?1 AND stage_id = ?2", params![page_id, stage_id])
+                .map_err(db_err)?;
+        }
+        Ok(())
+    }
+
+    // ----- タイマー -----
+
+    /// 計測を始める。別のタスクを計測中なら、そちらはこの時点で止める
+    pub fn start_timer(&self, page_id: i64, stage_id: i64, now: i64) -> Result<ActiveSession> {
+        self.check_task(page_id, stage_id)?;
+        self.close_open_sessions(now)?;
+        self.conn
+            .execute(
+                "INSERT INTO work_session (page_id, stage_id, started_at) VALUES (?1, ?2, ?3)",
+                params![page_id, stage_id, now],
+            )
+            .map_err(db_err)?;
+        self.active_session()?
+            .ok_or_else(|| "計測を開始できませんでした".into())
+    }
+
+    /// 計測を止める。計測していなければ None
+    pub fn stop_timer(&self, now: i64) -> Result<Option<StopResult>> {
+        let Some(active) = self.active_session()? else {
+            return Ok(None);
+        };
+        self.close_open_sessions(now)?;
+        let total_ms: i64 = self
+            .conn
+            .query_row(
+                "SELECT COALESCE(SUM(ended_at - started_at), 0) FROM work_session
+                 WHERE page_id = ?1 AND stage_id = ?2 AND ended_at IS NOT NULL",
+                params![active.page_id, active.stage_id],
+                |r| r.get(0),
+            )
+            .map_err(db_err)?;
+        let already_done: bool = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM task_done WHERE page_id = ?1 AND stage_id = ?2",
+                params![active.page_id, active.stage_id],
+                |r| r.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(Some(StopResult {
+            page_id: active.page_id,
+            page_label: active.page_label,
+            stage_id: active.stage_id,
+            stage_name: active.stage_name,
+            duration_ms: (now - active.started_at).max(0),
+            total_ms,
+            already_done,
+        }))
+    }
+
+    pub fn active_session(&self) -> Result<Option<ActiveSession>> {
+        self.conn
+            .query_row(
+                "SELECT ss.id, w.id, w.title, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at
+                 FROM work_session ss
+                 JOIN page p ON p.id = ss.page_id
+                 JOIN work w ON w.id = p.work_id
+                 JOIN stage_def s ON s.id = ss.stage_id
+                 WHERE ss.ended_at IS NULL ORDER BY ss.started_at DESC LIMIT 1",
+                [],
+                |r| {
+                    Ok(ActiveSession {
+                        id: r.get(0)?,
+                        work_id: r.get(1)?,
+                        work_title: r.get(2)?,
+                        page_id: r.get(3)?,
+                        page_label: page_label(r.get(4)?, r.get(5)?),
+                        stage_id: r.get(6)?,
+                        stage_name: r.get(7)?,
+                        stage_color: r.get(8)?,
+                        started_at: r.get(9)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(db_err)
+    }
+
+    fn close_open_sessions(&self, now: i64) -> Result<()> {
+        // 開始時刻より前には止めない（時計がずれた場合の保険）
+        self.conn
+            .execute(
+                "UPDATE work_session SET ended_at = MAX(?1, started_at) WHERE ended_at IS NULL",
+                [now],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// ページと工程が同じ作品のものか確かめる
+    fn check_task(&self, page_id: i64, stage_id: i64) -> Result<()> {
+        let ok: bool = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM page p JOIN work_stage ws ON ws.work_id = p.work_id
+                 WHERE p.id = ?1 AND ws.stage_id = ?2",
+                params![page_id, stage_id],
+                |r| r.get(0),
+            )
+            .map_err(db_err)?;
+        if ok { Ok(()) } else { Err("ページか工程が見つかりませんでした".into()) }
+    }
+
+    // ----- 作業記録 -----
+
+    /// 作品の作業記録を新しい順に返す（`from` 以降に始まったもの）
+    pub fn list_sessions(&self, work_id: i64, from: i64) -> Result<Vec<SessionRow>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT ss.id, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, ss.ended_at, ss.edited
+                 FROM work_session ss
+                 JOIN page p ON p.id = ss.page_id
+                 JOIN stage_def s ON s.id = ss.stage_id
+                 WHERE p.work_id = ?1 AND ss.started_at >= ?2
+                 ORDER BY ss.started_at DESC",
+            )
+            .map_err(db_err)?;
+        stmt.query_map(params![work_id, from], |r| {
+            Ok(SessionRow {
+                id: r.get(0)?,
+                page_id: r.get(1)?,
+                page_label: page_label(r.get(2)?, r.get(3)?),
+                stage_id: r.get(4)?,
+                stage_name: r.get(5)?,
+                stage_color: r.get(6)?,
+                started_at: r.get(7)?,
+                ended_at: r.get(8)?,
+                edited: r.get(9)?,
+            })
+        })
+        .and_then(|rows| rows.collect())
+        .map_err(db_err)
+    }
+
+    /// 全作品の作業記録（ヒートマップ用）
+    pub fn spans(&self, from: i64) -> Result<Vec<Span>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT ss.started_at, ss.ended_at, s.name FROM work_session ss
+                 JOIN stage_def s ON s.id = ss.stage_id
+                 WHERE COALESCE(ss.ended_at, ss.started_at) >= ?1 ORDER BY ss.started_at",
+            )
+            .map_err(db_err)?;
+        stmt.query_map([from], |r| Ok(Span { started_at: r.get(0)?, ended_at: r.get(1)?, stage_name: r.get(2)? }))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)
+    }
+
+    /// 作業記録を手で追加する
+    pub fn add_session(&self, page_id: i64, stage_id: i64, started_at: i64, ended_at: i64, now: i64) -> Result<()> {
+        self.check_task(page_id, stage_id)?;
+        check_range(started_at, Some(ended_at), now)?;
+        self.conn
+            .execute(
+                "INSERT INTO work_session (page_id, stage_id, started_at, ended_at, edited) VALUES (?1, ?2, ?3, ?4, 1)",
+                params![page_id, stage_id, started_at, ended_at],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// 作業記録を手で直す。計測中の記録は終了時刻を None のまま渡す
+    pub fn update_session(
+        &self,
+        id: i64,
+        page_id: i64,
+        stage_id: i64,
+        started_at: i64,
+        ended_at: Option<i64>,
+        now: i64,
+    ) -> Result<()> {
+        self.check_task(page_id, stage_id)?;
+        let running: bool = self
+            .conn
+            .query_row("SELECT ended_at IS NULL FROM work_session WHERE id = ?1", [id], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?
+            .ok_or_else(|| "作業記録が見つかりませんでした".to_string())?;
+        if running != ended_at.is_none() {
+            return Err("計測中の記録の終了時刻は変えられません".into());
+        }
+        check_range(started_at, ended_at, now)?;
+        self.conn
+            .execute(
+                "UPDATE work_session SET page_id = ?2, stage_id = ?3, started_at = ?4, ended_at = ?5, edited = 1
+                 WHERE id = ?1",
+                params![id, page_id, stage_id, started_at, ended_at],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn delete_session(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM work_session WHERE id = ?1", [id]).map_err(db_err)?;
+        Ok(())
+    }
+}
+
+fn valid_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() { Err("名前を入力してください".into()) } else { Ok(name) }
+}
+
+fn check_range(started_at: i64, ended_at: Option<i64>, now: i64) -> Result<()> {
+    if started_at > now {
+        return Err("開始時刻が未来になっています".into());
+    }
+    if let Some(end) = ended_at {
+        if end <= started_at {
+            return Err("終了時刻は開始時刻より後にしてください".into());
+        }
+        if end > now {
+            return Err("終了時刻が未来になっています".into());
+        }
+    }
+    Ok(())
+}
+
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cmc::Page;
+
+    const MIN: i64 = 60_000;
+
+    fn comic(pages: &[(&str, u32)]) -> Comic {
+        let mut number = 1;
+        Comic {
+            title: "テスト作品".into(),
+            pages: pages
+                .iter()
+                .map(|(f, span)| {
+                    let p = Page { file_name: f.to_string(), number, span: *span, memo: String::new() };
+                    number += span;
+                    p
+                })
+                .collect(),
+        }
+    }
+
+    fn setup() -> (Store, i64) {
+        let store = Store::open_in_memory().unwrap();
+        let id = store
+            .add_work("C:/a.cmc", &comic(&[("page0001.clip", 1), ("page0002.clip", 2), ("page0004.clip", 1)]), 0)
+            .unwrap();
+        (store, id)
+    }
+
+    fn stage_ids(store: &Store) -> Vec<i64> {
+        store.list_stages().unwrap().iter().map(|s| s.id).collect()
+    }
+
+    #[test]
+    fn 初期状態の工程は下書き_ペン入れ_トーン() {
+        let store = Store::open_in_memory().unwrap();
+        let names: Vec<String> = store.list_stages().unwrap().into_iter().map(|s| s.name).collect();
+        assert_eq!(names, ["下書き", "ペン入れ", "トーン"]);
+    }
+
+    #[test]
+    fn 作品を登録するとページと工程のボードができる() {
+        let (store, id) = setup();
+        let board = store.board(id, 0).unwrap();
+        assert_eq!(board.work.title, "テスト作品");
+        assert_eq!(board.stages.len(), 3);
+        let labels: Vec<&str> = board.pages.iter().map(|p| p.label.as_str()).collect();
+        assert_eq!(labels, ["p1", "p2-3", "p4"]);
+        assert!(board.pages.iter().all(|p| p.cells.len() == 3));
+    }
+
+    #[test]
+    fn 同じcmcは二重に登録できない() {
+        let (store, _) = setup();
+        let err = store.add_work("C:/a.cmc", &comic(&[]), 0).unwrap_err();
+        assert!(err.contains("すでに登録"));
+    }
+
+    #[test]
+    fn 同期で並び替え_追加_消えたページを反映する() {
+        let (store, id) = setup();
+        let result = store
+            .sync_pages(id, &comic(&[("page0004.clip", 1), ("page0001.clip", 1), ("page0005.clip", 1)]), 10)
+            .unwrap();
+        assert_eq!(result, SyncResult { added: 1, missing: 1 });
+        let board = store.board(id, 0).unwrap();
+        let files: Vec<(&str, bool)> = board.pages.iter().map(|p| (p.file_name.as_str(), p.missing)).collect();
+        assert_eq!(
+            files,
+            [("page0004.clip", false), ("page0001.clip", false), ("page0005.clip", false), ("page0002.clip", true)]
+        );
+        assert_eq!(board.work.last_synced_at, Some(10));
+
+        // 記録の無い消えたページは掃除できる
+        store.remove_empty_missing_pages(id).unwrap();
+        assert_eq!(store.board(id, 0).unwrap().pages.len(), 3);
+    }
+
+    #[test]
+    fn 記録のある消えたページは残す() {
+        let (store, id) = setup();
+        let page = store.board(id, 0).unwrap().pages[1].id;
+        store.start_timer(page, stage_ids(&store)[0], 0).unwrap();
+        store.stop_timer(MIN).unwrap();
+        store.sync_pages(id, &comic(&[("page0001.clip", 1)]), 0).unwrap();
+        store.remove_empty_missing_pages(id).unwrap();
+        let board = store.board(id, 0).unwrap();
+        assert_eq!(board.pages.len(), 2);
+        assert!(board.pages[1].missing);
+    }
+
+    #[test]
+    fn タイマーは同時に1つだけ動き_止めると合計を返す() {
+        let (store, id) = setup();
+        let pages = store.board(id, 0).unwrap().pages;
+        let st = stage_ids(&store);
+
+        store.start_timer(pages[0].id, st[0], 0).unwrap();
+        // 別のタスクを始めると、前のタスクは自動で止まる
+        let active = store.start_timer(pages[1].id, st[0], 10 * MIN).unwrap();
+        assert_eq!(active.page_label, "p2-3");
+        assert_eq!(active.stage_name, "下書き");
+
+        let stopped = store.stop_timer(40 * MIN).unwrap().unwrap();
+        assert_eq!(stopped.duration_ms, 30 * MIN);
+        assert_eq!(stopped.total_ms, 30 * MIN);
+        assert!(store.active_session().unwrap().is_none());
+        assert!(store.stop_timer(50 * MIN).unwrap().is_none());
+
+        // 2 回目の計測は合計に足される
+        store.start_timer(pages[1].id, st[0], 60 * MIN).unwrap();
+        let stopped = store.stop_timer(70 * MIN).unwrap().unwrap();
+        assert_eq!(stopped.total_ms, 40 * MIN);
+
+        let board = store.board(id, 0).unwrap();
+        assert_eq!(board.pages[0].cells[0].total_ms, 10 * MIN);
+        assert_eq!(board.pages[1].cells[0].total_ms, 40 * MIN);
+    }
+
+    #[test]
+    fn 計測中の時間もボードに含める() {
+        let (store, id) = setup();
+        let page = store.board(id, 0).unwrap().pages[0].id;
+        store.start_timer(page, stage_ids(&store)[1], 0).unwrap();
+        assert_eq!(store.board(id, 5 * MIN).unwrap().pages[0].cells[1].total_ms, 5 * MIN);
+    }
+
+    #[test]
+    fn 完了の付け外しと進捗() {
+        let (store, id) = setup();
+        let pages = store.board(id, 0).unwrap().pages;
+        let st = stage_ids(&store);
+        // 見開き（2ページ分）の下書きを完了 → 4ページ × 3工程 = 12 のうち 2
+        store.set_task_done(pages[1].id, st[0], true, 0).unwrap();
+        store.set_task_done(pages[1].id, st[0], true, 0).unwrap();
+        let works = store.list_works().unwrap();
+        assert_eq!(works[0].page_count, 4);
+        assert!((works[0].progress - 2.0 / 12.0).abs() < 1e-9);
+        assert!(store.board(id, 0).unwrap().pages[1].cells[0].done);
+
+        store.set_task_done(pages[1].id, st[0], false, 0).unwrap();
+        assert_eq!(store.list_works().unwrap()[0].progress, 0.0);
+    }
+
+    #[test]
+    fn 工程を追加_並べ替え_隠すとボードに反映する() {
+        let (store, id) = setup();
+        let added = store.add_stage(" ネーム ", "#9a7fb8").unwrap();
+        assert_eq!(added.name, "ネーム");
+        // 先頭まで動かす
+        store.move_stage(added.id, -1).unwrap();
+        store.move_stage(added.id, -1).unwrap();
+        store.move_stage(added.id, -1).unwrap();
+        store.move_stage(added.id, -1).unwrap(); // 先頭より上には行かない
+        let names: Vec<String> = store.board(id, 0).unwrap().stages.into_iter().map(|s| s.name).collect();
+        assert_eq!(names, ["ネーム", "下書き", "ペン入れ", "トーン"]);
+
+        store.set_stage_hidden(added.id, true).unwrap();
+        assert_eq!(store.board(id, 0).unwrap().stages.len(), 3);
+        assert_eq!(store.list_works().unwrap()[0].stage_count, 3);
+
+        store.update_stage(added.id, "ネーム（ラフ）", "#000000", 30).unwrap();
+        let s = store.list_stages().unwrap().into_iter().find(|s| s.id == added.id).unwrap();
+        assert_eq!((s.name.as_str(), s.hint_minutes, s.hidden), ("ネーム（ラフ）", 30, true));
+    }
+
+    #[test]
+    fn すべての工程は隠せない() {
+        let store = Store::open_in_memory().unwrap();
+        let st = stage_ids(&store);
+        store.set_stage_hidden(st[0], true).unwrap();
+        store.set_stage_hidden(st[1], true).unwrap();
+        assert!(store.set_stage_hidden(st[2], true).unwrap_err().contains("1 つ以上"));
+        assert!(store.update_stage(st[0], "  ", "#000", 60).unwrap_err().contains("名前"));
+    }
+
+    #[test]
+    fn 作業記録の追加_修正_削除() {
+        let (store, id) = setup();
+        let pages = store.board(id, 0).unwrap().pages;
+        let st = stage_ids(&store);
+        let now = 100 * MIN;
+
+        store.add_session(pages[0].id, st[0], 0, 20 * MIN, now).unwrap();
+        store.start_timer(pages[1].id, st[1], 90 * MIN).unwrap();
+        let rows = store.list_sessions(id, 0).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].ended_at, None); // 新しい順
+        assert!(rows[1].edited);
+
+        // 止め忘れを直す
+        store.update_session(rows[1].id, pages[2].id, st[2], 5 * MIN, Some(15 * MIN), now).unwrap();
+        let fixed = &store.list_sessions(id, 0).unwrap()[1];
+        assert_eq!((fixed.page_label.as_str(), fixed.stage_name.as_str()), ("p4", "トーン"));
+        assert_eq!((fixed.started_at, fixed.ended_at), (5 * MIN, Some(15 * MIN)));
+
+        // おかしな時刻は受け付けない
+        let e = store.update_session(rows[1].id, pages[2].id, st[2], 15 * MIN, Some(5 * MIN), now).unwrap_err();
+        assert!(e.contains("開始時刻より後"));
+        let e = store.add_session(pages[0].id, st[0], 0, now + MIN, now).unwrap_err();
+        assert!(e.contains("未来"));
+        let e = store.update_session(rows[0].id, pages[1].id, st[1], 90 * MIN, Some(95 * MIN), now).unwrap_err();
+        assert!(e.contains("計測中"));
+
+        store.delete_session(rows[1].id).unwrap();
+        assert_eq!(store.list_sessions(id, 0).unwrap().len(), 1);
+        assert_eq!(store.spans(0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn 作品を外すとページと記録も消える() {
+        let (store, id) = setup();
+        let page = store.board(id, 0).unwrap().pages[0].id;
+        store.start_timer(page, stage_ids(&store)[0], 0).unwrap();
+        store.remove_work(id).unwrap();
+        assert!(store.list_works().unwrap().is_empty());
+        assert!(store.active_session().unwrap().is_none());
+        assert!(store.spans(0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn ファイルに保存して開き直せる() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub/otosazu.db");
+        {
+            let store = Store::open(&path).unwrap();
+            store.add_stage("ベタ", "#333333").unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.list_stages().unwrap().len(), 4);
+    }
+}
