@@ -1,0 +1,1112 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Otosazu 画面モックアップ</title>
+<style>
+  /* ===== デザイントークン（src/App.css と共通の配色） ===== */
+  :root {
+    --bg: #f6f3ee;
+    --surface: #ffffff;
+    --surface-2: #faf8f5;
+    --text: #2b2723;
+    --muted: #7a7169;
+    --faint: #b3aaa1;
+    --border: #e2dcd3;
+    --accent: #c8553d;
+    --accent-soft: #f6e0d8;
+    --accent-text: #ffffff;
+    --ok: #4f8a5b;
+    --ok-soft: #e1efe2;
+    --warn: #b7791f;
+    --warn-soft: #faefd9;
+    --danger: #a12d1a;
+    --danger-soft: #fbe9e7;
+    /* 工程の色（ユーザーが変更できる） */
+    --st1: #5b7fb8;
+    --st1-soft: #e3eaf5;
+    --st2: #c8553d;
+    --st2-soft: #f6e0d8;
+    --st3: #4f8a5b;
+    --st3-soft: #e1efe2;
+    --radius: 10px;
+    font-family: "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #d9d4cc; }
+  button { font: inherit; color: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ===== モックアップの外枠（アプリの一部ではない） ===== */
+  .mock-nav {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 10px 16px; background: #2b2723; color: #fff;
+  }
+  .mock-nav strong { margin-right: 10px; letter-spacing: .04em; }
+  .mock-nav button {
+    border: 1px solid #5a534d; background: transparent; color: #ddd6cf;
+    border-radius: 999px; padding: 3px 12px; cursor: pointer; font-size: 13px;
+  }
+  .mock-nav button.on { background: #fff; color: #2b2723; border-color: #fff; }
+  .mock-note {
+    max-width: 1180px; margin: 14px auto 0; padding: 0 16px;
+    color: #4d4741; font-size: 13px;
+  }
+  .stage { padding: 12px 16px 48px; }
+  .screen { display: none; }
+  .screen.on { display: block; }
+
+  /* ===== アプリのウィンドウ ===== */
+  .window {
+    width: 1180px; max-width: 100%; height: 780px; margin: 0 auto;
+    display: flex; flex-direction: column;
+    background: var(--bg); border-radius: 10px; overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,.18);
+  }
+  .titlebar {
+    height: 32px; flex: none; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px; font-size: 12px; background: #ece7e0; color: var(--muted);
+  }
+  .titlebar .wc { letter-spacing: 14px; }
+  .shell { flex: 1; display: flex; min-height: 0; }
+
+  /* サイドバー */
+  .sidebar {
+    width: 208px; flex: none; display: flex; flex-direction: column; gap: 4px;
+    padding: 16px 12px; background: var(--surface-2); border-right: 1px solid var(--border);
+  }
+  .logo { font-size: 20px; font-weight: 700; letter-spacing: .04em; padding: 0 8px 10px; }
+  .logo small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); letter-spacing: 0; }
+  .work-switch {
+    display: flex; flex-direction: column; padding: 8px 10px; margin-bottom: 10px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer;
+  }
+  .work-switch .label { font-size: 11px; color: var(--muted); }
+  .work-switch .name { font-weight: 700; display: flex; justify-content: space-between; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border-radius: 8px; color: var(--muted); cursor: pointer;
+  }
+  .nav-item svg { width: 18px; height: 18px; flex: none; }
+  .nav-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+  .nav-spacer { flex: 1; }
+
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .topbar {
+    height: 60px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 0 24px; border-bottom: 1px solid var(--border);
+  }
+  .topbar h1 { margin: 0; font-size: 18px; }
+  .topbar .sub { color: var(--muted); font-size: 12px; margin-left: 10px; font-weight: 400; }
+  .content { flex: 1; overflow: auto; padding: 20px 24px; }
+
+  /* 計測中チップ（全画面共通・右上） */
+  .timer-chip {
+    display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 14px;
+    border-radius: 999px; background: var(--text); color: #fff;
+  }
+  .timer-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff6b52; box-shadow: 0 0 0 3px rgba(255,107,82,.25); }
+  .timer-chip .what { font-size: 13px; }
+  .timer-chip .time { font-weight: 700; font-size: 15px; }
+  .icon-btn {
+    width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+    border: none; border-radius: 50%; background: rgba(255,255,255,.14); color: inherit; cursor: pointer;
+  }
+  .icon-btn svg { width: 14px; height: 14px; }
+  .timer-idle {
+    display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+    border: 1px dashed var(--faint); color: var(--muted); font-size: 13px;
+  }
+
+  /* 汎用部品 */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+    border-radius: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer;
+  }
+  .btn.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-text); font-weight: 700; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn.small { padding: 3px 10px; font-size: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .grow { flex: 1; }
+  .tag {
+    display: inline-flex; align-items: center; padding: 0 8px; border-radius: 999px;
+    font-size: 11px; line-height: 20px; background: #efebe5; color: #5e5650; white-space: nowrap;
+  }
+  .tag.sys { background: var(--accent-soft); color: var(--accent); }
+  .tag.add { background: transparent; border: 1px dashed var(--faint); color: var(--muted); cursor: pointer; }
+  .bar { height: 6px; border-radius: 3px; background: #ece7e0; overflow: hidden; }
+  .bar > span { display: block; height: 100%; border-radius: 3px; }
+  .section-title { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 0 10px; letter-spacing: .04em; }
+  .seg { display: inline-flex; padding: 3px; border-radius: 9px; background: #ebe6df; }
+  .seg span { padding: 5px 14px; border-radius: 7px; color: var(--muted); cursor: pointer; }
+  .seg span.on { background: var(--surface); color: var(--text); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  input.field, select.field {
+    font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text);
+  }
+
+  /* ページのサムネイル（モックでは枠線だけの漫画ページ） */
+  .thumb { width: 36px; aspect-ratio: 1240/1754; border-radius: 3px; background: #fff; border: 1px solid var(--border); flex: none; }
+  .thumb.spread { width: 72px; aspect-ratio: 2480/1754; }
+
+  /* ===== 1. 作品一覧 ===== */
+  .works { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .work-card { padding: 16px; display: flex; gap: 14px; }
+  .work-card .cover { width: 84px; flex: none; }
+  .work-card .cover .thumb { width: 84px; }
+  .work-card h3 { margin: 0 0 2px; font-size: 16px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12px; margin-top: 8px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .work-add {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    min-height: 170px; border: 2px dashed var(--border); border-radius: var(--radius); color: var(--muted); cursor: pointer;
+  }
+  .work-add .plus { font-size: 28px; line-height: 1; color: var(--accent); }
+
+  /* ===== 2. 進捗ボード ===== */
+  .summary { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .summary .card { padding: 14px 16px; }
+  .stage-prog { display: grid; grid-template-columns: 64px 1fr 52px; align-items: center; gap: 8px; font-size: 12px; margin-top: 4px; }
+  .big { font-size: 24px; font-weight: 700; line-height: 1.3; }
+  .range { font-size: 12px; color: var(--muted); }
+  .today-strip {
+    display: flex; align-items: center; gap: 14px; padding: 10px 14px; margin-bottom: 14px;
+    border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  }
+  .today-strip .gauge { width: 140px; }
+  .task-chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface-2); font-size: 12px; white-space: nowrap;
+  }
+  .task-chip .sdot { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; }
+  .task-chip.done { opacity: .5; text-decoration: line-through; }
+  .task-chip.now { border-color: var(--accent); background: var(--accent-soft); }
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+
+  table.board { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .board th { position: sticky; top: -20px; z-index: 2; text-align: left; font-size: 12px; font-weight: 700; color: var(--muted); padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .board th .sdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .board td { padding: 6px 12px; border-bottom: 1px solid #f0ebe4; vertical-align: middle; }
+  .board tr:last-child td { border-bottom: none; }
+  .board tr.selected td { background: #fdf6f3; }
+  .pcell { display: flex; align-items: center; gap: 10px; }
+  .pcell .pno { font-weight: 700; width: 46px; }
+  .pcell .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .cell {
+    position: relative; display: flex; flex-direction: column; gap: 4px; padding: 7px 10px; border-radius: 8px;
+    min-height: 50px; justify-content: center; cursor: pointer; border: 1px solid transparent;
+  }
+  .cell .line { display: flex; justify-content: space-between; font-size: 12px; }
+  .cell.todo { background: transparent; border: 1px dashed var(--border); color: var(--faint); }
+  .cell.locked { background: transparent; color: #d5cec6; font-size: 12px; border: 1px dashed #eee8e1; }
+  .cell.doing { background: var(--surface-2); border-color: var(--border); }
+  .cell.done { color: #fff; }
+  .cell.done .line { font-weight: 700; }
+  .cell.running { outline: 2px solid var(--accent); outline-offset: 1px; background: var(--accent-soft); }
+  .cell .play {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 26px; height: 26px; border-radius: 50%; border: none; background: var(--accent); color: #fff;
+    display: none; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .cell .play svg { width: 11px; height: 11px; }
+  .cell:hover .play, .cell.hover .play { display: inline-flex; }
+  .cell.running .play { display: inline-flex; background: var(--text); }
+  .cell.running, .cell.hover { padding-right: 40px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-left: auto; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; }
+
+  /* タグ編集のポップオーバー */
+  .popover {
+    position: absolute; z-index: 5; width: 300px; padding: 12px; border-radius: var(--radius);
+    background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 28px rgba(0,0,0,.14);
+  }
+  .popover h4 { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+  .popover .group { margin-bottom: 10px; }
+  .popover .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .popover .opt { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; cursor: pointer; }
+  .popover .opt.on { background: var(--text); border-color: var(--text); color: #fff; }
+  .popover .opt.lock { border-style: dashed; color: var(--faint); cursor: default; }
+
+  /* ===== 3. ミニタイマー ===== */
+  .desktop {
+    width: 1180px; max-width: 100%; height: 780px; margin: 0 auto; position: relative; overflow: hidden;
+    border-radius: 10px; background: linear-gradient(135deg, #5a6b7d, #3c4652);
+  }
+  .csp {
+    position: absolute; inset: 24px 24px 24px 24px; border-radius: 8px; background: #4b4b4b;
+    display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.3);
+  }
+  .csp .bar1 { height: 30px; background: #3a3a3a; color: #bbb; font-size: 12px; display: flex; align-items: center; padding: 0 12px; }
+  .csp .body { flex: 1; display: flex; }
+  .csp .tools { width: 56px; background: #555; }
+  .csp .canvas { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .csp .canvas .paper { height: 88%; aspect-ratio: 1240/1754; background: #fff; }
+  .csp .panel { width: 220px; background: #555; }
+  .mini {
+    position: absolute; width: 330px; border-radius: 12px; overflow: hidden;
+    background: var(--surface); box-shadow: 0 14px 40px rgba(0,0,0,.35); font-size: 13px;
+  }
+  .mini .mtitle { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; font-size: 11px; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .mini .mbody { padding: 12px 14px 12px; display: flex; gap: 12px; align-items: center; }
+  .mini .mtime { font-size: 28px; font-weight: 700; line-height: 1.1; }
+  .mini .mctrl { display: flex; gap: 6px; }
+  .mini .mctrl .icon-btn { width: 36px; height: 36px; background: var(--accent); color: #fff; }
+  .mini .mctrl .icon-btn.sec { background: #ece7e0; color: var(--text); }
+  .mini .mfoot { padding: 8px 14px 10px; border-top: 1px solid var(--border); font-size: 12px; }
+  .mini.compact { width: 230px; }
+  .callout {
+    position: absolute; max-width: 260px; padding: 8px 12px; border-radius: 8px; font-size: 12px;
+    background: #fffbe8; color: #4d4741; box-shadow: 0 4px 14px rgba(0,0,0,.2);
+  }
+
+  /* ===== 4. 作業記録 ===== */
+  .rec-day { margin-bottom: 18px; }
+  .rec-day h3 { display: flex; justify-content: space-between; margin: 0 0 6px; font-size: 13px; }
+  table.rec { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .rec td, .rec th { padding: 8px 12px; border-bottom: 1px solid #f0ebe4; font-size: 13px; text-align: left; }
+  .rec th { font-size: 12px; color: var(--muted); background: var(--surface-2); font-weight: 700; }
+  .rec tr.editing td { background: #fdf6f3; }
+  .rec .edited { font-size: 11px; color: var(--warn); }
+  .stage-label { display: inline-flex; align-items: center; gap: 6px; }
+  .stage-label i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  /* ===== 5. スケジュール ===== */
+  .sched { display: grid; grid-template-columns: 340px 1fr; gap: 18px; }
+  .sched .card { padding: 16px; }
+  .wd { display: grid; grid-template-columns: 26px 1fr 44px; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+  .wd input[type=range] { width: 100%; accent-color: var(--accent); }
+  .wd.off { color: var(--faint); }
+  .result3 { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 10px; text-align: center; margin: 6px 0 14px; }
+  .result3 > div { padding: 12px 8px; border-radius: 9px; background: var(--surface-2); }
+  .result3 .lbl { font-size: 12px; color: var(--muted); }
+  .result3 .d { font-size: 20px; font-weight: 700; }
+  .result3 .main-r { background: var(--accent-soft); }
+  .result3 .main-r .d { font-size: 28px; color: var(--accent); }
+  .compare { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
+  .quota { display: grid; grid-template-columns: 1.3fr 1fr 1.4fr; gap: 14px; margin-bottom: 16px; }
+  .quota .card { padding: 14px 16px; }
+  .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .plan { padding: 12px 14px; cursor: pointer; border-width: 2px; }
+  .plan.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .plan h4 { margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+  .plan .steps { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+  .plan .step { display: grid; grid-template-columns: 10px 40px 1fr auto; gap: 6px; align-items: center; }
+  .plan .step i { width: 8px; height: 8px; border-radius: 50%; }
+  .plan .mixbar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin-top: 10px; }
+  .notice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 9px; font-size: 13px; margin-bottom: 14px; }
+  .notice.info { background: var(--st1-soft); color: #2f4c78; }
+  .notice.warn { background: var(--warn-soft); color: #7a5214; }
+
+  /* ===== 6. 統計 ===== */
+  .stats { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; }
+  .stats .card { padding: 16px; }
+  table.factor { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .factor th, .factor td { padding: 7px 6px; border-bottom: 1px solid #f0ebe4; text-align: left; }
+  .factor th { font-size: 12px; color: var(--muted); font-weight: 700; }
+  .fbar { position: relative; height: 16px; width: 170px; }
+  .fbar .axis { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--faint); }
+  .fbar .ini { position: absolute; top: 3px; width: 2px; height: 10px; background: var(--text); }
+  .fbar .act { position: absolute; top: 4px; height: 8px; border-radius: 4px; background: var(--accent); opacity: .85; }
+  .conf { display: block; font-size: 11px; color: var(--muted); font-weight: 400; white-space: nowrap; }
+  .factor th { white-space: nowrap; }
+  .factor .btn { white-space: nowrap; }
+
+  /* ===== 7. 設定 ===== */
+  .settings { display: grid; grid-template-columns: 180px 1fr; gap: 18px; }
+  .settings .snav { display: flex; flex-direction: column; gap: 2px; }
+  .settings .snav span { padding: 7px 12px; border-radius: 7px; color: var(--muted); cursor: pointer; }
+  .settings .snav span.on { background: var(--surface); color: var(--text); font-weight: 700; border: 1px solid var(--border); }
+  .slist { display: flex; flex-direction: column; gap: 8px; }
+  .sitem { display: grid; grid-template-columns: 18px 22px 1fr 150px 90px; align-items: center; gap: 10px; padding: 8px 12px; }
+  .sitem .handle { color: var(--faint); cursor: grab; letter-spacing: -2px; }
+  .sitem .swatch { width: 18px; height: 18px; border-radius: 5px; }
+  .sitem.archived { opacity: .55; }
+  .tgroup { padding: 12px 14px; margin-bottom: 10px; }
+  .tgroup .thead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .titem { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 12px; margin: 0 6px 6px 0; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; }
+  .titem .fx { font-size: 12px; color: var(--muted); padding: 0 8px; border-left: 1px solid var(--border); }
+
+  /* ===== ダイアログ ===== */
+  .overlay { position: absolute; inset: 0; background: rgba(43,39,35,.42); display: flex; align-items: center; justify-content: center; }
+  .dialogs { display: grid; grid-template-columns: repeat(2, 380px); gap: 22px; align-items: start; margin-right: 330px; }
+  .dialog { padding: 20px 22px; border-radius: 14px; background: var(--surface); box-shadow: 0 18px 50px rgba(0,0,0,.25); }
+  .dialog h3 { margin: 0 0 6px; font-size: 16px; }
+  .dialog p { margin: 0 0 12px; font-size: 13px; color: #4d4741; }
+  .dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .dialog .dlabel { font-size: 11px; color: var(--muted); margin-bottom: 4px; letter-spacing: .04em; }
+  .choice { display: flex; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 6px; font-size: 13px; cursor: pointer; }
+  .choice.on { border-color: var(--accent); background: #fdf6f3; }
+  .choice .radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--faint); flex: none; margin-top: 2px; }
+  .choice.on .radio { border: 5px solid var(--accent); }
+  .toast {
+    position: absolute; right: 24px; bottom: 24px; width: 300px; padding: 12px 14px; border-radius: 12px;
+    background: var(--text); color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.3); font-size: 13px;
+  }
+  .toast .actions { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+  .toast .btn { background: rgba(255,255,255,.12); border-color: transparent; color: #fff; }
+  .toast .btn.primary { background: var(--accent); }
+</style>
+</head>
+<body>
+
+<nav class="mock-nav" id="mockNav">
+  <strong>Otosazu 画面モックアップ</strong>
+</nav>
+<p class="mock-note" id="mockNote"></p>
+
+<div class="stage">
+
+<!-- ================================================================ -->
+<!-- 1. 作品一覧 -->
+<!-- ================================================================ -->
+<section class="screen" data-title="1. 作品一覧"
+  data-note="アプリを開いて最初の画面。作品ごとの進み具合と完成見込みが一目で分かる。作品をクリックすると進捗ボードへ。">
+  <div class="window">
+    <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
+    <div class="shell">
+      <aside class="sidebar" data-nav="works"></aside>
+      <div class="main">
+        <header class="topbar">
+          <h1>作品一覧</h1>
+          <div class="timer-idle">⏱ 計測していません</div>
+        </header>
+        <div class="content">
+          <div class="works">
+            <div class="card work-card">
+              <div class="cover"><div class="thumb" data-thumb="3"></div></div>
+              <div class="grow">
+                <h3>夏の終わりの約束</h3>
+                <div class="muted" style="font-size:12px">16ページ · 3工程</div>
+                <div class="bar" style="margin-top:10px"><span style="width:46%;background:var(--accent)"></span></div>
+                <dl class="kv">
+                  <dt>進捗</dt><dd class="num">46%</dd>
+                  <dt>完成見込み</dt><dd><b>11/23</b> <span class="muted">（11/20〜11/27）</span></dd>
+                  <dt>締切</dt><dd>11/30 <span class="tag" style="background:var(--ok-soft);color:var(--ok)">余裕あり</span></dd>
+                </dl>
+              </div>
+            </div>
+            <div class="card work-card">
+              <div class="cover"><div class="thumb" data-thumb="1"></div></div>
+              <div class="grow">
+                <h3>冬コミ 新刊（仮）</h3>
+                <div class="muted" style="font-size:12px">24ページ · 4工程</div>
+                <div class="bar" style="margin-top:10px"><span style="width:8%;background:var(--accent)"></span></div>
+                <dl class="kv">
+                  <dt>進捗</dt><dd class="num">8%</dd>
+                  <dt>完成見込み</dt><dd><b>12/26</b> <span class="muted">（12/19〜1/04）</span></dd>
+                  <dt>締切</dt><dd>12/20 <span class="tag" style="background:var(--warn-soft);color:var(--warn)">遅れぎみ</span></dd>
+                </dl>
+              </div>
+            </div>
+            <div class="card work-card" style="opacity:.6">
+              <div class="cover"><div class="thumb" data-thumb="2"></div></div>
+              <div class="grow">
+                <h3>読み切り「雨宿り」</h3>
+                <div class="muted" style="font-size:12px">12ページ · 完成 9/14</div>
+                <div class="bar" style="margin-top:10px"><span style="width:100%;background:var(--ok)"></span></div>
+                <dl class="kv">
+                  <dt>合計</dt><dd class="num">41.5時間</dd>
+                  <dt>状態</dt><dd>完成済み（実績は予測に使われます）</dd>
+                </dl>
+              </div>
+            </div>
+            <div class="work-add">
+              <span class="plus">＋</span>
+              <b>作品を追加</b>
+              <span style="font-size:12px">CLIP STUDIO の漫画ファイル（.cmc）を選ぶ</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- 2. 進捗ボード -->
+<!-- ================================================================ -->
+<section class="screen" data-title="2. 進捗ボード"
+  data-note="メイン画面。行＝ページ、列＝工程。セルにマウスを乗せると ▶ が出て、クリックで計測開始。計測中のセルは赤枠。左のチェックで複数ページを選んでまとめてタグ付け。上部に今日のやること（スケジュール画面で選んだ案）を固定表示。">
+  <div class="window">
+    <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
+    <div class="shell">
+      <aside class="sidebar" data-nav="board"></aside>
+      <div class="main">
+        <header class="topbar">
+          <h1>進捗ボード<span class="sub">最終同期 13:22 · cmc から 16 ページ</span></h1>
+          <div class="timer-chip" data-chip></div>
+        </header>
+        <div class="content">
+          <div class="summary">
+            <div class="card">
+              <div class="section-title">工程ごとの進み具合</div>
+              <div class="stage-prog"><span>下書き</span><div class="bar"><span style="width:75%;background:var(--st1)"></span></div><span class="num muted">12/16</span></div>
+              <div class="stage-prog"><span>ペン入れ</span><div class="bar"><span style="width:38%;background:var(--st2)"></span></div><span class="num muted">5.6/16</span></div>
+              <div class="stage-prog"><span>トーン</span><div class="bar"><span style="width:19%;background:var(--st3)"></span></div><span class="num muted">3/16</span></div>
+            </div>
+            <div class="card">
+              <div class="section-title">完成見込み</div>
+              <div class="big">11/23<span style="font-size:14px;font-weight:400">（日）</span></div>
+              <div class="range">早ければ 11/20 ・ 遅ければ 11/27</div>
+              <div class="range">平日 3h ・ 土日 6h で計算</div>
+            </div>
+            <div class="card">
+              <div class="section-title">締切 11/30</div>
+              <div class="big">あと 38 日</div>
+              <div class="range"><span class="tag" style="background:var(--ok-soft);color:var(--ok)">余裕あり</span> 間に合う見込み 94%</div>
+            </div>
+          </div>
+
+          <div class="today-strip">
+            <div>
+              <div style="font-size:11px;color:var(--muted)">今日のやること</div>
+              <b>ペン入れの日</b>
+            </div>
+            <div class="gauge">
+              <div class="row" style="font-size:12px;justify-content:space-between"><span class="num"><b>1.9h</b> / 2.4h</span><span class="muted num">79%</span></div>
+              <div class="bar"><span style="width:79%;background:var(--accent)"></span></div>
+            </div>
+            <div class="row" style="flex-wrap:wrap;gap:6px">
+              <span class="task-chip done"><span class="sdot" style="background:var(--st2)">ペ</span>p4 ペン入れ</span>
+              <span class="task-chip now"><span class="sdot" style="background:var(--st2)">ペ</span>p5 ペン入れ · 計測中（ノルマまであと 0.5h）</span>
+            </div>
+            <span class="grow"></span>
+            <button class="btn small">案を選び直す</button>
+          </div>
+
+          <div class="toolbar">
+            <span class="seg"><span class="on">すべて</span><span>未完了だけ</span></span>
+            <button class="btn small">選んだ 2 ページにタグを付ける</button>
+            <button class="btn small ghost">⟳ cmc を読み直す</button>
+            <div class="legend">
+              <span><i style="border:1px dashed var(--faint)"></i>未着手</span>
+              <span><i style="background:#ece7e0"></i>作業中</span>
+              <span><i style="background:var(--st2)"></i>完了</span>
+              <span><i style="background:transparent;border:1px dashed #eee8e1"></i>前の工程待ち</span>
+            </div>
+          </div>
+
+          <div style="position:relative">
+            <table class="board" id="board">
+              <thead>
+                <tr>
+                  <th style="width:28px"></th>
+                  <th>ページ</th>
+                  <th style="width:190px"><span class="sdot" style="background:var(--st1)"></span>下書き</th>
+                  <th style="width:190px"><span class="sdot" style="background:var(--st2)"></span>ペン入れ</th>
+                  <th style="width:190px"><span class="sdot" style="background:var(--st3)"></span>トーン</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div style="height:180px"></div>
+
+            <!-- タグ編集のポップオーバー（p8 のタグ欄をクリックしたところ） -->
+            <div class="popover" id="tagPopover" style="left:100px;top:44px">
+              <div class="row" style="justify-content:space-between;margin-bottom:8px"><b>p8 のタグ</b><span class="muted" style="font-size:12px">クリックで付け外し</span></div>
+              <div class="group">
+                <h4>コマ数（どれか1つ）</h4>
+                <div class="opts"><span class="opt">コマ少 ×0.8</span><span class="opt">コマ普通 ×1.0</span><span class="opt on">コマ多 ×1.3</span></div>
+              </div>
+              <div class="group">
+                <h4>特徴</h4>
+                <div class="opts"><span class="opt on">資料必要 ×1.3</span><span class="opt">背景多め ×1.3</span><span class="opt">モブ多い ×1.2</span></div>
+              </div>
+              <div class="group" style="margin-bottom:0">
+                <h4>自動</h4>
+                <div class="opts"><span class="opt lock" title="cmc の設定から自動で付きます">見開き ×2.0 — CLIP STUDIO で見開きにすると自動で付きます</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- 3. ミニタイマー窓 -->
+<!-- ================================================================ -->
+<section class="screen" data-title="3. ミニタイマー窓"
+  data-note="CLIP STUDIO の上に常に表示される小窓。ドラッグで好きな位置へ、ダブルクリックで本体に戻る。右側は「小さく表示」にしたときの形。">
+  <div class="desktop">
+    <div class="csp">
+      <div class="bar1">CLIP STUDIO PAINT — page0009.clip</div>
+      <div class="body"><div class="tools"></div><div class="canvas"><div class="paper"></div></div><div class="panel"></div></div>
+    </div>
+
+    <div class="mini" style="left:330px;top:92px">
+      <div class="mtitle"><span>Otosazu · 夏の終わりの約束</span><span>📌 常に手前　⤡　✕</span></div>
+      <div class="mbody">
+        <div class="thumb" data-thumb="5" style="width:44px"></div>
+        <div class="grow">
+          <div style="font-size:12px"><b>p5</b> · <span class="stage-label"><i style="background:var(--st2)"></i>ペン入れ</span></div>
+          <div class="mtime num">00:42:13</div>
+          <div class="muted" style="font-size:11px">予測 1.5h ・ 残り約 0.8h</div>
+        </div>
+        <div class="mctrl">
+          <button class="icon-btn" title="一時停止"><svg viewBox="0 0 10 10"><rect x="1.5" y="1" width="2.5" height="8" fill="currentColor"/><rect x="6" y="1" width="2.5" height="8" fill="currentColor"/></svg></button>
+          <button class="icon-btn sec" title="止める"><svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill="currentColor"/></svg></button>
+        </div>
+      </div>
+      <div class="mfoot">
+        <div class="row" style="justify-content:space-between;margin-bottom:4px"><span>今日のノルマ</span><span class="num"><b>1.9h</b> / 2.4h</span></div>
+        <div class="bar"><span style="width:79%;background:var(--accent)"></span></div>
+        <div class="row" style="margin-top:8px;justify-content:space-between">
+          <span class="muted">今日のノルマまであと 0.5h</span>
+          <button class="btn small">別のタスクへ ▸</button>
+        </div>
+      </div>
+    </div>
+    <div class="callout" style="left:660px;top:110px;max-width:230px">
+      ⌨ <b>Ctrl+Alt+Space</b> でどこからでも一時停止 / 再開<br>
+      止めると「この工程は完了しましたか？」と聞く（ダイアログ参照）
+    </div>
+
+    <div class="mini compact" style="right:40px;top:300px">
+      <div class="mbody" style="padding:8px 12px">
+        <span class="timer-chip" style="padding:0;background:none;color:var(--text)"><span class="dot"></span></span>
+        <div class="grow"><div style="font-size:11px">p5 ペン入れ</div><div class="num" style="font-weight:700;font-size:18px">00:42:13</div></div>
+        <div class="mctrl"><button class="icon-btn" style="width:30px;height:30px"><svg viewBox="0 0 10 10"><rect x="1.5" y="1" width="2.5" height="8" fill="currentColor"/><rect x="6" y="1" width="2.5" height="8" fill="currentColor"/></svg></button></div>
+      </div>
+    </div>
+    <div class="callout" style="right:40px;top:378px">小さく表示（⤡）にしたとき</div>
+
+    <div class="mini" style="left:330px;top:420px">
+      <div class="mtitle"><span>Otosazu · 夏の終わりの約束</span><span>📌 常に手前　⤡　✕</span></div>
+      <div class="mbody">
+        <div class="thumb" data-thumb="6" style="width:44px"></div>
+        <div class="grow">
+          <div style="font-size:12px">次にやること</div>
+          <div style="font-size:16px;font-weight:700">p5 ペン入れ</div>
+          <div class="muted" style="font-size:11px">続きから ・ 残り約 1.2h（資料必要）</div>
+        </div>
+        <div class="mctrl"><button class="icon-btn" title="開始" style="width:44px;height:44px"><svg viewBox="0 0 10 10"><path d="M2 1 L9 5 L2 9 Z" fill="currentColor"/></svg></button></div>
+      </div>
+      <div class="mfoot"><div class="row" style="justify-content:space-between"><span class="muted">別のタスクを選ぶ ▾</span><span class="num">今日 1.2h / 2.4h</span></div></div>
+    </div>
+    <div class="callout" style="left:660px;top:440px;max-width:230px">止めているとき。「今日のやること」の次のタスクがすぐ始められる</div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- 4. 作業記録 -->
+<!-- ================================================================ -->
+<section class="screen" data-title="4. 作業記録"
+  data-note="止め忘れや付け忘れを直すための画面。行をクリックするとその場で編集。手で直した記録には「手修正」の印が付く（予測に使うかどうかの判断材料）。">
+  <div class="window">
+    <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
+    <div class="shell">
+      <aside class="sidebar" data-nav="records"></aside>
+      <div class="main">
+        <header class="topbar">
+          <h1>作業記録</h1>
+          <div class="timer-chip" data-chip></div>
+        </header>
+        <div class="content">
+          <div class="toolbar">
+            <select class="field"><option>すべてのページ</option></select>
+            <select class="field"><option>すべての工程</option></select>
+            <select class="field"><option>直近 2 週間</option></select>
+            <span class="grow"></span>
+            <button class="btn">＋ 記録を手で追加</button>
+          </div>
+
+          <div class="rec-day">
+            <h3><span>10/23（木）今日</span><span class="muted num">合計 1.9h</span></h3>
+            <table class="rec">
+              <tr><th style="width:200px">時間</th><th style="width:90px">ページ</th><th style="width:120px">工程</th><th style="width:80px">長さ</th><th></th><th style="width:90px"></th></tr>
+              <tr><td class="num">13:40 – <span class="tag sys">計測中</span></td><td>p5</td><td><span class="stage-label"><i style="background:var(--st2)"></i>ペン入れ</span></td><td class="num">0.7h</td><td></td><td></td></tr>
+              <tr class="editing">
+                <td><input class="field num" value="12:10" style="width:62px"> – <input class="field num" value="13:25" style="width:62px"></td>
+                <td><select class="field"><option>p4</option></select></td>
+                <td><select class="field"><option>ペン入れ</option></select></td>
+                <td class="num">1.25h</td>
+                <td><span class="edited">元の記録: 12:10 – 15:02（止め忘れ）</span></td>
+                <td><button class="btn small primary">保存</button></td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="rec-day">
+            <h3><span>10/22（水）</span><span class="muted num">合計 3.4h</span></h3>
+            <table class="rec">
+              <tr><th style="width:200px">時間</th><th style="width:90px">ページ</th><th style="width:120px">工程</th><th style="width:80px">長さ</th><th></th><th style="width:90px"></th></tr>
+              <tr><td class="num">21:05 – 22:20</td><td>p3</td><td><span class="stage-label"><i style="background:var(--st2)"></i>ペン入れ</span></td><td class="num">1.25h</td><td></td><td class="muted">✎ 🗑</td></tr>
+              <tr><td class="num">19:30 – 20:40</td><td>p2</td><td><span class="stage-label"><i style="background:var(--st2)"></i>ペン入れ</span></td><td class="num">1.17h</td><td><span class="edited">✎ 手修正</span></td><td class="muted">✎ 🗑</td></tr>
+              <tr><td class="num">18:20 – 19:20</td><td>p12</td><td><span class="stage-label"><i style="background:var(--st1)"></i>下書き</span></td><td class="num">1.0h</td><td></td><td class="muted">✎ 🗑</td></tr>
+            </table>
+          </div>
+
+          <div class="rec-day">
+            <h3><span>10/21（火）</span><span class="muted num">合計 2.8h</span></h3>
+            <table class="rec">
+              <tr><th style="width:200px">時間</th><th style="width:90px">ページ</th><th style="width:120px">工程</th><th style="width:80px">長さ</th><th></th><th style="width:90px"></th></tr>
+              <tr><td class="num">20:00 – 21:30</td><td>p11</td><td><span class="stage-label"><i style="background:var(--st1)"></i>下書き</span></td><td class="num">1.5h</td><td></td><td class="muted">✎ 🗑</td></tr>
+              <tr><td class="num">18:40 – 19:58</td><td>p3</td><td><span class="stage-label"><i style="background:var(--st3)"></i>トーン</span></td><td class="num">1.3h</td><td></td><td class="muted">✎ 🗑</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- 5A. スケジュール（完成日を見る） -->
+<!-- ================================================================ -->
+<section class="screen" data-title="5A. スケジュール：完成日"
+  data-note="「毎日○時間やったらいつ終わる？」左のスライダーを動かすと、右の完成日とグラフがその場で変わる。">
+  <div class="window">
+    <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
+    <div class="shell">
+      <aside class="sidebar" data-nav="schedule"></aside>
+      <div class="main">
+        <header class="topbar">
+          <h1>スケジュール</h1>
+          <span class="seg"><span class="on">完成日を見る</span><span>目標から逆算する</span></span>
+          <div class="timer-chip" data-chip></div>
+        </header>
+        <div class="content">
+          <div class="sched">
+            <div class="card">
+              <div class="section-title">1日に作業する時間</div>
+              <div id="weekdays"></div>
+              <div class="row" style="margin:10px 0 16px;font-size:12px"><span class="muted">1週間で</span><b class="num">27h</b><span class="grow"></span><button class="btn small ghost">全作品の既定に戻す</button></div>
+              <div class="section-title">休みの日</div>
+              <div class="row" style="flex-wrap:wrap;gap:6px">
+                <span class="tag">11/3（月・祝）</span><span class="tag">11/15（土）〜11/16（日）</span><span class="tag add">＋ 追加</span>
+              </div>
+            </div>
+            <div class="card">
+              <div class="section-title">完成見込み</div>
+              <div class="result3">
+                <div><div class="lbl">早ければ</div><div class="d num">11/20</div><div class="lbl">残り 58h</div></div>
+                <div class="main-r"><div class="lbl">おそらく</div><div class="d num">11/23（日）</div><div class="lbl">残り 66h</div></div>
+                <div><div class="lbl">遅ければ</div><div class="d num">11/27</div><div class="lbl">残り 77h</div></div>
+              </div>
+              <svg viewBox="0 0 620 230" style="width:100%;display:block">
+                <!-- 軸 -->
+                <g font-size="11" fill="#7a7169">
+                  <line x1="40" y1="200" x2="610" y2="200" stroke="#e2dcd3"/>
+                  <line x1="40" y1="20" x2="610" y2="20" stroke="#f0ebe4"/>
+                  <line x1="40" y1="110" x2="610" y2="110" stroke="#f0ebe4"/>
+                  <text x="34" y="24" text-anchor="end">100%</text><text x="34" y="114" text-anchor="end">50%</text><text x="34" y="204" text-anchor="end">0%</text>
+                  <text x="40" y="218">10/1</text><text x="170" y="218">10/15</text><text x="268" y="218">今日</text><text x="420" y="218">11/15</text><text x="560" y="218">11/30</text>
+                </g>
+                <!-- 予測の幅 -->
+                <path d="M282 117 L520 20 L566 20 L282 117 Z" fill="#c8553d" opacity=".10"/>
+                <path d="M282 117 L494 20 L520 20 Z" fill="#c8553d" opacity=".10"/>
+                <!-- 実績 -->
+                <polyline points="40,200 70,196 100,188 130,182 160,170 190,160 220,148 250,132 282,117" fill="none" stroke="#2b2723" stroke-width="2.5"/>
+                <!-- 予測（標準） -->
+                <line x1="282" y1="117" x2="520" y2="20" stroke="#c8553d" stroke-width="2.5" stroke-dasharray="6 5"/>
+                <circle cx="520" cy="20" r="5" fill="#c8553d"/>
+                <text x="520" y="40" font-size="12" fill="#c8553d" text-anchor="middle" font-weight="700">11/23</text>
+                <!-- 締切 -->
+                <line x1="566" y1="14" x2="566" y2="200" stroke="#4f8a5b" stroke-width="1.5"/>
+                <text x="560" y="190" font-size="11" fill="#4f8a5b" text-anchor="end">締切 11/30</text>
+                <!-- 今日 -->
+                <line x1="282" y1="14" x2="282" y2="200" stroke="#b3aaa1" stroke-dasharray="2 3"/>
+              </svg>
+              <div class="row muted" style="font-size:12px;gap:16px;margin:4px 0 12px">
+                <span>━ 実績</span><span style="color:var(--accent)">┅ 予測（帯は早ければ〜遅ければ）</span><span style="color:var(--ok)">│ 締切</span>
+              </div>
+              <div class="compare">
+                <span>📈</span>
+                <span class="grow">最近 4 週間の実際のペース（<b>週 19h</b>）で続けた場合</span>
+                <b class="num">12/02</b><span class="muted">ごろ</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- 5B. スケジュール（目標から逆算する） -->
+<!-- ================================================================ -->
+<section class="screen" data-title="5B. スケジュール：逆算と今日の案"
+  data-note="「11/30 に終わらせるには今日なにをする？」今日のノルマを満たす案を並べて、気分で選んでもらう。選んだ案は進捗ボードの上部とミニタイマーに出る。">
+  <div class="window">
+    <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
+    <div class="shell">
+      <aside class="sidebar" data-nav="schedule"></aside>
+      <div class="main">
+        <header class="topbar">
+          <h1>スケジュール</h1>
+          <span class="seg"><span>完成日を見る</span><span class="on">目標から逆算する</span></span>
+          <div class="timer-idle">⏱ 計測していません</div>
+        </header>
+        <div class="content">
+          <div class="quota">
+            <div class="card">
+              <div class="section-title">完成目標日</div>
+              <div class="row"><input class="field num" value="2026/11/30" style="width:130px"><span class="muted" style="font-size:12px;line-height:1.4">あと 38 日<br>うち休み 3 日</span></div>
+            </div>
+            <div class="card">
+              <div class="section-title">1日に必要な作業時間</div>
+              <div class="big num">2.0h<span style="font-size:13px;font-weight:400" class="muted">　余裕を見るなら 2.3h</span></div>
+            </div>
+            <div class="card">
+              <div class="section-title">今日のノルマ（遅れ 0.4h を上乗せ）</div>
+              <div class="row" style="justify-content:space-between"><span class="big num">2.4h</span><span class="muted">まだ始めていません</span></div>
+              <div class="bar"><span style="width:0%;background:var(--accent)"></span></div>
+            </div>
+          </div>
+
+          <div class="notice info"><span>💡</span><span>ペン入れが下書きに追いついてきました（下書き済みで未ペン入れは残り 2 ページ）。そろそろ下書きも進めると、後半の選択肢が広がります。</span></div>
+
+          <div class="row" style="margin-bottom:10px"><div class="section-title" style="margin:0">今日の進め方を選ぶ</div><span class="muted" style="font-size:12px">どれを選んでも完成日は変わりません</span></div>
+          <div class="plans" id="plans"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- 6. 統計 -->
+<!-- ================================================================ -->
+<section class="screen" data-title="6. 統計"
+  data-note="タグの倍率が実績とずれていないかを振り返る画面。黒い縦線＝最初に決めた倍率、赤い帯＝実績から推定した倍率。">
+  <div class="window">
+    <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
+    <div class="shell">
+      <aside class="sidebar" data-nav="stats"></aside>
+      <div class="main">
+        <header class="topbar">
+          <h1>統計<span class="sub">全作品の実績から（読み切り「雨宿り」を含む）</span></h1>
+          <div class="timer-chip" data-chip></div>
+        </header>
+        <div class="content">
+          <div class="stats">
+            <div class="card">
+              <div class="section-title">タグの倍率</div>
+              <table class="factor">
+                <tr><th>タグ</th><th>最初の倍率</th><th>実績からの推定</th><th style="width:180px"><span style="display:flex;justify-content:space-between;width:170px"><span>×0.5</span><span>×1</span><span>×2</span></span></th><th></th></tr>
+                <tbody id="factors"></tbody>
+              </table>
+              <p class="muted" style="font-size:12px;margin:10px 0 0">記録が少ないタグは、最初に決めた倍率に近い値になります。記録が増えるほど実績の値に寄っていきます。</p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:18px">
+              <div class="card">
+                <div class="section-title">1ページあたりの時間（タグの影響を除いた基準）</div>
+                <div class="stage-prog" style="grid-template-columns:64px 1fr 60px"><span>下書き</span><div class="bar" style="height:10px"><span style="width:52%;background:var(--st1)"></span></div><span class="num">1.0h</span></div>
+                <div class="stage-prog" style="grid-template-columns:64px 1fr 60px"><span>ペン入れ</span><div class="bar" style="height:10px"><span style="width:76%;background:var(--st2)"></span></div><span class="num">1.5h</span></div>
+                <div class="stage-prog" style="grid-template-columns:64px 1fr 60px"><span>トーン</span><div class="bar" style="height:10px"><span style="width:42%;background:var(--st3)"></span></div><span class="num">0.8h</span></div>
+              </div>
+              <div class="card">
+                <div class="section-title">日ごとの作業時間（直近 4 週間）</div>
+                <svg viewBox="0 0 400 150" style="width:100%;display:block" id="daily"></svg>
+                <div class="row muted" style="font-size:12px;gap:14px"><span style="color:var(--st1)">■ 下書き</span><span style="color:var(--st2)">■ ペン入れ</span><span style="color:var(--st3)">■ トーン</span><span class="grow"></span><span>平均 2.7h / 日</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- 7. 設定 -->
+<!-- ================================================================ -->
+<section class="screen" data-title="7. 設定"
+  data-note="工程とタグはここで自由に作る。左の「工程」「タグ」…で切り替え（モックでは工程とタグを並べて表示）。">
+  <div class="window">
+    <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
+    <div class="shell">
+      <aside class="sidebar" data-nav="settings"></aside>
+      <div class="main">
+        <header class="topbar">
+          <h1>設定</h1>
+          <div class="timer-idle">⏱ 計測していません</div>
+        </header>
+        <div class="content">
+          <div class="settings">
+            <div class="snav">
+              <span class="on">工程</span><span>タグ</span><span>作業時間・休み</span><span>タイマー</span><span>データ（バックアップ）</span>
+            </div>
+            <div>
+              <div class="row" style="margin-bottom:8px"><div class="section-title" style="margin:0">工程</div><span class="muted" style="font-size:12px">ドラッグで並べ替え。新しい作品はこの順番で始まります</span></div>
+              <div class="slist">
+                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:#9a7fb8"></span><input class="field" value="ネーム"><span class="muted" style="font-size:12px">目安 0.5h / ページ</span><button class="btn small">しまう</button></div>
+                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st1)"></span><input class="field" value="下書き"><span class="muted" style="font-size:12px">実績 1.0h / ページ</span><button class="btn small">しまう</button></div>
+                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st2)"></span><input class="field" value="ペン入れ"><span class="muted" style="font-size:12px">実績 1.5h / ページ</span><button class="btn small">しまう</button></div>
+                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st3)"></span><input class="field" value="トーン"><span class="muted" style="font-size:12px">実績 0.8h / ページ</span><button class="btn small">しまう</button></div>
+                <div class="card sitem archived"><span class="handle">⋮⋮</span><span class="swatch" style="background:#888"></span><input class="field" value="ベタ"><span class="muted" style="font-size:12px">しまってあります</span><button class="btn small">戻す</button></div>
+                <button class="btn" style="align-self:flex-start">＋ 工程を追加</button>
+              </div>
+              <p class="muted" style="font-size:12px">「しまう」と一覧から消えますが、過去の記録は残ります。実績がまだ無い工程は「目安」の時間で予測します。</p>
+
+              <div class="row" style="margin:22px 0 8px"><div class="section-title" style="margin:0">タグ</div><span class="muted" style="font-size:12px">倍率は最初の目安。記録が増えると実績に合わせて自動で調整されます</span></div>
+              <div class="card tgroup">
+                <div class="thead"><b>コマ数 <span class="tag">どれか1つ</span></b><button class="btn small ghost">グループを編集</button></div>
+                <span class="titem">コマ少<span class="fx">×0.8</span></span><span class="titem">コマ普通<span class="fx">×1.0</span></span><span class="titem">コマ多<span class="fx">×1.3</span></span><span class="tag add">＋ タグ</span>
+              </div>
+              <div class="card tgroup">
+                <div class="thead"><b>特徴 <span class="tag">いくつでも</span></b><button class="btn small ghost">グループを編集</button></div>
+                <span class="titem">資料必要<span class="fx">×1.3</span></span><span class="titem">背景多め<span class="fx">×1.3</span></span><span class="titem">モブ多い<span class="fx">×1.2</span></span><span class="tag add">＋ タグ</span>
+              </div>
+              <div class="card tgroup">
+                <div class="thead"><b>自動 <span class="tag sys">cmc に連動</span></b></div>
+                <span class="titem">見開き<span class="fx">×2.0</span></span>
+              </div>
+              <button class="btn">＋ グループを追加</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- 8. ダイアログ類 -->
+<!-- ================================================================ -->
+<section class="screen" data-title="8. ダイアログ・通知"
+  data-note="タイマーと cmc 同期まわりで出る確認。実際は1つずつ表示される（ここでは並べている）。右下は CLIP STUDIO での保存を検知したときの通知。">
+  <div class="window" style="position:relative">
+    <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
+    <div class="shell">
+      <aside class="sidebar" data-nav="board"></aside>
+      <div class="main">
+        <header class="topbar"><h1>進捗ボード</h1><div class="timer-chip" data-chip></div></header>
+        <div class="content"></div>
+      </div>
+    </div>
+    <div class="overlay" style="top:32px">
+      <div class="dialogs">
+        <div class="dialog">
+          <div class="dlabel">タイマーを止めたとき</div>
+          <h3>p5 のペン入れは完了しましたか？</h3>
+          <p>今回 <b class="num">1時間12分</b> ・ このタスクの合計 <b class="num">1.6h</b>（予測 1.5h）</p>
+          <div class="actions"><button class="btn">まだ途中</button><button class="btn primary">完了にする</button></div>
+        </div>
+        <div class="dialog">
+          <div class="dlabel">10 分間 PC の操作がなかったとき</div>
+          <h3>休憩していましたか？</h3>
+          <p>14:05 から操作がなかったので、計測を一時停止しました。</p>
+          <div class="choice on"><span class="radio"></span><span><b>休憩していた</b><br><span class="muted">14:05 以降は記録しない</span></span></div>
+          <div class="choice"><span class="radio"></span><span><b>作業していた</b>（資料を読んでいた など）<br><span class="muted">止まっていた 23 分も記録する</span></span></div>
+          <div class="actions"><button class="btn primary">再開する</button><button class="btn">止めたままにする</button></div>
+        </div>
+        <div class="dialog">
+          <div class="dlabel">cmc を読み直したら見開きになっていたとき</div>
+          <h3>p4 と p5 が見開きになりました</h3>
+          <p>消えたページ（page0007）の作業記録 <b>2.1h</b> とタグを、見開きページ（page0006）にまとめますか？</p>
+          <div class="row" style="gap:6px;margin-bottom:4px"><div class="thumb" data-thumb="6"></div><span>＋</span><div class="thumb" data-thumb="7"></div><span>→</span><div class="thumb spread" data-thumb="8"></div></div>
+          <div class="actions"><button class="btn">あとで決める</button><button class="btn primary">まとめる</button></div>
+        </div>
+        <div class="dialog">
+          <div class="dlabel">見開きが単ページに戻ったとき</div>
+          <h3>p4-5 の見開きが2ページに分かれました</h3>
+          <p>見開きのときの作業記録 <b>3.0h</b> をどう扱いますか？</p>
+          <div class="choice on"><span class="radio"></span><span><b>半分ずつ分ける</b>（p4 に 1.5h、p5 に 1.5h）</span></div>
+          <div class="choice"><span class="radio"></span><span><b>元のページ（p4）に残す</b></span></div>
+          <div class="actions"><button class="btn primary">決定</button></div>
+        </div>
+      </div>
+      <div class="toast">
+        <b>p8 が保存されました</b><br>
+        計測中は「p5 ペン入れ」です。p8 を作業していますか？
+        <div class="actions"><button class="btn small">いいえ</button><button class="btn small primary">p8 に切り替える</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+  // ===== サイドバー（全画面共通） =====
+  const icons = {
+    board: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M2.5 8h15M8 8v9M12.5 8v9"/></svg>',
+    schedule: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4" width="15" height="13" rx="2"/><path d="M2.5 8h15M6.5 2v4M13.5 2v4"/></svg>',
+    records: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10.5" r="6.5"/><path d="M10 7v4l2.5 1.5M8 2h4"/></svg>',
+    stats: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17h14M5.5 14V9M10 14V5M14.5 14v-3"/></svg>',
+    works: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 3h9l3 3v11H4z"/><path d="M7 9h6M7 12h6"/></svg>',
+    settings: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg>',
+  };
+  document.querySelectorAll(".sidebar").forEach((el) => {
+    const on = el.dataset.nav;
+    const item = (key, label) => `<div class="nav-item${on === key ? " on" : ""}">${icons[key]}${label}</div>`;
+    el.innerHTML = `
+      <div class="logo">Otosazu<small>原稿を落とさず描き上げる</small></div>
+      <div class="work-switch"><span class="label">作品</span><span class="name">夏の終わりの約束<span class="muted">▾</span></span></div>
+      ${item("board", "進捗ボード")}${item("schedule", "スケジュール")}${item("records", "作業記録")}${item("stats", "統計")}
+      <div class="nav-spacer"></div>
+      ${item("works", "作品一覧")}${item("settings", "設定")}`;
+  });
+
+  // ===== 計測中チップ（右上） =====
+  document.querySelectorAll("[data-chip]").forEach((el) => {
+    el.innerHTML = `<span class="dot"></span><span class="what">p5 · ペン入れ</span><span class="time num">00:42:13</span>
+      <button class="icon-btn" title="一時停止"><svg viewBox="0 0 10 10"><rect x="1.5" y="1" width="2.5" height="8" fill="currentColor"/><rect x="6" y="1" width="2.5" height="8" fill="currentColor"/></svg></button>
+      <button class="icon-btn" title="止める"><svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill="currentColor"/></svg></button>
+      <button class="icon-btn" title="ミニタイマーにする"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1" y="1" width="8" height="8" rx="1"/><rect x="5" y="5" width="3" height="3" fill="currentColor"/></svg></button>`;
+  });
+
+  // ===== サムネイル（コマ割りっぽい線画） =====
+  const layouts = [
+    [[0,0,1,.3],[0,.3,.55,.65],[.55,.3,1,.65],[0,.65,1,1]],
+    [[0,0,.6,.45],[.6,0,1,.45],[0,.45,1,1]],
+    [[0,0,1,.5],[0,.5,.4,1],[.4,.5,1,.75],[.4,.75,1,1]],
+    [[0,0,.5,.33],[.5,0,1,.33],[0,.33,1,.66],[0,.66,.5,1],[.5,.66,1,1]],
+    [[0,0,1,1]],
+    [[0,0,1,.25],[0,.25,1,.5],[0,.5,.5,1],[.5,.5,1,1]],
+  ];
+  document.querySelectorAll("[data-thumb]").forEach((el) => {
+    const spread = el.classList.contains("spread");
+    const w = spread ? 200 : 100, h = 141;
+    const lay = layouts[(+el.dataset.thumb) % layouts.length];
+    const m = 8, g = 3;
+    const rects = lay.map(([x1, y1, x2, y2]) => {
+      const x = m + x1 * (w - 2 * m) + g / 2, y = m + y1 * (h - 2 * m) + g / 2;
+      return `<rect x="${x}" y="${y}" width="${(x2 - x1) * (w - 2 * m) - g}" height="${(y2 - y1) * (h - 2 * m) - g}" fill="none" stroke="#3a3530" stroke-width="2"/>`;
+    }).join("");
+    el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block">${rects}</svg>`;
+  });
+
+  // ===== 進捗ボードの行 =====
+  // 状態: d=完了 w=作業中 t=未着手 l=前の工程待ち r=計測中
+  const pages = [
+    ["p1", [], ["d1.1", "d1.6", "d0.9"]],
+    ["p2", ["コマ少"], ["d0.8", "d1.2", "d0.7"]],
+    ["p3", ["背景多め"], ["d1.3", "d1.9", "d1.1"]],
+    ["p4", [], ["d1.0", "d1.4", "t0.8"]],
+    ["p5", ["資料必要"], ["d1.2", "r0.7/1.5", "l"]],
+    ["p6-7", ["見開き", "コマ多"], ["d2.6", "t2.9", "l"], true],
+    ["p8", ["コマ多", "資料必要"], ["w0.4/1.6", "l", "l"]],
+    ["p9", [], ["t1.0", "l", "l"]],
+    ["p10", ["モブ多い"], ["t1.2", "l", "l"]],
+  ];
+  const stageColor = ["var(--st1)", "var(--st2)", "var(--st3)"];
+  const tb = document.querySelector("#board tbody");
+  pages.forEach(([no, tags, cells, spread], i) => {
+    const tagHtml = tags.map((t) => `<span class="tag${t === "見開き" ? " sys" : ""}">${t}</span>`).join("") + `<span class="tag add">＋</span>`;
+    const cellHtml = cells.map((c, s) => {
+      const k = c[0], v = c.slice(1);
+      const play = `<button class="play"><svg viewBox="0 0 10 10"><path d="M2 1 L9 5 L2 9 Z" fill="currentColor"/></svg></button>`;
+      if (k === "d") return `<td><div class="cell done" style="background:${stageColor[s]}"><div class="line"><span>✓ 完了</span><span class="num">${v}h</span></div></div></td>`;
+      if (k === "l") return `<td><div class="cell locked">前の工程待ち</div></td>`;
+      if (k === "t") return `<td><div class="cell todo${i === 7 ? " hover" : ""}"><div class="line"><span>未着手</span><span class="num">予測 ${v}h</span></div>${play}</div></td>`;
+      const [done, pred] = v.split("/");
+      const pct = Math.min(100, (done / pred) * 100);
+      const run = k === "r";
+      return `<td><div class="cell doing${run ? " running" : ""}"><div class="line"><span class="num"><b>${done}h</b> / ${pred}h</span><span>${run ? "計測中" : "途中"}</span></div><div class="bar"><span style="width:${pct}%;background:${stageColor[s]}"></span></div>${run ? `<button class="play"><svg viewBox="0 0 10 10"><rect x="1.5" y="1" width="2.5" height="8" fill="currentColor"/><rect x="6" y="1" width="2.5" height="8" fill="currentColor"/></svg></button>` : play}</div></td>`;
+    }).join("");
+    const sel = i === 7 || i === 8;
+    tb.insertAdjacentHTML("beforeend", `<tr class="${sel ? "selected" : ""}">
+      <td><input type="checkbox" ${sel ? "checked" : ""}></td>
+      <td><div class="pcell"><div class="thumb${spread ? " spread" : ""}" data-thumb2="${i}"></div><span class="pno">${no}</span><div class="tags">${tagHtml}</div></div></td>
+      ${cellHtml}</tr>`);
+  });
+  document.querySelectorAll("[data-thumb2]").forEach((el) => { el.dataset.thumb = el.dataset.thumb2; });
+  // タグ編集のポップオーバーを p8 の行のタグ欄にくっつける
+  const p8 = tb.rows[6].cells[1];
+  p8.style.position = "relative";
+  p8.appendChild(document.getElementById("tagPopover"));
+  // 追加したサムネイルにも線画を入れる
+  document.querySelectorAll("#board [data-thumb]").forEach((el) => {
+    const spread = el.classList.contains("spread");
+    const w = spread ? 200 : 100, h = 141, m = 8, g = 3;
+    const lay = layouts[(+el.dataset.thumb) % layouts.length];
+    el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block">${lay.map(([x1, y1, x2, y2]) =>
+      `<rect x="${m + x1 * (w - 2 * m) + g / 2}" y="${m + y1 * (h - 2 * m) + g / 2}" width="${(x2 - x1) * (w - 2 * m) - g}" height="${(y2 - y1) * (h - 2 * m) - g}" fill="none" stroke="#3a3530" stroke-width="3"/>`).join("")}</svg>`;
+  });
+
+  // ===== 曜日ごとの作業時間 =====
+  const wd = [["月", 3], ["火", 3], ["水", 3], ["木", 3], ["金", 3], ["土", 6], ["日", 6]];
+  document.getElementById("weekdays").innerHTML = wd.map(([d, h]) =>
+    `<div class="wd"><b>${d}</b><input type="range" min="0" max="10" step="0.5" value="${h}"><span class="num">${h}h</span></div>`).join("");
+
+  // ===== 今日の案 =====
+  const S = { 下書き: "var(--st1)", ペン入れ: "var(--st2)", トーン: "var(--st3)" };
+  const plans = [
+    ["おすすめ", "工程ごとに進める方針どおり", [["p4", "ペン入れ", "1.2h", "続き"], ["p5", "ペン入れ", "1.2h", "途中まで"]]],
+    ["下書きの日", "", [["p8", "下書き", "1.2h", "続き"], ["p9", "下書き", "1.0h", ""], ["p10", "下書き", "0.2h", "途中まで"]]],
+    ["ペン入れの日", "", [["p4", "ペン入れ", "1.2h", "続き"], ["p5", "ペン入れ", "1.2h", "途中まで"]], true],
+    ["トーンの日", "", [["p1", "トーン", "…", "着手できるページなし"]], false, true],
+    ["混ぜる", "残りの多い工程を多めに", [["p4", "ペン入れ", "1.2h", "続き"], ["p8", "下書き", "1.2h", "続き"]]],
+  ];
+  document.getElementById("plans").innerHTML = plans.map(([name, sub, steps, on, disabled]) => {
+    const total = {};
+    steps.forEach(([, s, h]) => (total[s] = (total[s] || 0) + (parseFloat(h) || 0)));
+    const sum = Object.values(total).reduce((a, b) => a + b, 0) || 1;
+    const mix = Object.entries(total).map(([s, h]) => `<span style="width:${(h / sum) * 100}%;background:${S[s]}"></span>`).join("");
+    const body = disabled
+      ? `<div class="muted" style="font-size:12px">ペン入れが済んだページがまだ無いため、今日は選べません</div>`
+      : `<div class="steps">${steps.map(([p, s, h, note]) => `<div class="step"><i style="background:${S[s]}"></i><b>${p}</b><span>${s} <span class="muted">${note}</span></span><span class="num">${h}</span></div>`).join("")}</div><div class="mixbar">${mix}</div>`;
+    return `<div class="card plan${on ? " on" : ""}" style="${disabled ? "opacity:.5;cursor:default" : ""}">
+      <h4><span>${name}${sub ? ` <span class="muted" style="font-weight:400;font-size:12px">${sub}</span>` : ""}</span>${on ? '<span class="tag sys">選択中</span>' : ""}</h4>${body}</div>`;
+  }).join("") + `<div class="card plan" style="border-style:dashed;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px">
+      <b>自分で選ぶ</b><span class="muted" style="font-size:12px;text-align:center">着手できるタスクの一覧から選ぶ<br>選ぶたびにノルマのゲージが埋まる</span></div>`;
+
+  // ===== タグ倍率 =====
+  const fx = [
+    ["見開き", 2.0, 1.85, 6, "高"], ["コマ多", 1.3, 1.42, 14, "高"], ["資料必要", 1.3, 1.55, 9, "中"],
+    ["背景多め", 1.3, 1.22, 7, "中"], ["モブ多い", 1.2, 1.18, 2, "低"], ["コマ少", 0.8, 0.86, 5, "中"],
+  ];
+  const pos = (v) => 85 + Math.log2(v) * 85; // ×0.5〜×2 を 0〜170px に対数で
+  document.getElementById("factors").innerHTML = fx.map(([t, ini, act, n, c]) => {
+    const lo = pos(act * 0.9), hi = pos(act * 1.1);
+    return `<tr><td><span class="tag${t === "見開き" ? " sys" : ""}">${t}</span></td><td class="num">×${ini.toFixed(1)}</td>
+      <td class="num"><b>×${act.toFixed(2)}</b> <span class="conf">${n}件・信頼度 ${c}</span></td>
+      <td><div class="fbar"><span class="axis"></span><span class="act" style="left:${lo}px;width:${hi - lo}px"></span><span class="ini" style="left:${pos(ini) - 1}px"></span></div></td>
+      <td>${Math.abs(act - ini) / ini > 0.12 ? '<button class="btn small">倍率を合わせる</button>' : ""}</td></tr>`;
+  }).join("");
+
+  // ===== 日ごとの作業時間（積み上げ棒） =====
+  let bars = "";
+  for (let i = 0; i < 28; i++) {
+    const wk = (i % 7) >= 5;
+    const tot = i === 9 || i === 22 ? 0 : (wk ? 4 + (i % 3) : 1.5 + ((i * 7) % 5) * 0.4);
+    const parts = [tot * (i < 14 ? 0.6 : 0.25), tot * (i < 14 ? 0.3 : 0.5), tot * (i < 14 ? 0.1 : 0.25)];
+    let y = 130;
+    ["#5b7fb8", "#c8553d", "#4f8a5b"].forEach((col, k) => {
+      const h = parts[k] * 18;
+      y -= h;
+      bars += `<rect x="${8 + i * 14}" y="${y}" width="10" height="${h}" fill="${col}"/>`;
+    });
+  }
+  document.getElementById("daily").innerHTML =
+    `<line x1="0" y1="130" x2="400" y2="130" stroke="#e2dcd3"/><line x1="0" y1="${130 - 2.7 * 18}" x2="400" y2="${130 - 2.7 * 18}" stroke="#7a7169" stroke-dasharray="3 3"/>` +
+    bars + `<text x="8" y="146" font-size="10" fill="#7a7169">9/26</text><text x="370" y="146" font-size="10" fill="#7a7169">今日</text>`;
+
+  // ===== モックアップの画面切り替え =====
+  const screens = [...document.querySelectorAll(".screen")];
+  const nav = document.getElementById("mockNav");
+  const note = document.getElementById("mockNote");
+  function show(i) {
+    screens.forEach((s, k) => s.classList.toggle("on", k === i));
+    nav.querySelectorAll("button").forEach((b, k) => b.classList.toggle("on", k === i));
+    note.textContent = screens[i].dataset.note;
+    try { localStorage.setItem("otosazu-mock", i); } catch (e) {}
+  }
+  screens.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.textContent = s.dataset.title;
+    b.onclick = () => show(i);
+    nav.appendChild(b);
+  });
+  let start = 1;
+  try { start = +(new URLSearchParams(location.search).get("s") ?? localStorage.getItem("otosazu-mock") ?? 1); } catch (e) {}
+  show(Math.min(Math.max(start, 0), screens.length - 1));
+  // ?y=数値 で画面内をスクロールした状態にする（スクリーンショット用）
+  const y = new URLSearchParams(location.search).get("y");
+  if (y) document.querySelector(".screen.on .content")?.scrollTo(0, +y);
+</script>
+</body>
+</html>
