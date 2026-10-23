@@ -1,119 +1,137 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { api, WorkSummary } from "./api";
+import { AppProvider, useApp } from "./app-context";
+import { Dialog } from "./components/Dialog";
+import { Sidebar } from "./components/Sidebar";
+import { TimerChip } from "./components/TimerChip";
+import { duration } from "./format";
+import { BoardScreen } from "./screens/BoardScreen";
+import { RecordsScreen } from "./screens/RecordsScreen";
+import { SettingsScreen } from "./screens/SettingsScreen";
+import { WorksScreen } from "./screens/WorksScreen";
 import "./App.css";
 
-// Rust 側の cmc::Comic / cmc::Page に対応
-type Page = {
-  fileName: string;
-  number: number;
-  span: number;
-  memo: string;
-};
+export type Screen = "works" | "board" | "records" | "settings";
 
-type Comic = {
-  title: string;
-  pages: Page[];
-};
+const WORK_KEY = "otosazu.workId";
 
-function pageLabel(page: Page): string {
-  return page.span === 2 ? `p${page.number}-${page.number + 1}` : `p${page.number}`;
+function loadWorkId(): number | null {
+  try {
+    const v = Number(localStorage.getItem(WORK_KEY));
+    return v > 0 ? v : null;
+  } catch {
+    return null;
+  }
 }
 
-function PageCard({ cmcPath, page }: { cmcPath: string; page: Page }) {
-  const [thumbnail, setThumbnail] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+function Shell() {
+  const app = useApp();
+  const [works, setWorks] = useState<WorkSummary[]>([]);
+  const [workId, setWorkIdState] = useState<number | null>(loadWorkId);
+  const [screen, setScreen] = useState<Screen>(workId ? "board" : "works");
+
+  const setWorkId = (id: number | null) => {
+    setWorkIdState(id);
+    try {
+      if (id) localStorage.setItem(WORK_KEY, String(id));
+      else localStorage.removeItem(WORK_KEY);
+    } catch {
+      // 次回起動時に作品一覧から始まるだけなので無視する
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
-    invoke<string>("load_thumbnail", { cmcPath, fileName: page.fileName })
-      .then((url) => !cancelled && setThumbnail(url))
-      .catch(() => !cancelled && setFailed(true));
-    return () => {
-      cancelled = true;
-    };
-  }, [cmcPath, page.fileName]);
+    api.listWorks().then(setWorks).catch(app.showError);
+  }, [app.version, app.showError]);
 
-  return (
-    <li className={`page-card${page.span === 2 ? " spread" : ""}`}>
-      <div className="thumb">
-        {thumbnail ? (
-          <img src={thumbnail} alt={pageLabel(page)} />
-        ) : (
-          <span className="thumb-placeholder">{failed ? "読み込めませんでした" : "読み込み中…"}</span>
-        )}
-      </div>
-      <div className="page-meta">
-        <span className="page-number">{pageLabel(page)}</span>
-        {page.span === 2 && <span className="tag">見開き</span>}
-      </div>
-      <div className="page-file">{page.fileName}</div>
-    </li>
-  );
-}
-
-function App() {
-  const [cmcPath, setCmcPath] = useState<string | null>(null);
-  const [comic, setComic] = useState<Comic | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function openComic() {
-    const selected = await open({
-      title: "漫画ファイルを選ぶ",
-      multiple: false,
-      directory: false,
-      filters: [{ name: "CLIP STUDIO 漫画ファイル", extensions: ["cmc"] }],
-    });
-    if (typeof selected !== "string") return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      setComic(await invoke<Comic>("load_comic", { cmcPath: selected }));
-      setCmcPath(selected);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
+  // 選んでいた作品が消えていたら作品一覧に戻す
+  const work = works.find((w) => w.id === workId) ?? null;
+  useEffect(() => {
+    if (works.length > 0 && workId && !work) {
+      setWorkId(null);
+      setScreen("works");
     }
-  }
+  }, [works, workId, work]);
 
-  const pageCount = comic?.pages.reduce((sum, p) => sum + p.span, 0) ?? 0;
+  const openWork = (id: number, to: Screen = "board") => {
+    setWorkId(id);
+    setScreen(to);
+  };
+
+  const needsWork = (screen === "board" || screen === "records") && !work;
 
   return (
-    <main className="app">
-      <header className="app-header">
-        <h1 className="logo">Otosazu</h1>
-        <button className="primary" onClick={openComic} disabled={loading}>
-          {loading ? "読み込み中…" : "漫画ファイル（.cmc）を開く"}
-        </button>
-      </header>
+    <div className="shell">
+      <Sidebar
+        works={works}
+        work={work}
+        screen={screen}
+        onScreen={setScreen}
+        onWork={(id) => openWork(id, screen === "records" ? "records" : "board")}
+      />
+      <div className="main">
+        <header className="topbar">
+          <h1>{TITLES[screen]}</h1>
+          <TimerChip onOpenWork={(id) => openWork(id)} />
+        </header>
+        <div className="content">
+          {app.error && (
+            <div className="error" role="alert">
+              <span className="grow">{app.error}</span>
+              <button className="btn small ghost" onClick={app.clearError}>
+                閉じる
+              </button>
+            </div>
+          )}
+          {screen === "works" || needsWork ? (
+            <WorksScreen works={works} onOpen={openWork} />
+          ) : screen === "board" && work ? (
+            <BoardScreen key={work.id} workId={work.id} />
+          ) : screen === "records" && work ? (
+            <RecordsScreen key={work.id} workId={work.id} />
+          ) : (
+            <SettingsScreen />
+          )}
+        </div>
+      </div>
 
-      {error && <p className="error">{error}</p>}
-
-      {comic && cmcPath ? (
-        <section>
-          <div className="comic-heading">
-            <h2>{comic.title}</h2>
-            <span className="comic-count">全 {pageCount} ページ</span>
-          </div>
-          <p className="comic-path">{cmcPath}</p>
-          <ul className="page-grid">
-            {comic.pages.map((page) => (
-              <PageCard key={`${cmcPath}/${page.fileName}`} cmcPath={cmcPath} page={page} />
-            ))}
-          </ul>
-        </section>
-      ) : (
-        !error && (
-          <p className="empty">
-            CLIP STUDIO PAINT で作った漫画ファイル（.cmc）を開くと、ページの一覧が表示されます。
+      {app.stopped && (
+        <Dialog
+          label="タイマーを止めました"
+          title={`${app.stopped.pageLabel} の${app.stopped.stageName}は完了しましたか？`}
+          onClose={() => app.answerStopped(false)}
+          actions={
+            <>
+              <button className="btn" onClick={() => app.answerStopped(false)}>
+                まだ途中
+              </button>
+              <button className="btn primary" autoFocus onClick={() => app.answerStopped(true)}>
+                完了にする
+              </button>
+            </>
+          }
+        >
+          <p>
+            今回 <b className="num">{duration(app.stopped.durationMs)}</b> ・ このタスクの合計{" "}
+            <b className="num">{duration(app.stopped.totalMs)}</b>
           </p>
-        )
+        </Dialog>
       )}
-    </main>
+    </div>
   );
 }
 
-export default App;
+const TITLES: Record<Screen, string> = {
+  works: "作品一覧",
+  board: "進捗ボード",
+  records: "作業記録",
+  settings: "設定",
+};
+
+export default function App() {
+  return (
+    <AppProvider>
+      <Shell />
+    </AppProvider>
+  );
+}
