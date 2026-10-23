@@ -8,6 +8,11 @@ export function hours(ms: number): string {
   return `${(ms / HOUR).toFixed(1)}h`;
 }
 
+/** 倍率の表記（1 → 1.0、1.25 → 1.25） */
+export function factor(f: number): string {
+  return Number.isInteger(f * 10) ? f.toFixed(1) : String(f);
+}
+
 /** 00:42:13 のようなタイマー表記 */
 export function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

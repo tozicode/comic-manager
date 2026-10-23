@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, WorkSummary } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
+import { useForecast } from "../forecast";
 import { dayLabel, hours } from "../format";
 
 type Props = { works: WorkSummary[]; onOpen: (workId: number) => void };
@@ -79,6 +80,7 @@ export function WorksScreen({ works, onOpen }: Props) {
                 <dd className="num">{Math.round(w.progress * 100)}%</dd>
                 <dt>作業時間</dt>
                 <dd className="num">{hours(w.totalMs)}</dd>
+                <WorkOutlook workId={w.id} />
                 <dt>最後の作業</dt>
                 <dd>{w.lastWorkedAt ? dayLabel(new Date(w.lastWorkedAt)) : "まだありません"}</dd>
               </dl>
@@ -116,6 +118,48 @@ export function WorksScreen({ works, onOpen }: Props) {
             CLIP STUDIO の漫画ファイルそのものは消えません。
           </p>
         </Dialog>
+      )}
+    </>
+  );
+}
+
+const STATUS = {
+  ok: { label: "余裕あり", cls: "ok" },
+  tight: { label: "ギリギリ", cls: "warn" },
+  late: { label: "遅れぎみ", cls: "late" },
+};
+
+/** 完成見込みと締切の状況（作品カードの中に出す） */
+function WorkOutlook({ workId }: { workId: number }) {
+  const f = useForecast(workId);
+  if (!f) return null;
+  if (f.prediction.remainingMs === 0) {
+    return (
+      <>
+        <dt>状態</dt>
+        <dd>完成済み（実績は次の作品の予測に使われます）</dd>
+      </>
+    );
+  }
+  return (
+    <>
+      <dt>完成見込み</dt>
+      <dd>
+        {f.finish.mid ? <b>{dayLabel(f.finish.mid)}</b> : "—"}
+        {f.finish.low && f.finish.high && (
+          <span className="muted">
+            {" "}
+            （{dayLabel(f.finish.low)}〜{dayLabel(f.finish.high)}）
+          </span>
+        )}
+      </dd>
+      {f.deadline && (
+        <>
+          <dt>締切</dt>
+          <dd>
+            {dayLabel(f.deadline.date)} <span className={`tag status ${STATUS[f.deadline.status].cls}`}>{STATUS[f.deadline.status].label}</span>
+          </dd>
+        </>
       )}
     </>
   );

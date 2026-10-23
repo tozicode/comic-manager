@@ -1,21 +1,28 @@
 import { useEffect, useState } from "react";
-import { api, Board, BoardPage, StageRef } from "../api";
+import { api, BoardPage, StageRef, TagGroup } from "../api";
 import { useApp } from "../app-context";
+import type { Screen } from "../App";
 import { Dialog } from "../components/Dialog";
+import { TagPopover } from "../components/TagPopover";
 import { Thumb } from "../components/Thumb";
-import { clock, hours, time } from "../format";
+import { Forecast, loadChosenPlan, useForecast } from "../forecast";
+import { clock, dayLabel, hours, time } from "../format";
 
 type Filter = "all" | "open";
 
 /** セルの状態。locked = 前の工程が終わっていない */
 type CellState = "done" | "running" | "doing" | "todo" | "locked";
 
-export function BoardScreen({ workId }: { workId: number }) {
+export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate: (s: Screen) => void }) {
   const app = useApp();
-  const [board, setBoard] = useState<Board | null>(null);
+  const forecast = useForecast(workId);
+  const [tags, setTags] = useState<TagGroup[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ page: BoardPage; stage: StageRef } | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  /** タグを編集しているページ（"bulk" ならチェックしたページをまとめて） */
+  const [tagging, setTagging] = useState<number | "bulk" | null>(null);
 
   // 作品を開いたときに cmc を読み直す
   useEffect(() => {
@@ -24,8 +31,8 @@ export function BoardScreen({ workId }: { workId: number }) {
   }, [workId]);
 
   useEffect(() => {
-    api.getBoard(workId).then(setBoard).catch(app.showError);
-  }, [workId, app.version, app.showError]);
+    api.listTags().then(setTags).catch(app.showError);
+  }, [app.version, app.showError]);
 
   const sync = async (manual: boolean) => {
     try {
@@ -40,21 +47,23 @@ export function BoardScreen({ workId }: { workId: number }) {
     }
   };
 
-  const setDone = async (page: BoardPage, stage: StageRef, done: boolean) => {
+  const run = async (f: () => Promise<unknown>) => {
     try {
-      await api.setTaskDone(page.id, stage.id, done);
+      await f();
       app.refresh();
     } catch (e) {
       app.showError(e);
     }
   };
 
-  if (!board) return <p className="muted">読み込み中…</p>;
+  if (!forecast) return <p className="muted">読み込み中…</p>;
+  const { board } = forecast;
 
   const pages = board.pages.filter((p) => !p.missing);
   const missing = board.pages.filter((p) => p.missing);
   const pageCount = pages.reduce((n, p) => n + p.span, 0);
-  const totalMs = board.pages.reduce((n, p) => n + p.cells.reduce((m, c) => m + c.totalMs, 0), 0);
+  const allTags = tags.flatMap((g) => g.tags);
+  const tagName = (id: number) => allTags.find((t) => t.id === id);
 
   const cellState = (page: BoardPage, i: number): CellState => {
     const cell = page.cells[i];
@@ -65,6 +74,14 @@ export function BoardScreen({ workId }: { workId: number }) {
   };
 
   const shown = filter === "open" ? pages.filter((p) => p.cells.some((c) => !c.done)) : pages;
+  const allChecked = shown.length > 0 && shown.every((p) => selected.includes(p.id));
+
+  // まとめて付けるときは、選んだ全ページに付いているタグを「付いている」とみなす
+  const taggingPages = tagging === "bulk" ? selected : tagging ? [tagging] : [];
+  const activeTags = allTags
+    .map((t) => t.id)
+    .filter((id) => taggingPages.length > 0 && taggingPages.every((pid) => board.pages.find((p) => p.id === pid)?.tags.includes(id)));
+  const toggleTag = (tagId: number, on: boolean) => run(() => api.setPageTag(taggingPages, tagId, on));
 
   return (
     <>
@@ -86,7 +103,7 @@ export function BoardScreen({ workId }: { workId: number }) {
         </div>
       )}
 
-      <div className="summary">
+      <div className="summary three">
         <div className="card">
           <div className="section-title">工程ごとの進み具合</div>
           {board.stages.map((s, i) => {
@@ -104,12 +121,11 @@ export function BoardScreen({ workId }: { workId: number }) {
             );
           })}
         </div>
-        <div className="card">
-          <div className="section-title">これまでの作業時間</div>
-          <div className="big num">{hours(totalMs)}</div>
-          <div className="range">完成見込みは、次のバージョンで表示します</div>
-        </div>
+        <FinishCard forecast={forecast} />
+        <DeadlineCard forecast={forecast} onSet={() => onNavigate("schedule")} />
       </div>
+
+      <TodayStrip forecast={forecast} onChoose={() => onNavigate("schedule")} />
 
       <div className="toolbar">
         <span className="seg">
@@ -120,6 +136,20 @@ export function BoardScreen({ workId }: { workId: number }) {
             未完了だけ
           </button>
         </span>
+        <div style={{ position: "relative" }}>
+          <button className="btn small" disabled={selected.length === 0} onClick={() => setTagging("bulk")}>
+            {selected.length > 0 ? `選んだ ${selected.length} ページにタグを付ける` : "ページを選ぶとまとめてタグを付けられます"}
+          </button>
+          {tagging === "bulk" && (
+            <TagPopover
+              title={`${selected.length} ページのタグ`}
+              groups={tags}
+              active={activeTags}
+              onToggle={toggleTag}
+              onClose={() => setTagging(null)}
+            />
+          )}
+        </div>
         <div className="legend">
           <span>
             <i style={{ border: "1px dashed var(--faint)" }} />
@@ -143,9 +173,17 @@ export function BoardScreen({ workId }: { workId: number }) {
       <table className="board">
         <thead>
           <tr>
+            <th style={{ width: 28 }}>
+              <input
+                type="checkbox"
+                title="すべて選ぶ"
+                checked={allChecked}
+                onChange={() => setSelected(allChecked ? [] : shown.map((p) => p.id))}
+              />
+            </th>
             <th>ページ</th>
             {board.stages.map((s) => (
-              <th key={s.id} style={{ width: 190 }}>
+              <th key={s.id} style={{ width: 180 }}>
                 <span className="sdot" style={{ background: s.color }} />
                 {s.name}
               </th>
@@ -154,13 +192,45 @@ export function BoardScreen({ workId }: { workId: number }) {
         </thead>
         <tbody>
           {shown.map((page) => (
-            <tr key={page.id}>
+            <tr key={page.id} className={selected.includes(page.id) ? "selected" : ""}>
               <td>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(page.id)}
+                  onChange={() =>
+                    setSelected((s) => (s.includes(page.id) ? s.filter((x) => x !== page.id) : [...s, page.id]))
+                  }
+                />
+              </td>
+              <td style={{ position: "relative" }}>
                 <div className="pcell">
                   <Thumb cmcPath={board.work.cmcPath} fileName={page.fileName} spread={page.span === 2} />
                   <span className="pno">{page.label}</span>
-                  {page.span === 2 && <span className="tag sys">見開き</span>}
+                  <div className="tags">
+                    {page.tags.map((id) => {
+                      const t = tagName(id);
+                      return (
+                        t && (
+                          <span key={id} className={`tag${t.system ? " sys" : ""}`}>
+                            {t.name}
+                          </span>
+                        )
+                      );
+                    })}
+                    <button className="tag add" title="タグを付ける" onClick={() => setTagging(page.id)}>
+                      ＋
+                    </button>
+                  </div>
                 </div>
+                {tagging === page.id && (
+                  <TagPopover
+                    title={`${page.label} のタグ`}
+                    groups={tags}
+                    active={page.tags}
+                    onToggle={toggleTag}
+                    onClose={() => setTagging(null)}
+                  />
+                )}
               </td>
               {board.stages.map((stage, i) => (
                 <td key={stage.id}>
@@ -168,10 +238,11 @@ export function BoardScreen({ workId }: { workId: number }) {
                     state={cellState(page, i)}
                     stage={stage}
                     totalMs={page.cells[i].totalMs}
+                    predictedMs={forecast.task(page.id, stage.id)?.predictedMs ?? 0}
                     runningMs={app.active ? app.now - app.active.startedAt : 0}
                     onStart={() => app.start(page.id, stage.id)}
                     onPause={app.pause}
-                    onDone={() => setDone(page, stage, true)}
+                    onDone={() => run(() => api.setTaskDone(page.id, stage.id, true))}
                     onUndo={() => setUndo({ page, stage })}
                   />
                 </td>
@@ -181,12 +252,11 @@ export function BoardScreen({ workId }: { workId: number }) {
         </tbody>
       </table>
       {shown.length === 0 && <p className="muted center">表示するページがありません</p>}
+      <div style={{ height: 160 }} />
 
       {missing.length > 0 && (
         <>
-          <div className="section-title" style={{ marginTop: 24 }}>
-            CLIP STUDIO から消えたページ（作業記録は残しています）
-          </div>
+          <div className="section-title">CLIP STUDIO から消えたページ（作業記録は残しています）</div>
           <table className="board missing">
             <tbody>
               {missing.map((page) => (
@@ -220,7 +290,7 @@ export function BoardScreen({ workId }: { workId: number }) {
               <button
                 className="btn primary"
                 onClick={() => {
-                  setDone(undo.page, undo.stage, false);
+                  run(() => api.setTaskDone(undo.page.id, undo.stage.id, false));
                   setUndo(null);
                 }}
               >
@@ -234,10 +304,150 @@ export function BoardScreen({ workId }: { workId: number }) {
   );
 }
 
+function FinishCard({ forecast }: { forecast: Forecast }) {
+  const { finish, prediction, schedule } = forecast;
+  if (prediction.remainingMs === 0) {
+    return (
+      <div className="card">
+        <div className="section-title">完成見込み</div>
+        <div className="big">完成しました 🎉</div>
+      </div>
+    );
+  }
+  const week = schedule.weekdayHours;
+  const weekday = week.slice(0, 5).every((h) => h === week[0]) ? `平日 ${week[0]}h` : "平日";
+  const weekend = week[5] === week[6] ? `土日 ${week[5]}h` : "土日";
+  return (
+    <div className="card">
+      <div className="section-title">完成見込み</div>
+      {finish.mid ? (
+        <>
+          <div className="big">{dayLabel(finish.mid)}</div>
+          <div className="range">
+            早ければ {finish.low ? dayLabel(finish.low) : "—"} ・ 遅ければ {finish.high ? dayLabel(finish.high) : "—"}
+          </div>
+          <div className="range">
+            残り約 {hours(prediction.remainingMs)} ・ {weekday} {weekend} で計算
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="big">—</div>
+          <div className="range">作業する時間が設定されていません（スケジュールで設定できます）</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const STATUS = {
+  ok: { label: "余裕あり", cls: "ok" },
+  tight: { label: "ギリギリ", cls: "warn" },
+  late: { label: "遅れぎみ", cls: "late" },
+};
+
+function DeadlineCard({ forecast, onSet }: { forecast: Forecast; onSet: () => void }) {
+  const d = forecast.deadline;
+  if (!d) {
+    return (
+      <div className="card">
+        <div className="section-title">締切</div>
+        <p className="range" style={{ margin: "0 0 10px" }}>
+          締切を決めると、今日やる量と進め方の案を出します
+        </p>
+        <button className="btn small" onClick={onSet}>
+          締切を決める
+        </button>
+      </div>
+    );
+  }
+  const s = STATUS[d.status];
+  return (
+    <div className="card">
+      <div className="section-title">締切 {dayLabel(d.date)}</div>
+      <div className="big">{d.plan.days > 0 ? `あと ${d.plan.days} 日` : "締切を過ぎています"}</div>
+      <div className="range">
+        <span className={`tag status ${s.cls}`}>{s.label}</span> 間に合う見込み {Math.round(d.probability * 100)}%
+      </div>
+    </div>
+  );
+}
+
+function TodayStrip({ forecast, onChoose }: { forecast: Forecast; onChoose: () => void }) {
+  const app = useApp();
+  const plan = loadChosenPlan(forecast.board.work.id);
+  if (!plan) {
+    if (forecast.prediction.remainingMs === 0) return null;
+    return (
+      <div className="today-strip empty">
+        <span className="grow muted">
+          今日のノルマは <b className="num">{hours(forecast.quotaMs)}</b>
+          {forecast.deadline ? "（締切から逆算）" : "（今日の作業時間）"}。進め方の案から、今日やることを選べます
+        </span>
+        <button className="btn small primary" onClick={onChoose}>
+          今日の進め方を選ぶ
+        </button>
+      </div>
+    );
+  }
+  const worked = forecast.workedTodayMs;
+  const pct = plan.quotaMs > 0 ? Math.min(100, (worked / plan.quotaMs) * 100) : 100;
+  const { board } = forecast;
+  return (
+    <div className="today-strip">
+      <div>
+        <div className="small-text muted">今日のやること</div>
+        <b>{plan.name}</b>
+      </div>
+      <div className="gauge">
+        <div className="row small-text" style={{ justifyContent: "space-between" }}>
+          <span className="num">
+            <b>{hours(worked)}</b> / {hours(plan.quotaMs)}
+          </span>
+          <span className="muted num">{Math.round(pct)}%</span>
+        </div>
+        <div className="bar">
+          <span style={{ width: `${pct}%`, background: "var(--accent)" }} />
+        </div>
+      </div>
+      <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+        {plan.steps.map((step) => {
+          const page = board.pages.find((p) => p.id === step.pageId);
+          const si = board.stages.findIndex((s) => s.id === step.stageId);
+          const stage = board.stages[si];
+          if (!page || !stage) return null;
+          const done = page.cells[si]?.done;
+          const running = app.active?.pageId === page.id && app.active.stageId === stage.id;
+          return (
+            <button
+              key={`${step.pageId}-${step.stageId}`}
+              className={`task-chip${done ? " done" : ""}${running ? " now" : ""}`}
+              disabled={done || running}
+              title={done ? "完了しています" : "クリックで計測を始める"}
+              onClick={() => app.start(page.id, stage.id)}
+            >
+              <span className="sdot" style={{ background: stage.color }}>
+                {stage.name.slice(0, 1)}
+              </span>
+              {page.label} {stage.name}
+              {running ? " · 計測中" : done ? "" : ` ${hours(step.ms)}${step.partial ? "（途中まで）" : ""}`}
+            </button>
+          );
+        })}
+      </div>
+      <span className="grow" />
+      <button className="btn small" onClick={onChoose}>
+        案を選び直す
+      </button>
+    </div>
+  );
+}
+
 type CellProps = {
   state: CellState;
   stage: StageRef;
   totalMs: number;
+  predictedMs: number;
   runningMs: number;
   onStart: () => void;
   onPause: () => void;
@@ -245,7 +455,7 @@ type CellProps = {
   onUndo: () => void;
 };
 
-function BoardCell({ state, stage, totalMs, runningMs, onStart, onPause, onDone, onUndo }: CellProps) {
+function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onPause, onDone, onUndo }: CellProps) {
   if (state === "locked") return <div className="cell locked">前の工程待ち</div>;
   if (state === "done") {
     return (
@@ -262,6 +472,7 @@ function BoardCell({ state, stage, totalMs, runningMs, onStart, onPause, onDone,
       </div>
     );
   }
+  const pct = predictedMs > 0 ? Math.min(100, (totalMs / predictedMs) * 100) : 0;
   if (state === "running") {
     return (
       <div className="cell running">
@@ -272,7 +483,12 @@ function BoardCell({ state, stage, totalMs, runningMs, onStart, onPause, onDone,
           <span>計測中</span>
         </div>
         <div className="line muted">
-          <span className="num">合計 {hours(totalMs)}</span>
+          <span className="num">
+            {hours(totalMs)} / 予測 {hours(predictedMs)}
+          </span>
+        </div>
+        <div className="bar">
+          <span style={{ width: `${pct}%`, background: stage.color }} />
         </div>
         <div className="cell-actions show">
           <button className="mini dark" title="一時停止" onClick={onPause}>
@@ -284,10 +500,24 @@ function BoardCell({ state, stage, totalMs, runningMs, onStart, onPause, onDone,
   }
   return (
     <div className={`cell ${state}`} onClick={onStart} title="クリックで計測を始める">
-      <div className="line">
-        <span>{state === "doing" ? "途中" : "未着手"}</span>
-        <span className="num">{state === "doing" ? hours(totalMs) : ""}</span>
-      </div>
+      {state === "doing" ? (
+        <>
+          <div className="line">
+            <span className="num">
+              <b>{hours(totalMs)}</b> / {hours(predictedMs)}
+            </span>
+            <span>途中</span>
+          </div>
+          <div className="bar">
+            <span style={{ width: `${pct}%`, background: stage.color }} />
+          </div>
+        </>
+      ) : (
+        <div className="line">
+          <span>未着手</span>
+          <span className="num">予測 {hours(predictedMs)}</span>
+        </div>
+      )}
       <div className="cell-actions">
         <button
           className="mini"

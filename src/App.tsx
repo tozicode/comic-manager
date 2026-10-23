@@ -7,11 +7,12 @@ import { TimerChip } from "./components/TimerChip";
 import { duration } from "./format";
 import { BoardScreen } from "./screens/BoardScreen";
 import { RecordsScreen } from "./screens/RecordsScreen";
+import { ScheduleScreen } from "./screens/ScheduleScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { WorksScreen } from "./screens/WorksScreen";
 import "./App.css";
 
-export type Screen = "works" | "board" | "records" | "settings";
+export type Screen = "works" | "board" | "schedule" | "records" | "settings";
 
 const WORK_KEY = "otosazu.workId";
 
@@ -58,7 +59,7 @@ function Shell() {
     setScreen(to);
   };
 
-  const needsWork = (screen === "board" || screen === "records") && !work;
+  const needsWork = (screen === "board" || screen === "schedule" || screen === "records") && !work;
 
   return (
     <div className="shell">
@@ -67,7 +68,7 @@ function Shell() {
         work={work}
         screen={screen}
         onScreen={setScreen}
-        onWork={(id) => openWork(id, screen === "records" ? "records" : "board")}
+        onWork={(id) => openWork(id, screen === "records" || screen === "schedule" ? screen : "board")}
       />
       <div className="main">
         <header className="topbar">
@@ -86,7 +87,9 @@ function Shell() {
           {screen === "works" || needsWork ? (
             <WorksScreen works={works} onOpen={openWork} />
           ) : screen === "board" && work ? (
-            <BoardScreen key={work.id} workId={work.id} />
+            <BoardScreen key={work.id} workId={work.id} onNavigate={setScreen} />
+          ) : screen === "schedule" && work ? (
+            <ScheduleScreen key={work.id} workId={work.id} />
           ) : screen === "records" && work ? (
             <RecordsScreen key={work.id} workId={work.id} />
           ) : (
@@ -124,6 +127,7 @@ function Shell() {
 const TITLES: Record<Screen, string> = {
   works: "作品一覧",
   board: "進捗ボード",
+  schedule: "スケジュール",
   records: "作業記録",
   settings: "設定",
 };

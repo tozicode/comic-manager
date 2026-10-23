@@ -33,6 +33,8 @@ export type BoardPage = {
   number: number;
   span: number;
   missing: boolean;
+  /** 付いているタグの ID（自動の「見開き」も含む） */
+  tags: number[];
   cells: Cell[];
 };
 
@@ -76,7 +78,39 @@ export type SessionRow = {
   edited: boolean;
 };
 
-export type Span = { startedAt: number; endedAt: number | null; stageName: string };
+export type Span = { workId: number; startedAt: number; endedAt: number | null; stageName: string };
+
+export type Tag = { id: number; groupId: number; name: string; initialFactor: number; system: boolean; hidden: boolean };
+
+export type TagGroup = { id: number; name: string; exclusive: boolean; system: boolean; tags: Tag[] };
+
+export type TaskPrediction = {
+  pageId: number;
+  stageId: number;
+  predictedMs: number;
+  spentMs: number;
+  remainingMs: number;
+  done: boolean;
+};
+
+export type Prediction = {
+  tasks: TaskPrediction[];
+  remainingMs: number;
+  lowMs: number;
+  highMs: number;
+  sigma: number;
+  stages: { stageId: number; baseMs: number; samples: number; fromHint: boolean }[];
+};
+
+export type WorkSchedule = {
+  /** 月〜日の作業時間（時間） */
+  weekdayHours: number[];
+  customHours: boolean;
+  defaultWeekdayHours: number[];
+  deadline: string | null;
+  workOrder: "stage" | "page";
+  daysOff: string[];
+};
 
 export type SyncResult = { added: number; missing: number };
 
@@ -108,4 +142,24 @@ export const api = {
     invoke<StageDef>("update_stage", { id, name, color, hintMinutes }),
   setStageHidden: (id: number, hidden: boolean) => invoke<void>("set_stage_hidden", { id, hidden }),
   moveStage: (id: number, delta: number) => invoke<void>("move_stage", { id, delta }),
+
+  listTags: () => invoke<TagGroup[]>("list_tags"),
+  setPageTag: (pageIds: number[], tagId: number, on: boolean) => invoke<void>("set_page_tag", { pageIds, tagId, on }),
+  addTagGroup: (name: string, exclusive: boolean) => invoke<number>("add_tag_group", { name, exclusive }),
+  updateTagGroup: (id: number, name: string, exclusive: boolean) =>
+    invoke<void>("update_tag_group", { id, name, exclusive }),
+  addTag: (groupId: number, name: string, initialFactor: number) =>
+    invoke<number>("add_tag", { groupId, name, initialFactor }),
+  updateTag: (id: number, name: string, initialFactor: number) => invoke<void>("update_tag", { id, name, initialFactor }),
+  setTagHidden: (id: number, hidden: boolean) => invoke<void>("set_tag_hidden", { id, hidden }),
+
+  getPrediction: (workId: number) => invoke<Prediction>("get_prediction", { workId }),
+  getSchedule: (workId: number) => invoke<WorkSchedule>("get_schedule", { workId }),
+  setWorkHours: (workId: number, hours: number[] | null) => invoke<void>("set_work_hours", { workId, hours }),
+  setDefaultHours: (hours: number[]) => invoke<void>("set_default_hours", { hours }),
+  setDeadline: (workId: number, deadline: string | null) => invoke<void>("set_deadline", { workId, deadline }),
+  setWorkOrder: (workId: number, order: string) => invoke<void>("set_work_order", { workId, order }),
+  setDayOff: (date: string, off: boolean) => invoke<void>("set_day_off", { date, off }),
+  /** [全作品の既定の作業時間（月〜日）, 休みの日] */
+  getCalendar: () => invoke<[number[], string[]]>("get_calendar"),
 };
