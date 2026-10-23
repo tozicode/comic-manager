@@ -25,13 +25,29 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "tozicode",
+    "copyright": "© 2026 tozicode",
+    "category": "Productivity",
+    "shortDescription": "漫画制作スケジュール管理ソフト",
+    "longDescription": "CLIP STUDIO PAINT の漫画ファイルと連動して、ページ×工程ごとの作業時間を記録し、完成日を予測します。",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "Japanese"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }
