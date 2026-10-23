@@ -278,6 +278,32 @@
   .stage-label { display: inline-flex; align-items: center; gap: 6px; }
   .stage-label i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
+  /* 作業時間のヒートマップ */
+  .heat-card { display: flex; gap: 28px; padding: 16px 18px; margin-bottom: 18px; }
+  .heat-wrap { display: grid; grid-template-columns: 22px auto; grid-template-rows: 16px auto; column-gap: 6px; }
+  .heat-months { grid-column: 2; position: relative; height: 16px; font-size: 11px; color: var(--muted); }
+  .heat-months span { position: absolute; top: 0; }
+  .heat-days { grid-row: 2; display: grid; grid-template-rows: repeat(7, 14px); gap: 3px; font-size: 10px; color: var(--muted); line-height: 14px; }
+  .heat { grid-row: 2; display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 14px); grid-auto-columns: 14px; gap: 3px; }
+  .heat i { border-radius: 3px; background: #ece7e0; cursor: pointer; }
+  .heat i.l1 { background: #f2cfc3; }
+  .heat i.l2 { background: #e4a08c; }
+  .heat i.l3 { background: #d27459; }
+  .heat i.l4 { background: #a8402b; }
+  .heat i.future { background: transparent; border: 1px dashed var(--border); cursor: default; }
+  .heat i.today { outline: 2px solid var(--text); outline-offset: 1px; }
+  .heat i.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .heat-legend { display: flex; align-items: center; gap: 3px; margin-top: 10px; font-size: 11px; color: var(--muted); }
+  .heat-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .heat-tip {
+    position: absolute; padding: 6px 10px; border-radius: 7px; font-size: 12px; white-space: nowrap;
+    background: var(--text); color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,.2); pointer-events: none;
+  }
+  .heat-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; align-content: start; min-width: 220px; }
+  .heat-stats .lbl { font-size: 11px; color: var(--muted); }
+  .heat-stats .v { font-size: 20px; font-weight: 700; line-height: 1.3; }
+  .heat-stats .d { font-size: 11px; }
+
   /* ===== 5. スケジュール ===== */
   .sched { display: grid; grid-template-columns: 340px 1fr; gap: 18px; }
   .sched .card { padding: 16px; }
@@ -601,7 +627,7 @@
 <!-- 4. 作業記録 -->
 <!-- ================================================================ -->
 <section class="screen" data-title="4. 作業記録"
-  data-note="止め忘れや付け忘れを直すための画面。行をクリックするとその場で編集。手で直した記録には「手修正」の印が付く（予測に使うかどうかの判断材料）。">
+  data-note="上部のヒートマップで日ごとの作業量を振り返り、下の一覧で止め忘れや付け忘れを直す画面。行をクリックするとその場で編集。手で直した記録には「手修正」の印が付く（予測に使うかどうかの判断材料）。">
   <div class="window">
     <div class="titlebar"><span>Otosazu</span><span class="wc">— ▢ ✕</span></div>
     <div class="shell">
@@ -612,6 +638,25 @@
           <div class="timer-chip" data-chip></div>
         </header>
         <div class="content">
+          <div class="card heat-card">
+            <div style="position:relative">
+              <div class="row" style="margin-bottom:8px"><div class="section-title" style="margin:0">日ごとの作業時間</div><span class="muted" style="font-size:12px">マスをクリックすると、その日の記録へ移動</span></div>
+              <div class="heat-wrap">
+                <div class="heat-months" id="heatMonths"></div>
+                <div class="heat-days"><span>月</span><span></span><span>水</span><span></span><span>金</span><span></span><span>日</span></div>
+                <div class="heat" id="heat"></div>
+              </div>
+              <div class="heat-legend"><span style="margin-right:4px">少</span><i style="background:#ece7e0"></i><i style="background:#f2cfc3"></i><i style="background:#e4a08c"></i><i style="background:#d27459"></i><i style="background:#a8402b"></i><span style="margin-left:4px">多</span><span style="margin-left:14px">0h ／ 〜1h ／ 〜2h ／ 〜4h ／ 4h〜</span></div>
+              <div class="heat-tip" id="heatTip">10/22（水）3.4h ・ ペン入れ 2.4h ／ 下書き 1.0h</div>
+            </div>
+            <div class="heat-stats">
+              <div><div class="lbl">今週</div><div class="v num">8.1h</div><div class="d muted">先週の同じ曜日まで 7.2h</div></div>
+              <div><div class="lbl">先週</div><div class="v num">19.5h</div><div class="d muted">1日平均 2.8h</div></div>
+              <div><div class="lbl">連続で作業した日</div><div class="v num">9 日</div><div class="d muted">最長 16 日</div></div>
+              <div><div class="lbl">半年の合計</div><div class="v num">412h</div><div class="d muted">作業した日 148 日</div></div>
+            </div>
+          </div>
+
           <div class="toolbar">
             <select class="field"><option>すべてのページ</option></select>
             <select class="field"><option>すべての工程</option></select>
@@ -841,14 +886,14 @@
             <div>
               <div class="row" style="margin-bottom:8px"><div class="section-title" style="margin:0">工程</div><span class="muted" style="font-size:12px">ドラッグで並べ替え。新しい作品はこの順番で始まります</span></div>
               <div class="slist">
-                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:#9a7fb8"></span><input class="field" value="ネーム"><span class="muted" style="font-size:12px">目安 0.5h / ページ</span><button class="btn small">しまう</button></div>
-                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st1)"></span><input class="field" value="下書き"><span class="muted" style="font-size:12px">実績 1.0h / ページ</span><button class="btn small">しまう</button></div>
-                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st2)"></span><input class="field" value="ペン入れ"><span class="muted" style="font-size:12px">実績 1.5h / ページ</span><button class="btn small">しまう</button></div>
-                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st3)"></span><input class="field" value="トーン"><span class="muted" style="font-size:12px">実績 0.8h / ページ</span><button class="btn small">しまう</button></div>
-                <div class="card sitem archived"><span class="handle">⋮⋮</span><span class="swatch" style="background:#888"></span><input class="field" value="ベタ"><span class="muted" style="font-size:12px">しまってあります</span><button class="btn small">戻す</button></div>
+                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:#9a7fb8"></span><input class="field" value="ネーム"><span class="muted" style="font-size:12px">目安 0.5h / ページ</span><button class="btn small">隠す</button></div>
+                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st1)"></span><input class="field" value="下書き"><span class="muted" style="font-size:12px">実績 1.0h / ページ</span><button class="btn small">隠す</button></div>
+                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st2)"></span><input class="field" value="ペン入れ"><span class="muted" style="font-size:12px">実績 1.5h / ページ</span><button class="btn small">隠す</button></div>
+                <div class="card sitem"><span class="handle">⋮⋮</span><span class="swatch" style="background:var(--st3)"></span><input class="field" value="トーン"><span class="muted" style="font-size:12px">実績 0.8h / ページ</span><button class="btn small">隠す</button></div>
+                <div class="card sitem archived"><span class="handle">⋮⋮</span><span class="swatch" style="background:#888"></span><input class="field" value="ベタ"><span class="muted" style="font-size:12px">非表示中</span><button class="btn small">表示する</button></div>
                 <button class="btn" style="align-self:flex-start">＋ 工程を追加</button>
               </div>
-              <p class="muted" style="font-size:12px">「しまう」と一覧から消えますが、過去の記録は残ります。実績がまだ無い工程は「目安」の時間で予測します。</p>
+              <p class="muted" style="font-size:12px">「隠す」と一覧やボードに出なくなりますが、過去の記録は残ります。実績がまだ無い工程は「目安」の時間で予測します。</p>
 
               <div class="row" style="margin:22px 0 8px"><div class="section-title" style="margin:0">タグ</div><span class="muted" style="font-size:12px">倍率は最初の目安。記録が増えると実績に合わせて自動で調整されます</span></div>
               <div class="card tgroup">
@@ -1032,6 +1077,49 @@
   document.getElementById("weekdays").innerHTML = wd.map(([d, h]) =>
     `<div class="wd"><b>${d}</b><input type="range" min="0" max="10" step="0.5" value="${h}"><span class="num">${h}h</span></div>`).join("");
 
+  // ===== 作業時間のヒートマップ（半年ぶん、月曜始まり） =====
+  {
+    const today = new Date(2026, 9, 23);
+    const start = new Date(2026, 3, 27); // 2026/4/27（月）から 26 週
+    const fixed = { "10/23": 1.9, "10/22": 3.4, "10/21": 2.8 };
+    const heat = document.getElementById("heat");
+    const months = document.getElementById("heatMonths");
+    let html = "", lastMonth = -1, lastLabelWeek = -9;
+    for (let w = 0; w < 26; w++) {
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + d);
+        const key = `${day.getMonth() + 1}/${day.getDate()}`;
+        if (d === 0 && day.getMonth() !== lastMonth) {
+          // 前の月の見出しと近すぎるときは出さない
+          if (w - lastLabelWeek >= 3) {
+            months.insertAdjacentHTML("beforeend", `<span style="left:${w * 17}px">${day.getMonth() + 1}月</span>`);
+            lastLabelWeek = w;
+          }
+          lastMonth = day.getMonth();
+        }
+        if (day > today) { html += `<i class="future" title="${key}"></i>`; continue; }
+        // 疑似データ：平日は短め、休日は長め、たまに休み
+        const seed = (w * 7 + d) * 9301 % 233;
+        let h = d >= 5 ? 3 + (seed % 40) / 10 : 1 + (seed % 30) / 10;
+        if (seed % 11 === 0 || (w === 15 && d < 5)) h = 0; // 休み（8月のお盆休みを含む）
+        if (fixed[key] !== undefined) h = fixed[key];
+        const lv = h === 0 ? "" : h < 1 ? "l1" : h < 2 ? "l2" : h < 4 ? "l3" : "l4";
+        const cls = [lv, day.getTime() === today.getTime() ? "today" : "", key === "10/22" ? "sel" : ""].join(" ").trim();
+        html += `<i class="${cls}" title="${key} ${h.toFixed(1)}h"></i>`;
+      }
+    }
+    heat.innerHTML = html;
+    // 選んだ日の吹き出しを、そのマスの真上に出す
+    const placeTip = () => {
+      const sel = heat.querySelector(".sel"), tip = document.getElementById("heatTip");
+      const box = tip.parentElement.getBoundingClientRect(), r = sel.getBoundingClientRect();
+      if (!box.width) return; // 画面が非表示のときは測れない
+      tip.style.left = `${r.right - box.left - tip.offsetWidth + 6}px`;
+      tip.style.top = `${r.top - box.top - tip.offsetHeight - 8}px`;
+    };
+    window.addEventListener("screenchange", placeTip);
+  }
+
   // ===== 今日の案 =====
   const S = { 下書き: "var(--st1)", ペン入れ: "var(--st2)", トーン: "var(--st3)" };
   const plans = [
@@ -1093,6 +1181,7 @@
     screens.forEach((s, k) => s.classList.toggle("on", k === i));
     nav.querySelectorAll("button").forEach((b, k) => b.classList.toggle("on", k === i));
     note.textContent = screens[i].dataset.note;
+    window.dispatchEvent(new Event("screenchange"));
     try { localStorage.setItem("otosazu-mock", i); } catch (e) {}
   }
   screens.forEach((s, i) => {
