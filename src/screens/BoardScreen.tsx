@@ -7,12 +7,14 @@ import { useRelink } from "../components/Relink";
 import { TagPopover } from "../components/TagPopover";
 import { Thumb } from "../components/Thumb";
 import { Forecast, loadChosenPlan, useForecast } from "../forecast";
-import { clock, dayLabel, duration, hours, time } from "../format";
+import { clock, dayLabel, estimate, hours, time } from "../format";
 
 /** 同期で見つかった見開きの変化（1 件ずつ確認する） */
 type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSplit };
 
 type Filter = "all" | "open";
+
+const HOUR = 3_600_000;
 
 /** セルの状態。locked = 前の工程が終わっていない */
 type CellState = "done" | "running" | "doing" | "todo" | "locked";
@@ -382,7 +384,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           }
         >
           <p>
-            消えたページ（{changes[0].m.fromFileName}）の作業記録 <b>{duration(changes[0].m.ms)}</b> とタグを、見開きページ（
+            消えたページ（{changes[0].m.fromFileName}）の作業記録 <b>{hours(changes[0].m.ms)}</b> とタグを、見開きページ（
             {changes[0].m.toLabel}）にまとめますか？
           </p>
           <p className="muted small-text">「あとで決める」を選ぶと、ボードの下の「CLIP STUDIO から消えたページ」に残ります。</p>
@@ -408,13 +410,13 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           }
         >
           <p>
-            見開きのときの作業記録 <b>{duration(changes[0].s.ms)}</b> をどう扱いますか？（完了とタグは両方のページに付けます）
+            見開きのときの作業記録 <b>{hours(changes[0].s.ms)}</b> をどう扱いますか？（完了とタグは両方のページに付けます）
           </p>
           <button className={`choice${splitHalf ? " on" : ""}`} onClick={() => setSplitHalf(true)}>
             <span className="radio" />
             <span>
-              <b>半分ずつ分ける</b>（{changes[0].s.label} に {duration(changes[0].s.ms / 2)}、{changes[0].s.newLabel} に{" "}
-              {duration(changes[0].s.ms / 2)}）
+              <b>半分ずつ分ける</b>（{changes[0].s.label} に {hours(changes[0].s.ms / 2)}、{changes[0].s.newLabel} に{" "}
+              {hours(changes[0].s.ms / 2)}）
             </span>
           </button>
           <button className={`choice${splitHalf ? "" : " on"}`} onClick={() => setSplitHalf(false)}>
@@ -464,8 +466,8 @@ function FinishCard({ forecast }: { forecast: Forecast }) {
     );
   }
   const week = schedule.weekdayHours;
-  const weekday = week.slice(0, 5).every((h) => h === week[0]) ? `平日 ${week[0]}h` : "平日";
-  const weekend = week[5] === week[6] ? `土日 ${week[5]}h` : "土日";
+  const weekday = week.slice(0, 5).every((h) => h === week[0]) ? `平日${hours(week[0] * HOUR)}` : "平日";
+  const weekend = week[5] === week[6] ? `土日${hours(week[5] * HOUR)}` : "土日";
   return (
     <div className="card">
       <div className="section-title">完成見込み</div>
@@ -476,7 +478,7 @@ function FinishCard({ forecast }: { forecast: Forecast }) {
             早ければ {finish.low ? dayLabel(finish.low) : "—"} ・ 遅ければ {finish.high ? dayLabel(finish.high) : "—"}
           </div>
           <div className="range">
-            残り約 {hours(prediction.remainingMs)} ・ {weekday} {weekend} で計算
+            残り約 {estimate(prediction.remainingMs)}（{weekday}・{weekend}で計算）
           </div>
         </>
       ) : (
@@ -530,7 +532,7 @@ function TodayStrip({ forecast, onChoose }: { forecast: Forecast; onChoose: () =
     return (
       <div className="today-strip empty">
         <span className="grow muted">
-          今日のノルマは <b className="num">{hours(forecast.quotaMs)}</b>
+          今日のノルマは <b className="num">{estimate(forecast.quotaMs)}</b>
           {forecast.deadline ? "（締切から逆算）" : "（今日の作業時間）"}。進め方の案から、今日やることを選べます
         </span>
         <button className="btn small primary" onClick={onChoose}>
@@ -551,7 +553,7 @@ function TodayStrip({ forecast, onChoose }: { forecast: Forecast; onChoose: () =
       <div className="gauge">
         <div className="row small-text" style={{ justifyContent: "space-between" }}>
           <span className="num">
-            <b>{hours(worked)}</b> / {hours(plan.quotaMs)}
+            <b>{hours(worked)}</b> / {estimate(plan.quotaMs)}
           </span>
           <span className="muted num">{Math.round(pct)}%</span>
         </div>
@@ -579,7 +581,7 @@ function TodayStrip({ forecast, onChoose }: { forecast: Forecast; onChoose: () =
                 {stage.name.slice(0, 1)}
               </span>
               {page.label} {stage.name}
-              {running ? " · 計測中" : done ? "" : ` ${hours(step.ms)}${step.partial ? "（途中まで）" : ""}`}
+              {running ? " · 計測中" : done ? "" : ` ${estimate(step.ms)}${step.partial ? "（途中まで）" : ""}`}
             </button>
           );
         })}
@@ -632,9 +634,10 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
           <span>計測中</span>
         </div>
         <div className="line muted">
-          <span className="num">
-            {hours(totalMs)} / 予測 {hours(predictedMs)}
-          </span>
+          <span className="num">合計 {hours(totalMs)}</span>
+        </div>
+        <div className="line muted">
+          <span className="num">予測 {estimate(predictedMs)}</span>
         </div>
         <div className="bar">
           <span style={{ width: `${pct}%`, background: stage.color }} />
@@ -652,10 +655,13 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
       {state === "doing" ? (
         <>
           <div className="line">
-            <span className="num">
-              <b>{hours(totalMs)}</b> / {hours(predictedMs)}
-            </span>
             <span>途中</span>
+            <span className="num">
+              <b>{hours(totalMs)}</b>
+            </span>
+          </div>
+          <div className="line muted">
+            <span className="num">予測 {estimate(predictedMs)}</span>
           </div>
           <div className="bar">
             <span style={{ width: `${pct}%`, background: stage.color }} />
@@ -664,7 +670,7 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
       ) : (
         <div className="line">
           <span>未着手</span>
-          <span className="num">予測 {hours(predictedMs)}</span>
+          <span className="num">予測 {estimate(predictedMs)}</span>
         </div>
       )}
       <div className="cell-actions">

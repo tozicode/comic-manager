@@ -5,7 +5,7 @@ import { useApp } from "./app-context";
 import { SaveToast } from "./components/Watchers";
 import { Thumb } from "./components/Thumb";
 import { loadChosenPlan, useForecast } from "./forecast";
-import { clock, duration, hours } from "./format";
+import { clock, estimate, hours } from "./format";
 
 const COMPACT_KEY = "otosazu.miniCompact";
 const PIN_KEY = "otosazu.miniPinned";
@@ -148,7 +148,7 @@ export function MiniApp() {
             {app.stopped.pageLabel} の{app.stopped.stageName}は完了しましたか？
           </b>
           <span className="muted small-text">
-            今回 {duration(app.stopped.durationMs)} ・ 合計 {duration(app.stopped.totalMs)}
+            今回 {hours(app.stopped.durationMs)} ・ 合計 {hours(app.stopped.totalMs)}
           </span>
           <div className="row tight" style={{ justifyContent: "flex-end" }}>
             <button className="btn small" onClick={() => app.answerStopped(false)}>
@@ -169,10 +169,10 @@ export function MiniApp() {
             <div className="mtime num">{clock(now - active.startedAt)}</div>
             {task && (
               <div className="muted tiny">
-                予測 {hours(task.predictedMs)} ・{" "}
+                予測 {estimate(task.predictedMs)} ・{" "}
                 {task.predictedMs - task.spentMs > 0
-                  ? `残り約 ${hours(task.predictedMs - task.spentMs)}`
-                  : "予測を超えています"}
+                  ? `残り約 ${estimate(task.predictedMs - task.spentMs)}`
+                  : "超過"}
               </div>
             )}
           </div>
@@ -212,7 +212,7 @@ export function MiniApp() {
                   {next.page.label} {next.stage.name}
                 </div>
                 <div className="muted tiny">
-                  {next.task.spentMs > 0 ? "続きから ・ " : ""}残り約 {hours(next.task.remainingMs)}
+                  {next.task.spentMs > 0 ? "続きから ・ " : ""}残り約 {estimate(next.task.remainingMs)}
                 </div>
               </div>
               <button className="icon-btn accent big" title="開始" onClick={() => app.start(next.page.id, next.stage.id)}>
@@ -245,7 +245,7 @@ export function MiniApp() {
                 const st = f.board.stages.find((x) => x.id === c.stageId);
                 return (
                   <option key={`${c.pageId}-${c.stageId}`} value={`${c.pageId}-${c.stageId}`}>
-                    {p?.label} {st?.name}（残り {hours(c.remainingMs)}）
+                    {p?.label} {st?.name}（残り {estimate(c.remainingMs)}）
                   </option>
                 );
               })}
@@ -255,7 +255,7 @@ export function MiniApp() {
               <div className="row small-text" style={{ justifyContent: "space-between" }}>
                 <span>今日のノルマ</span>
                 <span className="num">
-                  <b>{hours(f.workedTodayMs)}</b> / {hours(plan?.quotaMs ?? f.quotaMs)}
+                  <b>{hours(f.workedTodayMs)}</b> / {estimate(plan?.quotaMs ?? f.quotaMs)}
                 </span>
               </div>
               <div className="bar">

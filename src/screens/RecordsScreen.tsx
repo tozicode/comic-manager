@@ -164,7 +164,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
       <th style={{ width: 230 }}>時間</th>
       <th style={{ width: 110 }}>ページ</th>
       <th style={{ width: 130 }}>工程</th>
-      <th style={{ width: 70 }}>長さ</th>
+      <th style={{ width: 110 }}>長さ</th>
       <th />
       <th style={{ width: 140 }} />
     </tr>

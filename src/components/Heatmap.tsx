@@ -135,7 +135,9 @@ export function Heatmap({ selected, onSelect }: { selected: string | null; onSel
           <i className="l3" />
           <i className="l4" />
           <span style={{ marginLeft: 4 }}>多</span>
-          <span style={{ marginLeft: 14 }}>0h ／ 〜1h ／ 〜2h ／ 〜4h ／ 4h〜</span>
+          <span style={{ marginLeft: 14 }}>
+            {hours(0)} ／ 〜{hours(HOUR)} ／ 〜{hours(2 * HOUR)} ／ 〜{hours(4 * HOUR)} ／ {hours(4 * HOUR)}〜
+          </span>
         </div>
         {hover && (
           <div className="heat-tip" style={{ right: `calc(100% - ${hover.x + 6}px)`, top: hover.y - 44 }}>

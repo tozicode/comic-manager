@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useApp } from "../app-context";
 import { ChosenPlan, Forecast, loadChosenPlan, saveChosenPlan, useForecast } from "../forecast";
-import { dayKey, dayLabel, hours } from "../format";
+import { dayKey, dayLabel, estimate, hours } from "../format";
 import { addDays, HOUR, Plan, PlanStep } from "../schedule";
 
 type Tab = "finish" | "deadline";
@@ -121,12 +121,12 @@ function FinishTab({
               value={hoursNow[i]}
               onChange={(e) => changeHours(i, Number(e.target.value))}
             />
-            <span className="num">{hoursNow[i]}h</span>
+            <span className="num">{hours(hoursNow[i] * HOUR)}</span>
           </div>
         ))}
         <div className="row small-text" style={{ margin: "10px 0 16px" }}>
           <span className="muted">1週間で</span>
-          <b className="num">{weekTotal}h</b>
+          <b className="num">{hours(weekTotal * HOUR)}</b>
           <span className="grow" />
           {schedule.customHours ? (
             <button className="btn small ghost" onClick={() => run(() => api.setWorkHours(board.work.id, null))}>
@@ -174,17 +174,17 @@ function FinishTab({
               <div>
                 <div className="lbl">早ければ</div>
                 <div className="d num">{finish.low ? dayLabel(finish.low) : "—"}</div>
-                <div className="lbl">残り {hours(prediction.lowMs)}</div>
+                <div className="lbl">残り {estimate(prediction.lowMs)}</div>
               </div>
               <div className="main-r">
                 <div className="lbl">おそらく</div>
                 <div className="d num">{finish.mid ? dayLabel(finish.mid) : "—"}</div>
-                <div className="lbl">残り {hours(prediction.remainingMs)}</div>
+                <div className="lbl">残り {estimate(prediction.remainingMs)}</div>
               </div>
               <div>
                 <div className="lbl">遅ければ</div>
                 <div className="d num">{finish.high ? dayLabel(finish.high) : "—"}</div>
-                <div className="lbl">残り {hours(prediction.highMs)}</div>
+                <div className="lbl">残り {estimate(prediction.highMs)}</div>
               </div>
             </div>
             {!finish.mid && <p className="range">作業する時間が 0 のため、完成日を計算できません。</p>}
@@ -294,7 +294,7 @@ function StageBases({ forecast }: { forecast: Forecast }) {
             return (
               <tr key={b.stageId}>
                 <td>{stage?.name}</td>
-                <td className="num">{hours(b.baseMs)}</td>
+                <td className="num">{estimate(b.baseMs)}</td>
                 <td className="muted">{b.fromHint ? "実績がまだ無いので、設定の目安の時間" : `完了した ${b.samples} ページの実績から`}</td>
               </tr>
             );
@@ -371,10 +371,10 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
           <div className="section-title">1日に必要な作業時間</div>
           {deadline ? (
             <div className="big num">
-              {hours(deadline.plan.perDayMs)}
+              {estimate(deadline.plan.perDayMs)}
               <span className="small-text muted" style={{ fontWeight: 400 }}>
                 {" "}
-                余裕を見るなら {hours(deadline.plan.safePerDayMs)}
+                余裕を見るなら {estimate(deadline.plan.safePerDayMs)}
               </span>
             </div>
           ) : (
@@ -385,14 +385,14 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
           <div className="section-title">今日のノルマ{deadline ? "（締切から逆算）" : "（今日の作業時間）"}</div>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span className="big num">
-              {hours(forecast.workedTodayMs)} <span className="small-text">/ {hours(forecast.quotaMs)}</span>
+              {hours(forecast.workedTodayMs)} <span className="small-text">/ {estimate(forecast.quotaMs)}</span>
             </span>
             <span className="muted small-text">
               {forecast.quotaMet
                 ? "達成しました 🎉"
                 : forecast.workedTodayMs === 0
                   ? "まだ始めていません"
-                  : `あと ${hours(forecast.quotaMs - forecast.workedTodayMs)}`}
+                  : `あと ${estimate(forecast.quotaMs - forecast.workedTodayMs)}`}
             </span>
           </div>
           <div className="bar">
@@ -414,7 +414,7 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
           {forecast.quotaMet
             ? "今日のノルマは達成しています。もう少し進めるなら"
             : forecast.workedTodayMs > 0
-              ? `今日の残り ${hours(forecast.planQuotaMs)} の進め方を選ぶ`
+              ? `今日の残り ${estimate(forecast.planQuotaMs)} の進め方を選ぶ`
               : "今日の進め方を選ぶ"}
         </div>
         <span className="muted small-text">どれを選んでも完成日は変わりません</span>
@@ -504,13 +504,13 @@ function PlanCard({ plan, forecast, selected, onChoose }: { plan: Plan; forecast
                 <span>
                   {r.stage?.name} <span className="muted">{r.note}</span>
                 </span>
-                <span className="num">{hours(r.ms)}</span>
+                <span className="num">{estimate(r.ms)}</span>
               </div>
             ))}
           </div>
           {total < forecast.planQuotaMs - 0.05 * HOUR && (
             <div className="muted small-text" style={{ marginTop: 6 }}>
-              着手できるタスクが少ないため、{hours(forecast.planQuotaMs - total)} 少なめです
+              着手できるタスクが少ないため、{estimate(forecast.planQuotaMs - total)} 少なめです
             </div>
           )}
           <div className="mixbar">
@@ -547,7 +547,7 @@ function CustomPicker({
         <h3>今日やるタスクを選ぶ</h3>
         <div className="row small-text" style={{ justifyContent: "space-between" }}>
           <span className="num">
-            <b>{hours(total)}</b> / {forecast.quotaMet ? "目安" : "残りのノルマ"} {hours(forecast.planQuotaMs)}
+            <b>{estimate(total)}</b> / {forecast.quotaMet ? "目安" : "残りのノルマ"} {estimate(forecast.planQuotaMs)}
           </span>
           <span className="muted">{Math.round(pct)}%</span>
         </div>
@@ -582,7 +582,7 @@ function CustomPicker({
                       <b>{page?.label}</b>
                       <span className="muted">{c.inProgress ? "続き" : ""}</span>
                       <span className="grow" />
-                      <span className="num">残り {hours(c.remainingMs)}</span>
+                      <span className="num">残り {estimate(c.remainingMs)}</span>
                     </label>
                   );
                 })}

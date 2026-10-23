@@ -807,6 +807,8 @@ table.board {
   grid-template-columns: 1fr 1fr;
   gap: 12px 20px;
   align-content: start;
+  /* 文字が長くなっても、ヒートマップの横に並んだまま縮める */
+  flex: 1 1 240px;
   min-width: 240px;
 }
 .heat-stats .lbl {
@@ -864,6 +866,9 @@ table.rec {
 }
 .rec th:last-child {
   border-top-right-radius: var(--radius);
+}
+.rec td.num {
+  white-space: nowrap;
 }
 .rec td.right {
   text-align: right;
@@ -1016,8 +1021,9 @@ table.rec {
   border-left-color: var(--faint);
 }
 .today-strip .gauge {
-  width: 140px;
+  width: 190px;
   flex: none;
+  white-space: nowrap;
 }
 .task-chip {
   display: inline-flex;

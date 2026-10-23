@@ -3,9 +3,36 @@
 const HOUR = 3_600_000;
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
-/** 1.2h のような時間表記（0.1h 単位） */
-export function hours(ms: number): string {
-  return `${(ms / HOUR).toFixed(1)}h`;
+/** 時間の表記（仕様書 5.9）。hm = 1時間30分、clock = 1:30、decimal = 1.5h */
+export type TimeFormat = "hm" | "clock" | "decimal";
+
+// 設定画面で選んだ表記。AppProvider が起動時と設定の変更時に setTimeFormat で入れ替える
+let currentFormat: TimeFormat = "hm";
+
+export function setTimeFormat(f: TimeFormat) {
+  currentFormat = f;
+}
+
+/** 分単位の長さを表記にする（step 分未満の正の値は「step分未満」） */
+function formatSpan(ms: number, step: number, fmt: TimeFormat): string {
+  if (fmt === "decimal") return `${(ms / HOUR).toFixed(1)}h`;
+  const min = Math.round(ms / 60_000 / step) * step;
+  if (ms > 0 && min === 0) return `${step}分未満`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (fmt === "clock") return `${h}:${String(m).padStart(2, "0")}`;
+  if (h === 0) return `${m}分`;
+  return m === 0 ? `${h}時間` : `${h}時間${m}分`;
+}
+
+/** 記録した時間の表記（1 分単位） */
+export function hours(ms: number, fmt: TimeFormat = currentFormat): string {
+  return formatSpan(ms, 1, fmt);
+}
+
+/** 予測した時間の表記（5 分単位。細かく出すと実際より正確に見えてしまうため） */
+export function estimate(ms: number, fmt: TimeFormat = currentFormat): string {
+  return formatSpan(ms, 5, fmt);
 }
 
 /** 倍率の表記（1 → 1.0、1.25 → 1.25） */
@@ -20,14 +47,6 @@ export function clock(ms: number): string {
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
   return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
-}
-
-/** 1時間12分 のような表記 */
-export function duration(ms: number): string {
-  const min = Math.round(ms / 60_000);
-  if (min < 1) return "1分未満";
-  if (min < 60) return `${min}分`;
-  return `${Math.floor(min / 60)}時間${min % 60 ? `${min % 60}分` : ""}`;
 }
 
 /** 13:40 */

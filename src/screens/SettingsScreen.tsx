@@ -1,15 +1,16 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { api, StageDef, Tag, TagGroup, TimerPrefs } from "../api";
+import { api, DisplayPrefs, StageDef, Tag, TagGroup, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { dayKey, dayLabel } from "../format";
+import { dayKey, dayLabel, estimate, hours, TimeFormat } from "../format";
 
-type Section = "stages" | "tags" | "hours" | "timer" | "data";
+type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data";
 const SECTIONS: { key: Section; label: string }[] = [
   { key: "stages", label: "工程" },
   { key: "tags", label: "タグ" },
   { key: "hours", label: "作業時間・休み" },
   { key: "timer", label: "タイマー" },
+  { key: "display", label: "表示" },
   { key: "data", label: "データ" },
 ];
 
@@ -51,6 +52,8 @@ export function SettingsScreen() {
           <HoursSection />
         ) : section === "timer" ? (
           <TimerSection />
+        ) : section === "display" ? (
+          <DisplaySection />
         ) : (
           <DataSection />
         )}
@@ -615,6 +618,63 @@ function DataSection() {
         </p>
       </div>
       <p className="muted small-text">Otosazu {info?.version}（試用版）</p>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 表示
+// ---------------------------------------------------------------------------
+
+const TIME_FORMATS: { key: TimeFormat; label: string }[] = [
+  { key: "hm", label: "時間と分" },
+  { key: "clock", label: "時計の形" },
+  { key: "decimal", label: "小数" },
+];
+
+const MIN = 60_000;
+const EXAMPLES = [30 * MIN, 90 * MIN, 155 * 60 * MIN + 50 * MIN];
+
+function DisplaySection() {
+  const app = useApp();
+  const [prefs, setPrefs] = useState<DisplayPrefs | null>(null);
+
+  useEffect(() => {
+    api.getDisplayPrefs().then(setPrefs).catch(app.showError);
+  }, [app.version, app.showError]);
+
+  if (!prefs) return <p className="muted">読み込み中…</p>;
+
+  const choose = async (timeFormat: TimeFormat) => {
+    try {
+      await api.setDisplayPrefs({ timeFormat });
+      setPrefs({ timeFormat });
+      app.refresh();
+    } catch (e) {
+      app.showError(e);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-title">時間の表記</div>
+      <div className="card pad form">
+        {TIME_FORMATS.map((f) => (
+          <button key={f.key} className={`choice${prefs.timeFormat === f.key ? " on" : ""}`} onClick={() => choose(f.key)}>
+            <span className="radio" />
+            <span className="grow">
+              <b>{f.label}</b>
+              {f.key === "hm" && <span className="muted">（おすすめ）</span>}
+              <br />
+              <span className="muted num">{EXAMPLES.map((ms) => hours(ms, f.key)).join(" ／ ")}</span>
+            </span>
+          </button>
+        ))}
+        <p className="muted small-text">
+          記録した時間は 1 分単位、予測した時間は 5 分単位で表示します（例：予測 {estimate(68 * MIN)}）。
+          タイマーの経過時間（00:42:13）は、どの表記でも変わりません。
+        </p>
+      </div>
     </>
   );
 }

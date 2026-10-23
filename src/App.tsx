@@ -6,7 +6,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TimerChip } from "./components/TimerChip";
 import { SaveToast, Watchers } from "./components/Watchers";
 import { MiniApp } from "./MiniApp";
-import { duration } from "./format";
+import { hours } from "./format";
 import { BoardScreen } from "./screens/BoardScreen";
 import { RecordsScreen } from "./screens/RecordsScreen";
 import { ScheduleScreen } from "./screens/ScheduleScreen";
@@ -124,8 +124,8 @@ function Shell() {
           }
         >
           <p>
-            今回 <b className="num">{duration(app.stopped.durationMs)}</b> ・ このタスクの合計{" "}
-            <b className="num">{duration(app.stopped.totalMs)}</b>
+            今回 <b className="num">{hours(app.stopped.durationMs)}</b> ・ このタスクの合計{" "}
+            <b className="num">{hours(app.stopped.totalMs)}</b>
           </p>
         </Dialog>
       )}

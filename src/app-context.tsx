@@ -4,6 +4,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, u
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ActiveSession, api, StopResult } from "./api";
+import { setTimeFormat } from "./format";
 
 /** 一時停止中のタスク（再開ボタン用）。アプリを閉じても残るよう localStorage に置く */
 export type PausedTask = { workId: number; pageId: number; pageLabel: string; stageId: number; stageName: string };
@@ -109,6 +110,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reloadActive();
   }, [reloadActive]);
 
+  // 時間の表記。表記が変わったら、画面全体を描き直すために version を進める
+  const [timeFormat, setTimeFormatState] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .getDisplayPrefs()
+      .then((p) => {
+        setTimeFormat(p.timeFormat);
+        setTimeFormatState((old) => {
+          if (old !== null && old !== p.timeFormat) setVersion((v) => v + 1);
+          return p.timeFormat;
+        });
+      })
+      .catch(() => {});
+  }, [version]);
+
   // 他の窓でデータが変わったら読み直す
   useEffect(() => {
     const unlisten = listen<{ from: string }>(CHANGED_EVENT, (e) => {
@@ -201,6 +217,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       unlisten.then((f) => f()).catch(() => {});
     };
   }, []);
+
+  // 表記を読み込むまでは描かない（一瞬だけ違う表記が出るのを避ける）
+  if (timeFormat === null) return null;
 
   return (
     <AppContext.Provider

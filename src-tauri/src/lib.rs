@@ -332,6 +332,16 @@ fn set_timer_prefs(app: AppHandle, state: State<AppState>, prefs: store::TimerPr
     with_store(&state, |s| s.set_timer_prefs(&prefs))
 }
 
+#[tauri::command]
+fn get_display_prefs(state: State<AppState>) -> Cmd<store::DisplayPrefs> {
+    with_store(&state, |s| s.display_prefs())
+}
+
+#[tauri::command]
+fn set_display_prefs(state: State<AppState>, prefs: store::DisplayPrefs) -> Cmd<()> {
+    with_store(&state, |s| s.set_display_prefs(&prefs))
+}
+
 /// Windows では同期コマンドの中で窓を作るとデッドロックするため、窓の操作は async にする
 #[tauri::command]
 async fn open_mini(app: AppHandle) -> Cmd<()> {
@@ -462,6 +472,8 @@ pub fn run() {
             reveal_data,
             check_relink,
             relink_work,
+            get_display_prefs,
+            set_display_prefs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

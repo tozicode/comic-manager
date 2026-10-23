@@ -24,6 +24,8 @@ export type WorkSummary = {
   fileMissing: boolean;
 };
 
+export type DisplayPrefs = { timeFormat: "hm" | "clock" | "decimal" };
+
 export type RelinkCheck = { title: string; newPages: number; oldPages: number; matched: number };
 
 export type StageRef = { id: number; name: string; color: string };
@@ -193,4 +195,6 @@ export const api = {
   revealData: () => invoke<void>("reveal_data"),
   checkRelink: (workId: number, cmcPath: string) => invoke<RelinkCheck>("check_relink", { workId, cmcPath }),
   relinkWork: (workId: number, cmcPath: string) => invoke<SyncResult>("relink_work", { workId, cmcPath }),
+  getDisplayPrefs: () => invoke<DisplayPrefs>("get_display_prefs"),
+  setDisplayPrefs: (prefs: DisplayPrefs) => invoke<void>("set_display_prefs", { prefs }),
 };

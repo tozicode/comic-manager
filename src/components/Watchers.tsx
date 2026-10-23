@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, StopResult, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
-import { duration, time } from "../format";
+import { hours, time } from "../format";
 import { Dialog } from "./Dialog";
 
 const IDLE_CHECK_MS = 20_000;
@@ -152,7 +152,7 @@ export function Watchers() {
         <span>
           <b>作業していた</b>（資料を読んでいた など）
           <br />
-          <span className="muted">止まっていた {duration(prompt.detectedAt - prompt.idleSince)} も記録する</span>
+          <span className="muted">止まっていた {hours(prompt.detectedAt - prompt.idleSince)} も記録する</span>
         </span>
       </button>
     </Dialog>
