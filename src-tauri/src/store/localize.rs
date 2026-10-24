@@ -177,7 +177,7 @@ mod tests {
         // 名前を変えた工程や、後から足したタグは置き換えない
         let first = store.list_stages().unwrap()[0].id;
         store.update_stage(first, "ネーム", "#000000", 60).unwrap();
-        let group = store.add_tag_group("独自", false, "both").unwrap();
+        let group = store.add_tag_group("独自", false, &[]).unwrap();
         store.add_tag(group, "普通", 1.0).unwrap();
         store.localize_defaults(Lang::Ko).unwrap();
         assert_eq!(stage_names(&store, 1), ["ネーム", "펜선", "톤"]);

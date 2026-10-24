@@ -9,7 +9,7 @@ use rusqlite::params;
 
 use crate::i18n::{M, tr, trf};
 
-use super::{KIND_FILES, Result, Store, SyncResult, db_err, valid_name};
+use super::{KIND_FILES, KIND_MANUAL, Result, Store, SyncResult, db_err, valid_name};
 
 /// 登録できるファイルの拡張子
 pub const ILLUST_EXTENSIONS: [&str; 3] = ["clip", "psd", "psb"];
@@ -45,8 +45,8 @@ impl Store {
         }
         self.conn
             .execute(
-                "INSERT INTO work (title, kind, cmc_path, created_at, last_synced_at) VALUES (?1, ?2, NULL, ?3, ?3)",
-                params![title, KIND_FILES, now],
+                "INSERT INTO work (title, kind, set_id, cmc_path, created_at, last_synced_at) VALUES (?1, ?2, ?3, NULL, ?4, ?4)",
+                params![title, KIND_FILES, set_id, now],
             )
             .map_err(db_err)?;
         let work_id = self.conn.last_insert_rowid();
@@ -81,24 +81,25 @@ impl Store {
         Ok(added)
     }
 
-    /// イラストの作品からファイルを外す（そのファイルの作業記録・完了・タグも消える）
+    /// イラストの作品からファイルを外す（そのファイルの作業記録・完了・タグも消える）。
+    /// ファイルを持たない作品の行を外すのにも使う
     pub fn remove_file(&self, page_id: i64) -> Result<()> {
         let work_id = self.page_work(page_id)?;
-        self.ensure_files_work(work_id)?;
+        let kind = self.ensure_rows_work(work_id)?;
         let rest: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1 AND id != ?2", params![work_id, page_id], |r| r.get(0))
             .map_err(db_err)?;
         if rest == 0 {
-            return Err(tr(M::LastFile).into());
+            return Err(tr(if kind == KIND_MANUAL { M::LastRow } else { M::LastFile }).into());
         }
         self.conn.execute("DELETE FROM page WHERE id = ?1", [page_id]).map_err(db_err)?;
         self.renumber(work_id)
     }
 
-    /// イラストの作品のファイルをこの順番に並べる
+    /// イラストの作品のファイル（またはファイルを持たない作品の行）をこの順番に並べる
     pub fn set_file_order(&self, work_id: i64, page_ids: &[i64]) -> Result<()> {
-        self.ensure_files_work(work_id)?;
+        self.ensure_rows_work(work_id)?;
         let mut all: Vec<i64> = self.page_states(work_id)?.into_iter().map(|p| p.id).collect();
         let mut sorted = page_ids.to_vec();
         all.sort();
@@ -163,7 +164,7 @@ impl Store {
     }
 
     /// 並び順から番号を振り直す
-    fn renumber(&self, work_id: i64) -> Result<()> {
+    pub(super) fn renumber(&self, work_id: i64) -> Result<()> {
         let ids: Vec<i64> = {
             let mut stmt = self
                 .conn
@@ -181,7 +182,7 @@ impl Store {
         Ok(())
     }
 
-    fn page_work(&self, page_id: i64) -> Result<i64> {
+    pub(super) fn page_work(&self, page_id: i64) -> Result<i64> {
         self.conn
             .query_row("SELECT work_id FROM page WHERE id = ?1", [page_id], |r| r.get(0))
             .map_err(|_| tr(M::FileNotFound).to_string())
@@ -192,6 +193,16 @@ impl Store {
             Ok(())
         } else {
             Err(tr(M::IllustOnly).into())
+        }
+    }
+
+    /// 行を利用者が並べ替え・削除できる作品（イラスト、ファイルを持たない作品）か。種類を返す
+    pub(super) fn ensure_rows_work(&self, work_id: i64) -> Result<String> {
+        let kind = self.work_kind(work_id)?;
+        if kind == KIND_FILES || kind == KIND_MANUAL {
+            Ok(kind)
+        } else {
+            Err(tr(M::RowsOnly).into())
         }
     }
 }

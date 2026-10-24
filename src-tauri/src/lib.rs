@@ -39,13 +39,32 @@ fn with_store<T>(state: &State<AppState>, f: impl FnOnce(&Store) -> store::Resul
 fn list_works(state: State<AppState>) -> Cmd<Vec<store::WorkSummary>> {
     let mut works = with_store(&state, |s| s.list_works())?;
     for w in &mut works {
-        w.file_missing = match &w.cmc_path {
-            Some(cmc) => !Path::new(cmc).exists(),
+        w.file_missing = match (w.kind.as_str(), &w.cmc_path) {
+            (store::KIND_COMIC, Some(cmc)) => !Path::new(cmc).exists(),
             // イラストは、どれか 1 つでもファイルが見つからなければ知らせる
-            None => with_store(&state, |s| s.page_paths(w.id))?.iter().any(|(_, p)| !p.exists()),
+            (store::KIND_FILES, _) => with_store(&state, |s| s.page_paths(w.id))?.iter().any(|(_, p)| !p.exists()),
+            // ファイルを持たない作品には、見つからないものがない
+            _ => false,
         };
     }
     Ok(works)
+}
+
+// ----- ファイルを持たない作品 -----
+
+#[tauri::command]
+fn add_manual_work(state: State<AppState>, title: String, names: Vec<String>, set_id: i64) -> Cmd<i64> {
+    with_store(&state, |s| s.add_manual_work(&title, &names, set_id, now_ms()))
+}
+
+#[tauri::command]
+fn add_rows(state: State<AppState>, work_id: i64, names: Vec<String>) -> Cmd<i64> {
+    with_store(&state, |s| s.add_rows(work_id, &names))
+}
+
+#[tauri::command]
+fn rename_row(state: State<AppState>, page_id: i64, title: String) -> Cmd<()> {
+    with_store(&state, |s| s.rename_row(page_id, &title))
 }
 
 /// 別の場所の cmc がこの作品と同じものかを照らし合わせる
@@ -101,15 +120,35 @@ fn list_stage_sets(state: State<AppState>) -> Cmd<Vec<store::StageSet>> {
 }
 
 #[tauri::command]
+fn add_stage_set(state: State<AppState>, name: String, unit: String) -> Cmd<store::StageSet> {
+    with_store(&state, |s| s.add_stage_set(&name, &unit))
+}
+
+#[tauri::command]
+fn update_stage_set(state: State<AppState>, id: i64, name: String, unit: String) -> Cmd<store::StageSet> {
+    with_store(&state, |s| s.update_stage_set(id, &name, &unit))
+}
+
+#[tauri::command]
+fn remove_stage_set(state: State<AppState>, id: i64) -> Cmd<()> {
+    with_store(&state, |s| s.remove_stage_set(id))
+}
+
+#[tauri::command]
 fn remove_work(state: State<AppState>, work_id: i64) -> Cmd<()> {
     with_store(&state, |s| s.remove_work(work_id))
 }
 
-/// cmc を読み直してページ一覧に反映する（イラストはファイルがあるかを調べ直す）
+/// cmc を読み直してページ一覧に反映する（イラストはファイルがあるかを調べ直す。ファイルを持たない作品は何もしない）
 #[tauri::command]
 fn sync_work(state: State<AppState>, work_id: i64) -> Cmd<store::SyncResult> {
-    let Some(path) = with_store(&state, |s| s.work_info(work_id))?.cmc_path else {
-        return with_store(&state, |s| s.refresh_files(work_id, |p| Path::new(p).exists(), now_ms()));
+    let work = with_store(&state, |s| s.work_info(work_id))?;
+    let path = match (work.kind.as_str(), work.cmc_path) {
+        (store::KIND_COMIC, Some(path)) => path,
+        (store::KIND_FILES, _) => {
+            return with_store(&state, |s| s.refresh_files(work_id, |p| Path::new(p).exists(), now_ms()));
+        }
+        _ => return Ok(store::SyncResult { added: 0, missing: 0, merges: Vec::new(), splits: Vec::new() }),
     };
     if !Path::new(&path).exists() {
         return Err(trf(M::CmcMissing, &[("path", &path)]));
@@ -125,8 +164,11 @@ fn sync_work(state: State<AppState>, work_id: i64) -> Cmd<store::SyncResult> {
 #[tauri::command]
 fn get_board(state: State<AppState>, work_id: i64) -> Cmd<store::Board> {
     let mut board = with_store(&state, |s| s.board(work_id, now_ms()))?;
-    for page in &mut board.pages {
-        page.found = Path::new(&page.path).exists();
+    // ファイルを持たない作品の行には、見つからないものがない
+    if board.work.kind != store::KIND_MANUAL {
+        for page in &mut board.pages {
+            page.found = Path::new(&page.path).exists();
+        }
     }
     Ok(board)
 }
@@ -252,13 +294,13 @@ fn set_page_tag(state: State<AppState>, page_ids: Vec<i64>, tag_id: i64, on: boo
 }
 
 #[tauri::command]
-fn add_tag_group(state: State<AppState>, name: String, exclusive: bool, applies: String) -> Cmd<i64> {
-    with_store(&state, |s| s.add_tag_group(&name, exclusive, &applies))
+fn add_tag_group(state: State<AppState>, name: String, exclusive: bool, set_ids: Vec<i64>) -> Cmd<i64> {
+    with_store(&state, |s| s.add_tag_group(&name, exclusive, &set_ids))
 }
 
 #[tauri::command]
-fn update_tag_group(state: State<AppState>, id: i64, name: String, exclusive: bool, applies: String) -> Cmd<()> {
-    with_store(&state, |s| s.update_tag_group(id, &name, exclusive, &applies))
+fn update_tag_group(state: State<AppState>, id: i64, name: String, exclusive: bool, set_ids: Vec<i64>) -> Cmd<()> {
+    with_store(&state, |s| s.update_tag_group(id, &name, exclusive, &set_ids))
 }
 
 #[tauri::command]
@@ -356,6 +398,9 @@ fn idle_ms() -> u64 {
 /// 作品のページファイルの更新日時（ページ ID, ミリ秒）。保存の検知に使う
 #[tauri::command]
 fn page_mtimes(state: State<AppState>, work_id: i64) -> Cmd<Vec<(i64, i64)>> {
+    if with_store(&state, |s| s.work_info(work_id))?.kind == store::KIND_MANUAL {
+        return Ok(Vec::new());
+    }
     let files = with_store(&state, |s| s.page_paths(work_id))?;
     Ok(files
         .into_iter()
@@ -596,6 +641,12 @@ pub fn run() {
             list_stage_sets,
             get_day_start_hour,
             set_day_start_hour,
+            add_manual_work,
+            add_rows,
+            rename_row,
+            add_stage_set,
+            update_stage_set,
+            remove_stage_set,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

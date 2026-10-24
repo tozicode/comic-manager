@@ -16,6 +16,7 @@ mod localize;
 mod pages;
 mod predict;
 mod prefs;
+mod rows;
 mod schedule;
 mod tags;
 
@@ -55,15 +56,16 @@ pub struct StageDef {
 pub struct StageSet {
     pub id: i64,
     pub name: String,
-    /// 1 単位の呼び方（ページ・枚）
+    /// 1 単位の呼び方（ページ・枚・パーツ など）
     pub unit: String,
-    /// このセットを既定にする作品の種類（comic / files）
+    /// このセットを既定にする作品の種類（comic / files / manual）。利用者が作ったセットは manual
     pub kind: String,
 }
 
-/// 作品の種類：漫画（cmc）とイラスト（.clip / .psd を束ねたもの）
+/// 作品の種類：漫画（cmc）、イラスト（.clip / .psd を束ねたもの）、ファイルを持たない作品（行を名前で作る）
 pub const KIND_COMIC: &str = "comic";
 pub const KIND_FILES: &str = "files";
+pub const KIND_MANUAL: &str = "manual";
 
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -71,7 +73,9 @@ pub struct WorkSummary {
     pub id: i64,
     pub title: String,
     pub kind: String,
-    /// 漫画の cmc の場所（イラストは None）
+    /// 登録時に選んだ工程のセット（単位の言葉とタグの出し分けに使う）
+    pub set_id: i64,
+    /// 漫画の cmc の場所（漫画以外は None）
     pub cmc_path: Option<String>,
     /// 見開きを 2 ページと数えたページ数（イラストはファイルの数）
     pub page_count: i64,
@@ -104,6 +108,7 @@ pub struct WorkInfo {
     pub id: i64,
     pub title: String,
     pub kind: String,
+    pub set_id: i64,
     pub cmc_path: Option<String>,
     pub last_synced_at: Option<i64>,
 }
@@ -226,12 +231,13 @@ pub fn page_label(number: i64, span: i64) -> String {
     }
 }
 
-/// 行の表示名。イラストのファイルは名前（title）、漫画のページは p 番号
+/// 行の表示名。イラストのファイルとファイルを持たない作品の行は名前（title）、漫画のページは p 番号
 pub fn row_label(title: Option<String>, number: i64, span: i64) -> String {
     title.unwrap_or_else(|| page_label(number, span))
 }
 
 /// ページのファイルの場所。漫画は cmc と同じフォルダ、イラストは file_name に場所そのものが入っている
+/// （ファイルを持たない作品では呼ばない）
 pub fn page_path(cmc_path: Option<&str>, file_name: &str) -> std::path::PathBuf {
     match cmc_path {
         Some(cmc) => crate::cmc::page_path(Path::new(cmc), file_name),
@@ -263,7 +269,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 3;
+const LATEST: i64 = 4;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -401,6 +407,44 @@ impl Store {
         if version < 3 && target >= 3 {
             self.migrate_v3()?;
         }
+        if version < 4 && target >= 4 {
+            self.migrate_v4()?;
+        }
+        Ok(())
+    }
+
+    /// 版 4：ファイルを持たない作品と工程セットの自作（仕様書 5.16）。
+    /// 作品に工程セットを持たせ、タグの出し分けを「作品の種類」から「工程セット」に変える
+    fn migrate_v4(&self) -> Result<()> {
+        // 既存の作品のセットは、使っている工程のセットから決める（工程が無ければ種類の既定のセット）。
+        // ADD COLUMN では既定値のある列に REFERENCES を付けられないので、外部キーは付けない
+        self.conn
+            .execute_batch(
+                "BEGIN;
+                ALTER TABLE work ADD COLUMN set_id INTEGER NOT NULL DEFAULT 1;
+                UPDATE work SET set_id = COALESCE(
+                    (SELECT sd.set_id FROM work_stage ws JOIN stage_def sd ON sd.id = ws.stage_id
+                        WHERE ws.work_id = work.id ORDER BY ws.sort_order, sd.id LIMIT 1),
+                    CASE kind WHEN 'files' THEN 2 ELSE 1 END);
+                CREATE TABLE tag_group_set (
+                    group_id INTEGER NOT NULL REFERENCES tag_group(id) ON DELETE CASCADE,
+                    set_id INTEGER NOT NULL REFERENCES stage_set(id) ON DELETE CASCADE,
+                    PRIMARY KEY (group_id, set_id)
+                );
+                INSERT INTO tag_group_set (group_id, set_id) SELECT id, 1 FROM tag_group WHERE applies = 'comic';
+                INSERT INTO tag_group_set (group_id, set_id) SELECT id, 2 FROM tag_group WHERE applies = 'files';
+                ALTER TABLE tag_group DROP COLUMN applies;
+                PRAGMA user_version = 4;
+                COMMIT;",
+            )
+            .map_err(db_err)?;
+        let broken: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0))
+            .map_err(db_err)?;
+        if broken > 0 {
+            return Err(tr(M::MigrationBroken).into());
+        }
         Ok(())
     }
 
@@ -519,6 +563,60 @@ impl Store {
             .ok_or_else(|| "工程のセットが見つかりませんでした".into())
     }
 
+    fn stage_set(&self, id: i64) -> Result<StageSet> {
+        self.list_stage_sets()?
+            .into_iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| tr(M::SetNotFound).into())
+    }
+
+    /// 利用者が工程のセットを作る（ファイルを持たない作品用）。工程は空なので、あとから足してもらう
+    pub fn add_stage_set(&self, name: &str, unit: &str) -> Result<StageSet> {
+        let name = valid_name(name)?;
+        let unit = valid_unit(unit)?;
+        self.conn
+            .execute(
+                "INSERT INTO stage_set (name, unit, kind, sort_order)
+                 VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM stage_set))",
+                params![name, unit, KIND_MANUAL],
+            )
+            .map_err(db_err)?;
+        self.stage_set(self.conn.last_insert_rowid())
+    }
+
+    /// セットの名前と単位の言葉を変える（組み込みの漫画・イラストは変えられない）
+    pub fn update_stage_set(&self, id: i64, name: &str, unit: &str) -> Result<StageSet> {
+        let name = valid_name(name)?;
+        let unit = valid_unit(unit)?;
+        self.ensure_manual_set(id)?;
+        self.conn
+            .execute("UPDATE stage_set SET name = ?2, unit = ?3 WHERE id = ?1", params![id, name, unit])
+            .map_err(db_err)?;
+        self.stage_set(id)
+    }
+
+    /// セットを工程ごと消す。使っている作品があれば消せない（記録が工程を参照しているため）。
+    /// タグの出し分けでこのセットだけを選んでいたグループは「すべてのセット」に戻る
+    pub fn remove_stage_set(&self, id: i64) -> Result<()> {
+        self.ensure_manual_set(id)?;
+        let used: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM work WHERE set_id = ?1", [id], |r| r.get(0))
+            .map_err(db_err)?;
+        if used > 0 {
+            return Err(tr(M::SetInUse).into());
+        }
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        tx.execute("DELETE FROM stage_def WHERE set_id = ?1", [id]).map_err(db_err)?;
+        tx.execute("DELETE FROM stage_set WHERE id = ?1", [id]).map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        Ok(())
+    }
+
+    fn ensure_manual_set(&self, id: i64) -> Result<()> {
+        if self.stage_set(id)?.kind == KIND_MANUAL { Ok(()) } else { Err(tr(M::BuiltinSet).into()) }
+    }
+
     /// 同じセットの工程の ID（並び順）
     fn set_stage_ids(&self, set_id: i64) -> Result<Vec<i64>> {
         Ok(self.list_stages()?.into_iter().filter(|s| s.set_id == set_id).map(|s| s.id).collect())
@@ -542,6 +640,7 @@ impl Store {
     /// （制作途中の作品に、未着手の工程が急に増えないようにするため）
     pub fn add_stage_in_set(&self, set_id: i64, name: &str, color: &str) -> Result<StageDef> {
         let name = valid_name(name)?;
+        self.stage_set(set_id)?;
         let next: i64 = self
             .conn
             .query_row("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM stage_def", [], |r| r.get(0))
@@ -652,8 +751,8 @@ impl Store {
         }
         self.conn
             .execute(
-                "INSERT INTO work (title, kind, cmc_path, created_at) VALUES (?1, 'comic', ?2, ?3)",
-                params![comic.title, cmc_path, now],
+                "INSERT INTO work (title, kind, set_id, cmc_path, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![comic.title, KIND_COMIC, set_id, cmc_path, now],
             )
             .map_err(db_err)?;
         let work_id = self.conn.last_insert_rowid();
@@ -664,6 +763,7 @@ impl Store {
 
     /// 作品で使う工程は、登録時点でそのセットの表示している工程
     fn copy_stages(&self, work_id: i64, set_id: i64) -> Result<()> {
+        self.stage_set(set_id)?;
         let n = self
             .conn
             .execute(
@@ -723,15 +823,16 @@ impl Store {
     pub fn work_info(&self, work_id: i64) -> Result<WorkInfo> {
         self.conn
             .query_row(
-                "SELECT id, title, kind, cmc_path, last_synced_at FROM work WHERE id = ?1",
+                "SELECT id, title, kind, set_id, cmc_path, last_synced_at FROM work WHERE id = ?1",
                 [work_id],
                 |r| {
                     Ok(WorkInfo {
                         id: r.get(0)?,
                         title: r.get(1)?,
                         kind: r.get(2)?,
-                        cmc_path: r.get(3)?,
-                        last_synced_at: r.get(4)?,
+                        set_id: r.get(3)?,
+                        cmc_path: r.get(4)?,
+                        last_synced_at: r.get(5)?,
                     })
                 },
             )
@@ -756,7 +857,8 @@ impl Store {
                     (SELECT COALESCE(SUM(COALESCE(ss.ended_at, ?1) - ss.started_at), 0)
                         FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
                     (SELECT MAX(COALESCE(ss.ended_at, ss.started_at))
-                        FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id)
+                        FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
+                    w.set_id
                  FROM work w ORDER BY w.created_at DESC",
             )
             .map_err(db_err)?;
@@ -771,6 +873,7 @@ impl Store {
                 title: r.get(1)?,
                 cmc_path: r.get(2)?,
                 kind: r.get(3)?,
+                set_id: r.get(9)?,
                 page_count: pages,
                 stage_count: stages,
                 progress: if total > 0 { done as f64 / total as f64 } else { 0.0 },
@@ -1169,6 +1272,11 @@ fn valid_name(name: &str) -> Result<&str> {
     if name.is_empty() { Err(tr(M::NameRequired).into()) } else { Ok(name) }
 }
 
+fn valid_unit(unit: &str) -> Result<&str> {
+    let unit = unit.trim();
+    if unit.is_empty() { Err(tr(M::UnitRequired).into()) } else { Ok(unit) }
+}
+
 fn check_range(started_at: i64, ended_at: Option<i64>, now: i64) -> Result<()> {
     if started_at > now {
         return Err(tr(M::StartInFuture).into());
@@ -1451,6 +1559,63 @@ mod tests {
     }
 
     #[test]
+    fn 版3のデータを版4に移すと作品にセットが付きタグの対象が表に移る() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        let old = Store { conn };
+        old.migrate(3).unwrap();
+        // 漫画（工程あり）、イラスト（工程あり）、工程を全部外した漫画。タグのグループは comic / files / both
+        old.conn
+            .execute_batch(
+                "INSERT INTO work (id, title, kind, cmc_path, created_at) VALUES
+                    (1, '漫画', 'comic', 'C:/a.cmc', 0), (2, '絵', 'files', NULL, 0), (3, '工程なし', 'comic', 'C:/b.cmc', 0);
+                 INSERT INTO work_stage (work_id, stage_id, sort_order) VALUES (1, 1, 0), (2, 4, 0), (2, 5, 1);
+                 INSERT INTO tag_group (name, exclusive, applies, sort_order) VALUES ('追加', 0, 'files', 99);",
+            )
+            .unwrap();
+        old.migrate(LATEST).unwrap();
+        let version: i64 = old.conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, 4);
+
+        let sets: Vec<(i64, i64)> = old.list_works().unwrap().into_iter().map(|w| (w.id, w.set_id)).collect();
+        assert_eq!(sets, [(1, 1), (2, 2), (3, 1)]);
+        assert_eq!(old.board(2, 0).unwrap().work.set_id, 2);
+        let groups: Vec<(String, Vec<i64>)> = old.list_tags().unwrap().into_iter().map(|g| (g.name, g.set_ids)).collect();
+        assert_eq!(groups[0], ("コマ数".to_string(), vec![1]));
+        assert_eq!(groups[1], ("特徴".to_string(), vec![]));
+        assert_eq!(groups.last().unwrap(), &("追加".to_string(), vec![2]));
+        // applies 列は消えている
+        assert!(old.conn.prepare("SELECT applies FROM tag_group").is_err());
+    }
+
+    #[test]
+    fn 工程セットの追加_変更_削除() {
+        let (store, _) = setup();
+        let set = store.add_stage_set(" ガレージキット ", "パーツ").unwrap();
+        assert_eq!((set.name.as_str(), set.unit.as_str(), set.kind.as_str()), ("ガレージキット", "パーツ", KIND_MANUAL));
+        assert!(store.add_stage_set("x", " ").unwrap_err().contains("単位"));
+        assert!(store.add_stage_set("", "章").is_err());
+        let names: Vec<String> = store.list_stage_sets().unwrap().into_iter().map(|s| s.name).collect();
+        assert_eq!(names, ["漫画", "イラスト", "ガレージキット"]);
+
+        let set = store.update_stage_set(set.id, "模型", "部品").unwrap();
+        assert_eq!((set.name.as_str(), set.unit.as_str()), ("模型", "部品"));
+        // 組み込みのセットは変えられず、消せない
+        assert!(store.update_stage_set(1, "x", "y").unwrap_err().contains("漫画"));
+        assert!(store.remove_stage_set(2).is_err());
+        assert!(store.add_stage_in_set(999, "x", "#000000").is_err());
+
+        // 使っている作品があると消せない。作品を消せば工程ごと消える
+        store.add_stage_in_set(set.id, "原型", "#111111").unwrap();
+        let work = store.add_manual_work("竜", &["頭".to_string()], set.id, 0).unwrap();
+        assert!(store.remove_stage_set(set.id).unwrap_err().contains("使っている"));
+        store.remove_work(work).unwrap();
+        store.remove_stage_set(set.id).unwrap();
+        assert!(store.list_stages().unwrap().iter().all(|s| s.set_id != set.id));
+        assert!(store.remove_stage_set(set.id).is_err());
+    }
+
+    #[test]
     fn 版2のデータを版3に移しても記録は残る() {
         // 0.1.2 までの形（版 2）のデータベースを作って、データを入れる
         let conn = Connection::open_in_memory().unwrap();
@@ -1470,12 +1635,13 @@ mod tests {
 
         old.migrate(LATEST).unwrap();
         let version: i64 = old.conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, LATEST);
         let fk: bool = old.conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
         assert!(fk, "移行のあとは外部キーが有効に戻っている");
 
         let board = old.board(7, 0).unwrap();
         assert_eq!((board.work.kind.as_str(), board.work.cmc_path.as_deref()), (KIND_COMIC, Some("C:/old.cmc")));
+        assert_eq!(board.work.set_id, 1);
         assert_eq!(board.pages[0].label, "p1");
         assert_eq!((board.pages[0].cells[0].total_ms, board.pages[0].cells[0].done), (600000, true));
         assert_eq!(board.pages[0].tags, [1]);
