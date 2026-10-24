@@ -160,11 +160,30 @@ export function groupDay(steps: DayStep[], label: (pageId: number) => string, w:
 // .ics（RFC 5545）
 // ---------------------------------------------------------------------------
 
-export type IcsEvent = { uid: string; date: Date; summary: string; description?: string };
+export type IcsEvent = { uid: string; date: Date; summary: string; description?: string; cancelled?: boolean };
 
-/** 終日の予定だけの .ics を作る。改行は CRLF、75 バイトを超える行は折り返す */
+/** 前回書き出した予定（UID と日付）。書き出し直したときに、無くなった予定を取り消すのに使う */
+export type ExportedEvent = { uid: string; date: string };
+
+/**
+ * 前回は書き出したが今回は無い予定を、取り消しの予定にする。
+ * 今日より前の日は取り消さない（その日の予定として残しておく）
+ */
+export function staleEvents(prev: ExportedEvent[], current: IcsEvent[], today: Date, summary: string): IcsEvent[] {
+  const now = new Set(current.map((e) => e.uid));
+  const todayKey = ymd(today);
+  return prev
+    .filter((e) => !now.has(e.uid) && e.date.replace(/-/g, "") >= todayKey)
+    .map((e) => ({ uid: e.uid, date: new Date(`${e.date}T00:00`), summary, cancelled: true }));
+}
+
+/**
+ * 終日の予定だけの .ics を作る。改行は CRLF、75 バイトを超える行は折り返す。
+ * SEQUENCE は書き出した時刻（分）から作り、書き出し直すたびに大きくなるようにする（取り消しを確実に反映させるため）
+ */
 export function buildIcs(calName: string, events: IcsEvent[], now: Date): string {
   const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const seq = Math.max(0, Math.floor((now.getTime() - Date.UTC(2026, 0, 1)) / 60_000));
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -180,8 +199,10 @@ export function buildIcs(calName: string, events: IcsEvent[], now: Date): string
       `DTSTAMP:${stamp}`,
       `DTSTART;VALUE=DATE:${ymd(e.date)}`,
       `DTEND;VALUE=DATE:${ymd(addDays(e.date, 1))}`,
+      `SEQUENCE:${seq}`,
       `SUMMARY:${escape(e.summary)}`,
     );
+    if (e.cancelled) lines.push("STATUS:CANCELLED");
     if (e.description) lines.push(`DESCRIPTION:${escape(e.description)}`);
     lines.push("TRANSP:TRANSPARENT", "END:VEVENT");
   }

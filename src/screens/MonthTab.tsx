@@ -3,8 +3,8 @@ import { useState } from "react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import { useApp } from "../app-context";
-import { buildIcs, DayPlan, DayWords, groupDay, IcsEvent, MonthOrder, planMonth } from "../calendar";
-import { Forecast, loadMonthOrder, monthInput, saveMonthOrder } from "../forecast";
+import { buildIcs, DayPlan, DayWords, groupDay, IcsEvent, MonthOrder, planMonth, staleEvents } from "../calendar";
+import { Forecast, loadExported, loadMonthOrder, monthInput, saveExported, saveMonthOrder } from "../forecast";
 import { dayKey, estimate, monthLabel, weekdayName } from "../format";
 import { t } from "../i18n/month";
 import { addDays } from "../schedule";
@@ -76,8 +76,11 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
       filters: [{ name: t("filterName"), extensions: ["ics"] }],
     });
     if (!dest) return;
+    // 前回書き出して今回は無い予定（完成が早まった日など）は、取り消しとして入れてカレンダーから消してもらう
+    const all = [...events, ...staleEvents(loadExported(workId), events, today, t("cancelled"))];
     try {
-      await api.saveCalendar(dest, buildIcs(t("calName", { title }), events, new Date()));
+      await api.saveCalendar(dest, buildIcs(t("calName", { title }), all, new Date()));
+      saveExported(workId, events.map((e) => ({ uid: e.uid, date: dayKey(e.date) })));
       setNote(t("exportDone", { path: dest }));
     } catch (e) {
       app.showError(e);

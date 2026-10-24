@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildIcs, DayWords, groupDay, planMonth, MonthOrder } from "./calendar";
+import { buildIcs, DayWords, groupDay, planMonth, MonthOrder, staleEvents } from "./calendar";
 import { dayKey } from "./format";
 import { Calendar, Candidate, HOUR } from "./schedule";
 
@@ -141,5 +141,32 @@ describe("buildIcs", () => {
     for (const line of ics.split("\r\n")) expect(enc.encode(line).length).toBeLessThanOrEqual(75);
     // 折り返しを戻すと元の文になる
     expect(ics.replace(/\r\n /g, "")).toContain(`DESCRIPTION:1行目\\n${"あ".repeat(40)}`);
+  });
+});
+
+describe("取り消し", () => {
+  it("前回あって今回無い、今日以降の予定だけを取り消す", () => {
+    const prev = [
+      { uid: "2026-10-18-w1@otosazu", date: "2026-10-18" },
+      { uid: "2026-10-20-w1@otosazu", date: "2026-10-20" },
+      { uid: "2026-10-21-w1@otosazu", date: "2026-10-21" },
+      { uid: "finish-w1@otosazu", date: "2026-10-21" },
+    ];
+    const current = [
+      { uid: "2026-10-20-w1@otosazu", date: new Date(2026, 9, 20), summary: "a" },
+      { uid: "finish-w1@otosazu", date: new Date(2026, 9, 20), summary: "b" },
+    ];
+    const stale = staleEvents(prev, current, MON, "（取り消し）");
+    expect(stale.map((e) => e.uid)).toEqual(["2026-10-21-w1@otosazu"]);
+    expect(stale[0].cancelled).toBe(true);
+  });
+
+  it("取り消しの予定には STATUS:CANCELLED を付け、SEQUENCE は書き出すたびに大きくなる", () => {
+    const ev = [{ uid: "x@otosazu", date: MON, summary: "s", cancelled: true }];
+    const a = buildIcs("c", ev, new Date(Date.UTC(2026, 9, 24, 0, 0)));
+    const b = buildIcs("c", ev, new Date(Date.UTC(2026, 9, 24, 0, 5)));
+    expect(a).toContain("\r\nSTATUS:CANCELLED\r\n");
+    const seq = (s: string) => Number(/SEQUENCE:(\d+)/.exec(s)![1]);
+    expect(seq(b)).toBeGreaterThan(seq(a));
   });
 });

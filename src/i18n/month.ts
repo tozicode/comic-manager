@@ -38,6 +38,7 @@ export const { t, tn } = defineMessages({
     partialPage: "{page}（途中まで）",
     continuedPage: "{page}（続き）",
     group: "{stage} {pages}",
+    cancelled: "（取り消し）",
   },
   en: {
     tab: "Monthly plan",
@@ -75,6 +76,7 @@ export const { t, tn } = defineMessages({
     partialPage: "{page} (part)",
     continuedPage: "{page} (cont.)",
     group: "{stage} {pages}",
+    cancelled: "(Canceled)",
   },
   ko: {
     tab: "월간 계획",
@@ -112,6 +114,7 @@ export const { t, tn } = defineMessages({
     partialPage: "{page}(일부)",
     continuedPage: "{page}(이어서)",
     group: "{stage} {pages}",
+    cancelled: "(취소됨)",
   },
   "zh-Hans": {
     tab: "月计划",
@@ -148,6 +151,7 @@ export const { t, tn } = defineMessages({
     partialPage: "{page}（部分）",
     continuedPage: "{page}（续）",
     group: "{stage} {pages}",
+    cancelled: "（已取消）",
   },
   "zh-Hant": {
     tab: "月計畫",
@@ -184,5 +188,6 @@ export const { t, tn } = defineMessages({
     partialPage: "{page}（部分）",
     continuedPage: "{page}（續）",
     group: "{stage} {pages}",
+    cancelled: "（已取消）",
   },
 });

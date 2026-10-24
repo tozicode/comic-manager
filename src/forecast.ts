@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, Board, Prediction, Span, TaskPrediction, WorkSchedule } from "./api";
 import { useApp } from "./app-context";
-import type { MonthInput, MonthOrder } from "./calendar";
+import type { ExportedEvent, MonthInput, MonthOrder } from "./calendar";
 import { dailyTotals, dayKey, dayStartMs, startOfDay } from "./format";
 import {
   addDays,
@@ -228,5 +228,25 @@ export function saveMonthOrder(workId: number, order: MonthOrder) {
     localStorage.setItem(orderKey(workId), order);
   } catch {
     // 保存できなくても、その場では選んだ進め方で表示される
+  }
+}
+
+const exportedKey = (workId: number) => `otosazu.icsExported.${workId}`;
+
+/** 前回 .ics に書き出した予定 */
+export function loadExported(workId: number): ExportedEvent[] {
+  try {
+    const raw = localStorage.getItem(exportedKey(workId));
+    return raw ? (JSON.parse(raw) as ExportedEvent[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveExported(workId: number, events: ExportedEvent[]) {
+  try {
+    localStorage.setItem(exportedKey(workId), JSON.stringify(events));
+  } catch {
+    // 覚えられなければ、次の書き出しで古い予定を取り消せないだけ
   }
 }
