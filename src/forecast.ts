@@ -164,8 +164,8 @@ export function computeForecast(
     quotaMet,
     candidates,
     openTasks,
-    plans: buildPlans(candidates, stageInfos, planQuotaMs, schedule.workOrder, board.work.kind),
-    notice: catchUpNotice(candidates, stageInfos, openCounts, board.work.kind),
+    plans: buildPlans(candidates, stageInfos, planQuotaMs, schedule.workOrder, board.work),
+    notice: catchUpNotice(candidates, stageInfos, openCounts, board.work),
     task,
   };
 }

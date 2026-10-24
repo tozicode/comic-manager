@@ -1,6 +1,7 @@
 // スケジュールの計算：残り時間から完成日を出す（A）／締切から今日のノルマと進め方の案を出す（B）
 // 日付はすべてローカル時刻の「その日の 0 時」の Date で扱う。
-import type { WorkKind } from "./api";
+import type { RowKind } from "./api";
+import { kindKey, unitText } from "./i18n/common";
 import { dayKey } from "./format";
 import { t } from "./i18n/schedule";
 
@@ -175,16 +176,16 @@ export function buildPlans(
   stages: StageInfo[],
   quotaMs: number,
   workOrder: string,
-  kind: WorkKind = "comic",
+  row: RowKind = { kind: "comic", unit: "" },
 ): Plan[] {
-  const files = kind === "files";
+  const unit = unitText(row);
   const plans: Plan[] = [];
   plans.push({
     key: "recommended",
     name: t("plan.recommended"),
     sub:
       workOrder === "page"
-        ? t(files ? "plan.recommendedSubFiles" : "plan.recommendedSubComic")
+        ? t(kindKey(row.kind, "plan.recommendedSub"), { unit: unitText(row, 1) })
         : t("plan.recommendedSubStage"),
     steps: fill(ordered(cands, workOrder), quotaMs),
   });
@@ -202,8 +203,8 @@ export function buildPlans(
           : stage.openMs <= 0
             ? t("plan.stageDone", { stage: stage.name })
             : prev
-              ? t(files ? "plan.noReadyAfterFiles" : "plan.noReadyAfterComic", { prev: prev.name })
-              : t(files ? "plan.noReadyFiles" : "plan.noReadyComic"),
+              ? t(kindKey(row.kind, "plan.noReadyAfter"), { prev: prev.name, unit })
+              : t(kindKey(row.kind, "plan.noReady"), { unit }),
     });
   });
 
@@ -251,15 +252,16 @@ export function catchUpNotice(
   cands: Candidate[],
   stages: StageInfo[],
   openCounts: number[],
-  kind: WorkKind = "comic",
+  row: RowKind = { kind: "comic", unit: "" },
 ): string | null {
   for (let i = 1; i < stages.length; i++) {
     const ready = cands.filter((c) => c.stageId === stages[i].id).length;
     if (openCounts[i - 1] > 0 && openCounts[i] > ready && ready <= 2) {
-      return t(kind === "files" ? "plan.catchUpFiles" : "plan.catchUpComic", {
+      return t(kindKey(row.kind, "plan.catchUp"), {
         stage: stages[i].name,
         prev: stages[i - 1].name,
         n: ready,
+        unit: unitText(row, ready),
       });
     }
   }

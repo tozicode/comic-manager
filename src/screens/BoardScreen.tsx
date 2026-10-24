@@ -11,6 +11,7 @@ import { Forecast, loadChosenPlan, useForecast } from "../forecast";
 import { planName } from "../schedule";
 import { clock, dayLabel, estimate, hours, time } from "../format";
 import { t, tn } from "../i18n/board";
+import { kindKey, unitText } from "../i18n/common";
 
 /** 同期で見つかった見開きの変化（1 件ずつ確認する） */
 type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSplit };
@@ -41,9 +42,12 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [splitHalf, setSplitHalf] = useState(true);
   /** 消えたページの記録の移動先 */
   const [moveTo, setMoveTo] = useState<Record<number, number>>({});
-  /** イラストの作品で外そうとしているファイル */
+  /** イラストの作品で外そうとしているファイル（ファイルを持たない作品では行） */
   const [removing, setRemoving] = useState<BoardPage | null>(null);
-  /** イラストのファイルのドラッグ中の並び（離したら保存する） */
+  /** ファイルを持たない作品：行を足す入力（null なら閉じている）、名前を変えている行 */
+  const [addingRows, setAddingRows] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ page: BoardPage; title: string } | null>(null);
+  /** イラストのファイル（または行）のドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
   const dragging = useRef<number | null>(null);
 
@@ -124,9 +128,26 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   if (!forecast) return <p className="muted">{t("loading")}</p>;
   const { board } = forecast;
   const startRelink = () => relink.start(workId, board.work.title);
-  const isFiles = board.work.kind === "files";
-  // 付け外しの画面には、この作品の種類で使うタググループだけを出す
-  const usableTags = tags.filter((g) => g.applies === "both" || g.applies === board.work.kind);
+  const kind = board.work.kind;
+  const isFiles = kind === "files";
+  const isManual = kind === "manual";
+  /** 行を利用者が並べ替え・外せる作品（イラスト、ファイルを持たない作品） */
+  const hasRows = isFiles || isManual;
+  const unit = unitText(board.work);
+  // 付け外しの画面には、この作品の工程セットで使うタググループだけを出す
+  const usableTags = tags.filter((g) => g.setIds.length === 0 || g.setIds.includes(board.work.setId));
+
+  const addRows = async () => {
+    const names = (addingRows ?? "").split(/\r?\n/);
+    setAddingRows(null);
+    try {
+      const n = await api.addRows(workId, names);
+      setSyncNote(t("rowsAdded", { n }));
+      app.refresh();
+    } catch (e) {
+      app.showError(e);
+    }
+  };
 
   const addFiles = async () => {
     const picked = await openDialog({ title: t("addFilesTitle"), multiple: true, directory: false, filters: illustFilter() });
@@ -147,7 +168,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     await run(() => api.relinkFile(page.id, picked));
   };
 
-  // ファイルのドラッグでの並べ替え（イラストのみ）
+  // ファイル（行）のドラッグでの並べ替え（イラストとファイルを持たない作品）
   const rowOrder = dragOrder ?? board.pages.map((p) => p.id);
   const onRowDragOver = (e: DragEvent, overId: number) => {
     const id = dragging.current;
@@ -178,7 +199,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     return cell.totalMs > 0 ? "doing" : "todo";
   };
 
-  const ordered = isFiles ? rowOrder.map((id) => pages.find((p) => p.id === id)!).filter(Boolean) : pages;
+  const ordered = hasRows ? rowOrder.map((id) => pages.find((p) => p.id === id)!).filter(Boolean) : pages;
   const shown = filter === "open" ? ordered.filter((p) => p.cells.some((c) => !c.done)) : ordered;
   const allChecked = shown.length > 0 && shown.every((p) => selected.includes(p.id));
 
@@ -194,21 +215,31 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       <div className="board-head">
         <div className="muted small-text">
           {board.work.lastSyncedAt && t("lastSynced", { time: time(board.work.lastSyncedAt) })}
-          {isFiles ? t("fileCount", { n: pageCount }) : t("cmcPageCount", { n: pageCount })}
+          {isFiles
+            ? t("fileCount", { n: pageCount })
+            : isManual
+              ? t("unitCount", { n: pageCount, unit: unitText(board.work, pageCount) })
+              : t("cmcPageCount", { n: pageCount })}
         </div>
         <div className="row tight">
           {isFiles ? (
             <button className="btn small ghost" onClick={addFiles}>
               {t("addFiles")}
             </button>
+          ) : isManual ? (
+            <button className="btn small ghost" onClick={() => setAddingRows("")}>
+              {t("addRows")}
+            </button>
           ) : (
             <button className="btn small ghost" onClick={startRelink} title={t("changeLocationHint")}>
               {t("changeLocation")}
             </button>
           )}
-          <button className="btn small ghost" onClick={() => sync(true)}>
-            {isFiles ? t("reload") : t("reloadCmc")}
-          </button>
+          {!isManual && (
+            <button className="btn small ghost" onClick={() => sync(true)}>
+              {isFiles ? t("reload") : t("reloadCmc")}
+            </button>
+          )}
         </div>
       </div>
       {syncNote && (
@@ -264,12 +295,12 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         <div style={{ position: "relative" }}>
           <button className="btn small" disabled={selected.length === 0} onClick={() => setTagging("bulk")}>
             {selected.length > 0
-              ? t(isFiles ? "bulkTagFiles" : "bulkTagComic", { n: selected.length })
-              : t(isFiles ? "bulkHintFiles" : "bulkHintComic")}
+              ? t(kindKey(kind, "bulkTag"), { n: selected.length, unit: unitText(board.work, selected.length) })
+              : t(kindKey(kind, "bulkHint"), { unit })}
           </button>
           {tagging === "bulk" && (
             <TagPopover
-              title={t(isFiles ? "bulkTitleFiles" : "bulkTitleComic", { n: selected.length })}
+              title={t(kindKey(kind, "bulkTitle"), { n: selected.length, unit: unitText(board.work, selected.length) })}
               groups={usableTags}
               active={activeTags}
               onToggle={toggleTag}
@@ -308,7 +339,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                 onChange={() => setSelected(allChecked ? [] : shown.map((p) => p.id))}
               />
             </th>
-            <th>{t(isFiles ? "rowFiles" : "rowComic")}</th>
+            <th>{t(kindKey(kind, "row"), { unit: unitText(board.work, 1) })}</th>
             {board.stages.map((s) => (
               <th key={s.id} style={{ width: board.stages.length >= 4 ? 140 : 180 }}>
                 <span className="sdot" style={{ background: s.color }} />
@@ -322,7 +353,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             <tr
               key={page.id}
               className={`${selected.includes(page.id) ? "selected" : ""}${dragOrder && dragging.current === page.id ? " dragging" : ""}`}
-              onDragOver={isFiles ? (e) => onRowDragOver(e, page.id) : undefined}
+              onDragOver={hasRows ? (e) => onRowDragOver(e, page.id) : undefined}
               onDrop={(e) => e.preventDefault()}
             >
               <td>
@@ -336,7 +367,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
               </td>
               <td style={{ position: "relative" }}>
                 <div className="pcell">
-                  {isFiles && (
+                  {hasRows && (
                     <span
                       className="handle"
                       draggable
@@ -350,11 +381,21 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                       ⋮⋮
                     </span>
                   )}
-                  <Thumb path={page.path} spread={page.span === 2} free={isFiles} />
-                  <div className={isFiles ? "pinfo" : "pinfo inline"}>
-                    <span className={`pno${isFiles ? " name" : ""}`} title={isFiles ? page.path : undefined}>
-                      {page.label}
-                    </span>
+                  {!isManual && <Thumb path={page.path} spread={page.span === 2} free={isFiles} />}
+                  <div className={hasRows ? "pinfo" : "pinfo inline"}>
+                    {isManual ? (
+                      <button
+                        className="pno name rename"
+                        title={t("renameHint")}
+                        onClick={() => setRenaming({ page, title: page.label })}
+                      >
+                        {page.label}
+                      </button>
+                    ) : (
+                      <span className={`pno${isFiles ? " name" : ""}`} title={isFiles ? page.path : undefined}>
+                        {page.label}
+                      </span>
+                    )}
                     {!page.found &&
                       (isFiles ? (
                         <button className="lost" title={t("fileNotFound")} onClick={() => relinkFile(page)}>
@@ -379,8 +420,12 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                       </button>
                     </div>
                   </div>
-                  {isFiles && (
-                    <button className="mini remove" title={t("removeFileHint")} onClick={() => setRemoving(page)}>
+                  {hasRows && (
+                    <button
+                      className="mini remove"
+                      title={t(isManual ? "removeRowHint" : "removeFileHint")}
+                      onClick={() => setRemoving(page)}
+                    >
                       ×
                     </button>
                   )}
@@ -560,10 +605,78 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           }
         >
           <p>
-            {t("removeBody", { time: hours(removing.cells.reduce((n, c) => n + c.totalMs, 0)) })}
-            <br />
-            {t("removeBodyNote")}
+            {t(isManual ? "removeRowBody" : "removeBody", { time: hours(removing.cells.reduce((n, c) => n + c.totalMs, 0)) })}
+            {!isManual && (
+              <>
+                <br />
+                {t("removeBodyNote")}
+              </>
+            )}
           </p>
+        </Dialog>
+      )}
+      {addingRows !== null && (
+        <Dialog
+          title={t("addRowsTitle")}
+          onClose={() => setAddingRows(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setAddingRows(null)}>
+                {t("cancel")}
+              </button>
+              <button className="btn primary" disabled={!addingRows.trim()} onClick={addRows}>
+                {t("add")}
+              </button>
+            </>
+          }
+        >
+          <textarea
+            className="field"
+            rows={5}
+            autoFocus
+            placeholder={t("addRowsPlaceholder")}
+            value={addingRows}
+            onChange={(e) => setAddingRows(e.target.value)}
+            style={{ width: "100%", resize: "vertical" }}
+          />
+        </Dialog>
+      )}
+      {renaming && (
+        <Dialog
+          title={t("renameTitle", { label: renaming.page.label })}
+          onClose={() => setRenaming(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setRenaming(null)}>
+                {t("cancel")}
+              </button>
+              <button
+                className="btn primary"
+                disabled={!renaming.title.trim()}
+                onClick={() => {
+                  const { page, title } = renaming;
+                  setRenaming(null);
+                  if (title.trim() !== page.label) run(() => api.renameRow(page.id, title));
+                }}
+              >
+                {t("rename")}
+              </button>
+            </>
+          }
+        >
+          <input
+            className="field"
+            autoFocus
+            value={renaming.title}
+            onChange={(e) => setRenaming({ ...renaming, title: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || !renaming.title.trim()) return;
+              const { page, title } = renaming;
+              setRenaming(null);
+              if (title.trim() !== page.label) run(() => api.renameRow(page.id, title));
+            }}
+            style={{ width: "100%" }}
+          />
         </Dialog>
       )}
       {undo && (

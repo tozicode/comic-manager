@@ -1854,6 +1854,19 @@ table.rec {
   cursor: grab;
   letter-spacing: -2px;
 }
+/* ファイルを持たない作品の行名：クリックで名前を変える */
+.pcell .pno.rename {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: text;
+  text-align: left;
+}
+.pcell .pno.rename:hover {
+  text-decoration: underline dotted var(--muted);
+}
 .board tr.dragging td {
   opacity: 0.4;
 }

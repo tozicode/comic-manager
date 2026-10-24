@@ -1,6 +1,8 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { askNotificationPermission } from "../components/Pomodoro";
-import { api, DisplayPrefs, StageDef, StageSet, Tag, TagApplies, TagGroup, TimerPrefs } from "../api";
+import { api, DisplayPrefs, StageDef, StageSet, Tag, TagGroup, TimerPrefs } from "../api";
+import { Dialog } from "../components/Dialog";
+import { kindKey, setName, unitText } from "../i18n/common";
 import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -76,6 +78,9 @@ function StagesSection() {
   const [sets, setSets] = useState<StageSet[]>([]);
   const [setId, setSetId] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
+  /** 自作のセットの追加・変更の入力（id が null なら追加） */
+  const [editing, setEditing] = useState<{ id: number | null; name: string; unit: string } | null>(null);
+  const [removingSet, setRemovingSet] = useState<StageSet | null>(null);
   /** ドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<StageDef[] | null>(null);
   const dragging = useRef<number | null>(null);
@@ -91,10 +96,11 @@ function StagesSection() {
       .catch(app.showError);
   }, [app.version, app.showError]);
 
-  // 工程はセット（漫画・イラスト）ごとに並べ替え・追加する
+  // 工程はセット（漫画・イラスト・自作のセット）ごとに並べ替え・追加する
   const stages = allStages.filter((st) => st.setId === setId);
-  const kind = sets.find((st) => st.id === setId)?.kind ?? "comic";
-  const unit = t(kind === "files" ? "stage.minPerFile" : "stage.minPerPage");
+  const set = sets.find((st) => st.id === setId);
+  const kind = set?.kind ?? "comic";
+  const unit = t(kindKey(kind, "stage.minPer"), { unit: set ? unitText(set, 1) : "" });
   const list = dragOrder ?? stages;
   const onDragOver = (e: DragEvent, overId: number) => {
     const id = dragging.current;
@@ -121,6 +127,20 @@ function StagesSection() {
     setNewName("");
   };
 
+  // 自作のセットの追加・変更（id が null なら追加）。追加したらそのセットのタブを開く
+  const saveSet = async () => {
+    if (!editing || !editing.name.trim() || !editing.unit.trim()) return;
+    const { id, name, unit } = editing;
+    setEditing(null);
+    try {
+      const saved = id === null ? await api.addStageSet(name, unit) : await api.updateStageSet(id, name, unit);
+      setSetId(saved.id);
+      app.refresh();
+    } catch (e) {
+      app.showError(e);
+    }
+  };
+
   return (
     <>
       <div className="row" style={{ marginBottom: 8 }}>
@@ -129,12 +149,27 @@ function StagesSection() {
         </div>
         <span className="muted small-text">{t("stages.note")}</span>
       </div>
-      <div className="seg" style={{ marginBottom: 10 }}>
-        {sets.map((st) => (
-          <button key={st.id} className={st.id === setId ? "on" : ""} onClick={() => setSetId(st.id)}>
-            {t(st.kind === "files" ? "set.files" : "set.comic")}
-          </button>
-        ))}
+      <div className="row" style={{ marginBottom: 10 }}>
+        <span className="seg">
+          {sets.map((st) => (
+            <button key={st.id} className={st.id === setId ? "on" : ""} onClick={() => setSetId(st.id)}>
+              {setName(st)}
+            </button>
+          ))}
+        </span>
+        <button className="btn small ghost" onClick={() => setEditing({ id: null, name: "", unit: "" })}>
+          {t("sets.add")}
+        </button>
+        {set?.kind === "manual" && (
+          <>
+            <button className="btn small ghost" onClick={() => setEditing({ id: set.id, name: set.name, unit: set.unit })}>
+              {t("sets.edit")}
+            </button>
+            <button className="btn small ghost" onClick={() => setRemovingSet(set)}>
+              {t("sets.remove")}
+            </button>
+          </>
+        )}
       </div>
       <div className="slist">
         {list.map((s, i) => (
@@ -156,7 +191,7 @@ function StagesSection() {
         <div className="row">
           <input
             className="field"
-            placeholder={t(kind === "files" ? "stages.placeholderFiles" : "stages.placeholderComic")}
+            placeholder={t(kindKey(kind, "stages.placeholder"), { unit: "" })}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && add()}
@@ -168,6 +203,74 @@ function StagesSection() {
         </div>
       </div>
       <p className="muted small-text">{t("stages.footer")}</p>
+      {editing && (
+        <Dialog
+          title={editing.id === null ? t("sets.addTitle") : t("sets.edit")}
+          onClose={() => setEditing(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setEditing(null)}>
+                {t("sets.cancel")}
+              </button>
+              <button className="btn primary" disabled={!editing.name.trim() || !editing.unit.trim()} onClick={saveSet}>
+                {t("sets.save")}
+              </button>
+            </>
+          }
+        >
+          {editing.id === null && <p className="muted small-text">{t("sets.addNote")}</p>}
+          <div className="form">
+            <label className="row">
+              <span style={{ width: 110 }}>{t("sets.name")}</span>
+              <input
+                className="field grow"
+                autoFocus
+                placeholder={t("sets.namePlaceholder")}
+                value={editing.name}
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+              />
+            </label>
+            <label className="row">
+              <span style={{ width: 110 }}>{t("sets.unit")}</span>
+              <input
+                className="field grow"
+                placeholder={t("sets.unitPlaceholder")}
+                value={editing.unit}
+                onChange={(e) => setEditing({ ...editing, unit: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && saveSet()}
+              />
+            </label>
+            <p className="muted small-text" style={{ margin: 0 }}>
+              {t("sets.unitHint")}
+            </p>
+          </div>
+        </Dialog>
+      )}
+      {removingSet && (
+        <Dialog
+          title={t("sets.removeTitle", { name: removingSet.name })}
+          onClose={() => setRemovingSet(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setRemovingSet(null)}>
+                {t("sets.cancel")}
+              </button>
+              <button
+                className="btn danger"
+                onClick={() => {
+                  const id = removingSet.id;
+                  setRemovingSet(null);
+                  run(() => api.removeStageSet(id)).then(() => setSetId((cur) => (cur === id ? (sets[0]?.id ?? null) : cur)));
+                }}
+              >
+                {t("sets.removeConfirm")}
+              </button>
+            </>
+          }
+        >
+          <p>{t("sets.removeBody")}</p>
+        </Dialog>
+      )}
     </>
   );
 }
@@ -269,15 +372,17 @@ function TagsSection() {
   const app = useApp();
   const run = useRun();
   const [groups, setGroups] = useState<TagGroup[]>([]);
+  const [sets, setSets] = useState<StageSet[]>([]);
   const [newGroup, setNewGroup] = useState("");
 
   useEffect(() => {
     api.listTags().then(setGroups).catch(app.showError);
+    api.listStageSets().then(setSets).catch(app.showError);
   }, [app.version, app.showError]);
 
   const addGroup = () => {
     if (!newGroup.trim()) return;
-    run(() => api.addTagGroup(newGroup, false, "both"));
+    run(() => api.addTagGroup(newGroup, false, []));
     setNewGroup("");
   };
 
@@ -290,7 +395,7 @@ function TagsSection() {
         <span className="muted small-text">{t("tags.note")}</span>
       </div>
       {groups.map((g) => (
-        <GroupCard key={`${g.id}-${g.name}-${g.exclusive}-${g.applies}`} group={g} run={run} />
+        <GroupCard key={`${g.id}-${g.name}-${g.exclusive}-${g.setIds.join(",")}`} group={g} sets={sets} run={run} />
       ))}
       <div className="row">
         <input
@@ -310,13 +415,18 @@ function TagsSection() {
   );
 }
 
-function GroupCard({ group, run }: { group: TagGroup; run: Run }) {
-  const [name, setName] = useState(group.name);
+function GroupCard({ group, sets, run }: { group: TagGroup; sets: StageSet[]; run: Run }) {
+  const [name, setGroupName] = useState(group.name);
   const [newTag, setNewTag] = useState("");
   const addTag = () => {
     if (!newTag.trim()) return;
     run(() => api.addTag(group.id, newTag, 1.0));
     setNewTag("");
+  };
+  // 使うセットの付け外し。全部外せば「すべて」
+  const toggleSet = (id: number | null) => {
+    const next = id === null ? [] : group.setIds.includes(id) ? group.setIds.filter((s) => s !== id) : [...group.setIds, id];
+    run(() => api.updateTagGroup(group.id, group.name, group.exclusive, next));
   };
   return (
     <div className="card tgroup">
@@ -330,29 +440,29 @@ function GroupCard({ group, run }: { group: TagGroup; run: Run }) {
             <input
               className="field group-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setGroupName(e.target.value)}
               onBlur={() =>
-                name.trim() !== group.name && run(() => api.updateTagGroup(group.id, name, group.exclusive, group.applies))
+                name.trim() !== group.name && run(() => api.updateTagGroup(group.id, name, group.exclusive, group.setIds))
               }
             />
             <label className="small-text row tight">
               <input
                 type="checkbox"
                 checked={group.exclusive}
-                onChange={(e) => run(() => api.updateTagGroup(group.id, group.name, e.target.checked, group.applies))}
+                onChange={(e) => run(() => api.updateTagGroup(group.id, group.name, e.target.checked, group.setIds))}
               />
               {t("tags.exclusive")}
             </label>
-            <select
-              className="field small-text"
-              title={t("tags.appliesTitle")}
-              value={group.applies}
-              onChange={(e) => run(() => api.updateTagGroup(group.id, group.name, group.exclusive, e.target.value as TagApplies))}
-            >
-              <option value="both">{t("tags.appliesBoth")}</option>
-              <option value="comic">{t("tags.appliesComic")}</option>
-              <option value="files">{t("tags.appliesFiles")}</option>
-            </select>
+            <span className="seg small-text" title={t("tags.setsTitle")}>
+              <button className={group.setIds.length === 0 ? "on" : ""} onClick={() => toggleSet(null)}>
+                {t("tags.setsAll")}
+              </button>
+              {sets.map((s) => (
+                <button key={s.id} className={group.setIds.includes(s.id) ? "on" : ""} onClick={() => toggleSet(s.id)}>
+                  {setName(s)}
+                </button>
+              ))}
+            </span>
           </div>
         )}
       </div>

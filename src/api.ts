@@ -4,10 +4,14 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Lang, LangPref } from "./i18n";
 import type { ThemePref } from "./theme";
 
-/** 作品の種類：漫画（cmc）とイラスト（.clip / .psd を束ねたもの） */
-export type WorkKind = "comic" | "files";
+/** 作品の種類：漫画（cmc）、イラスト（.clip / .psd を束ねたもの）、ファイルを持たない作品（行を名前で作る） */
+export type WorkKind = "comic" | "files" | "manual";
 
+/** 工程のセット。kind が manual のものは利用者が作ったセット（名前・単位は DB の値をそのまま使う） */
 export type StageSet = { id: number; name: string; unit: string; kind: WorkKind };
+
+/** 作品の種類とセットの単位の言葉（文言を組み立てるのに使う） */
+export type RowKind = { kind: WorkKind; unit: string };
 
 export type StageDef = {
   id: number;
@@ -23,7 +27,10 @@ export type WorkSummary = {
   id: number;
   title: string;
   kind: WorkKind;
-  /** 漫画の cmc の場所（イラストは null） */
+  setId: number;
+  /** セットの単位の言葉（利用者が作ったセットのときだけ使う） */
+  unit: string;
+  /** 漫画の cmc の場所（漫画以外は null） */
   cmcPath: string | null;
   pageCount: number;
   stageCount: number;
@@ -60,7 +67,15 @@ export type BoardPage = {
 };
 
 export type Board = {
-  work: { id: number; title: string; kind: WorkKind; cmcPath: string | null; lastSyncedAt: number | null };
+  work: {
+    id: number;
+    title: string;
+    kind: WorkKind;
+    setId: number;
+    unit: string;
+    cmcPath: string | null;
+    lastSyncedAt: number | null;
+  };
   stages: StageRef[];
   pages: BoardPage[];
 };
@@ -104,10 +119,8 @@ export type Span = { workId: number; startedAt: number; endedAt: number | null; 
 
 export type Tag = { id: number; groupId: number; name: string; initialFactor: number; system: boolean; hidden: boolean };
 
-/** タググループを使う作品の種類 */
-export type TagApplies = "comic" | "files" | "both";
-
-export type TagGroup = { id: number; name: string; exclusive: boolean; applies: TagApplies; system: boolean; tags: Tag[] };
+/** タググループ。setIds は使う工程のセット（空ならすべてのセット） */
+export type TagGroup = { id: number; name: string; exclusive: boolean; setIds: number[]; system: boolean; tags: Tag[] };
 
 export type TaskPrediction = {
   pageId: number;
@@ -175,6 +188,14 @@ export const api = {
   setFileOrder: (workId: number, pageIds: number[]) => invoke<void>("set_file_order", { workId, pageIds }),
   relinkFile: (pageId: number, path: string) => invoke<void>("relink_file", { pageId, path }),
   listStageSets: () => invoke<StageSet[]>("list_stage_sets"),
+  addStageSet: (name: string, unit: string) => invoke<StageSet>("add_stage_set", { name, unit }),
+  updateStageSet: (id: number, name: string, unit: string) => invoke<StageSet>("update_stage_set", { id, name, unit }),
+  removeStageSet: (id: number) => invoke<void>("remove_stage_set", { id }),
+  /** ファイルを持たない作品。names は行の名前（1 つだけ数字なら 1〜その数の行） */
+  addManualWork: (title: string, names: string[], setId: number) =>
+    invoke<number>("add_manual_work", { title, names, setId }),
+  addRows: (workId: number, names: string[]) => invoke<number>("add_rows", { workId, names }),
+  renameRow: (pageId: number, title: string) => invoke<void>("rename_row", { pageId, title }),
   removeWork: (workId: number) => invoke<void>("remove_work", { workId }),
   syncWork: (workId: number) => invoke<SyncResult>("sync_work", { workId }),
   getBoard: (workId: number) => invoke<Board>("get_board", { workId }),
@@ -203,10 +224,10 @@ export const api = {
 
   listTags: () => invoke<TagGroup[]>("list_tags"),
   setPageTag: (pageIds: number[], tagId: number, on: boolean) => invoke<void>("set_page_tag", { pageIds, tagId, on }),
-  addTagGroup: (name: string, exclusive: boolean, applies: TagApplies) =>
-    invoke<number>("add_tag_group", { name, exclusive, applies }),
-  updateTagGroup: (id: number, name: string, exclusive: boolean, applies: TagApplies) =>
-    invoke<void>("update_tag_group", { id, name, exclusive, applies }),
+  addTagGroup: (name: string, exclusive: boolean, setIds: number[]) =>
+    invoke<number>("add_tag_group", { name, exclusive, setIds }),
+  updateTagGroup: (id: number, name: string, exclusive: boolean, setIds: number[]) =>
+    invoke<void>("update_tag_group", { id, name, exclusive, setIds }),
   addTag: (groupId: number, name: string, initialFactor: number) =>
     invoke<number>("add_tag", { groupId, name, initialFactor }),
   updateTag: (id: number, name: string, initialFactor: number) => invoke<void>("update_tag", { id, name, initialFactor }),

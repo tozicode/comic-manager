@@ -131,6 +131,9 @@ export type DayWords = {
 export type StageGroup = { stageId: number; pages: string };
 
 /** 1 日のタスクを工程ごとにまとめ、ページを並べる。同じ工程で 3 つ以上続くページは範囲にまとめる */
+/** 番号の行のラベル（p5、p4-5、12 など） */
+const NUMBERED = /^p?\d/;
+
 export function groupDay(steps: DayStep[], label: (pageId: number) => string, w: DayWords): StageGroup[] {
   const stages = [...new Set([...steps].sort((a, b) => a.stageIndex - b.stageIndex).map((s) => s.stageId))];
   return stages.map((stageId) => {
@@ -138,7 +141,9 @@ export function groupDay(steps: DayStep[], label: (pageId: number) => string, w:
     const parts: string[] = [];
     let run: DayStep[] = [];
     const flush = () => {
-      if (run.length >= 3) parts.push(w.range(label(run[0].pageId), label(run[run.length - 1].pageId)));
+      const [first, last] = [label(run[0]?.pageId), label(run[run.length - 1]?.pageId)];
+      // 「p5〜p7」「3〜5」のようにまとめるのは番号の行だけ。名前の行（頭・胴・右腕）は並べて書く
+      if (run.length >= 3 && NUMBERED.test(first) && NUMBERED.test(last)) parts.push(w.range(first, last));
       else parts.push(...run.map((s) => label(s.pageId)));
       run = [];
     };

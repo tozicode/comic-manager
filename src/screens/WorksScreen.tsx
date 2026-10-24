@@ -6,7 +6,7 @@ import { Dialog } from "../components/Dialog";
 import { useRelink } from "../components/Relink";
 import { useForecast } from "../forecast";
 import { dayLabel, hours } from "../format";
-import { setName } from "../i18n/common";
+import { kindKey, setName, unitText } from "../i18n/common";
 import { t } from "../i18n/works";
 
 type Props = { works: WorkSummary[]; onOpen: (workId: number) => void };
@@ -54,7 +54,7 @@ export function WorksScreen({ works, onOpen }: Props) {
                 </button>
               </div>
               <div className="muted small-text">
-                {t(w.kind === "files" ? "metaFiles" : "metaComic", { n: w.pageCount, stages: w.stageCount })}
+                {t(kindKey(w.kind, "meta"), { n: w.pageCount, stages: w.stageCount, unit: unitText(w, w.pageCount) })}
               </div>
               <div className="bar" style={{ marginTop: 10 }}>
                 <span style={{ width: `${w.progress * 100}%`, background: "var(--accent)" }} />
@@ -130,8 +130,12 @@ export function WorksScreen({ works, onOpen }: Props) {
         >
           <p>
             {t("removeLog", { time: hours(removing.totalMs) })}
-            <br />
-            {t(removing.kind === "files" ? "removeKeepFiles" : "removeKeepComic")}
+            {removing.kind !== "manual" && (
+              <>
+                <br />
+                {t(removing.kind === "files" ? "removeKeepFiles" : "removeKeepComic")}
+              </>
+            )}
           </p>
         </Dialog>
       )}
@@ -182,27 +186,41 @@ function WorkOutlook({ workId }: { workId: number }) {
   );
 }
 
-/** 作品を追加するダイアログ：種類と工程のセットを選んでから、ファイルを選ぶ */
+/** 作品を追加するダイアログ：種類と工程のセットを選んでから、ファイルを選ぶ（ファイルを持たない作品は行の名前を入れる） */
 function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (workId: number) => void }) {
   const app = useApp();
   const [kind, setKind] = useState<WorkKind>("comic");
   const [sets, setSets] = useState<StageSet[]>([]);
   const [setId, setSetId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
+  const [rows, setRows] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     api.listStageSets().then(setSets).catch(app.showError);
   }, [app.showError]);
 
-  // 種類を変えたら、その種類の既定のセットを選び直す
+  // 種類を変えたら、その種類の既定のセットを選び直す（自作のセットが無ければ漫画のセット）
   useEffect(() => {
     const first = sets.find((st) => st.kind === kind) ?? sets[0];
     if (first) setSetId(first.id);
   }, [kind, sets]);
 
+  const addManual = async () => {
+    if (setId === null) return;
+    setBusy(true);
+    try {
+      onAdded(await api.addManualWork(title, rows.split(/\r?\n/), setId));
+    } catch (e) {
+      app.showError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const pick = async () => {
     if (setId === null) return;
+    if (kind === "manual") return addManual();
     const picked = await open(
       kind === "comic"
         ? { title: t("pickComicTitle"), multiple: false, directory: false, filters: [{ name: t("comicFilter"), extensions: ["cmc"] }] }
@@ -240,8 +258,12 @@ function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (wo
           <button className="btn" onClick={onClose}>
             {t("cancel")}
           </button>
-          <button className="btn primary" onClick={pick} disabled={busy || setId === null}>
-            {busy ? t("loading") : kind === "comic" ? t("pickComic") : t("pickFiles")}
+          <button
+            className="btn primary"
+            onClick={pick}
+            disabled={busy || setId === null || (kind === "manual" && (!title.trim() || !rows.trim()))}
+          >
+            {busy ? t("loading") : kind === "comic" ? t("pickComic") : kind === "files" ? t("pickFiles") : t("addManual")}
           </button>
         </>
       }
@@ -262,13 +284,21 @@ function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (wo
           <span className="muted">{t("filesDesc")}</span>
         </span>
       </button>
+      <button className={`choice${kind === "manual" ? " on" : ""}`} onClick={() => setKind("manual")}>
+        <span className="radio" />
+        <span>
+          <b>{t("manual")}</b>
+          <br />
+          <span className="muted">{t("manualDesc")}</span>
+        </span>
+      </button>
       <div className="form" style={{ marginTop: 8 }}>
-        {kind === "files" && (
+        {kind !== "comic" && (
           <label className="row">
             <span style={{ width: 90 }}>{t("workName")}</span>
             <input
               className="field grow"
-              placeholder={t("workNamePlaceholder")}
+              placeholder={t(kind === "files" ? "workNamePlaceholder" : "workNamePlaceholderManual")}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -279,11 +309,24 @@ function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (wo
           <select className="field grow" value={setId ?? ""} onChange={(e) => setSetId(Number(e.target.value))}>
             {sets.map((st) => (
               <option key={st.id} value={st.id}>
-                {t("stageSet", { name: setName(st.kind) })}
+                {t("stageSet", { name: setName(st) })}
               </option>
             ))}
           </select>
         </label>
+        {kind === "manual" && (
+          <label className="row" style={{ alignItems: "flex-start" }}>
+            <span style={{ width: 90, paddingTop: 6 }}>{t("rows")}</span>
+            <textarea
+              className="field grow"
+              rows={5}
+              placeholder={t("rowsPlaceholder")}
+              value={rows}
+              onChange={(e) => setRows(e.target.value)}
+              style={{ resize: "vertical" }}
+            />
+          </label>
+        )}
       </div>
     </Dialog>
   );

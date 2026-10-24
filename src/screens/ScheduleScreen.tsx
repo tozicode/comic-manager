@@ -3,6 +3,7 @@ import { api } from "../api";
 import { useApp } from "../app-context";
 import { ChosenPlan, Forecast, loadChosenPlan, saveChosenPlan, useForecast } from "../forecast";
 import { dayKey, dayLabel, estimate, hours, weekdayName } from "../format";
+import { kindKey, unitText } from "../i18n/common";
 import { t as tm } from "../i18n/month";
 import { t, tn } from "../i18n/schedule";
 import { addDays, HOUR, Plan, PlanStep } from "../schedule";
@@ -54,7 +55,7 @@ export function ScheduleScreen({ workId }: { workId: number }) {
             ? t("tabFinishHint")
             : tab === "deadline"
               ? t("tabDeadlineHint")
-              : tm(forecast.board.work.kind === "files" ? "tabHintFiles" : "tabHint")}
+              : tm(kindKey(forecast.board.work.kind, "tabHint"), { unit: unitText(forecast.board.work) })}
         </span>
       </div>
       {tab === "finish" ? (
@@ -296,10 +297,10 @@ function ProgressChart({ forecast }: { forecast: Forecast }) {
 
 function StageBases({ forecast }: { forecast: Forecast }) {
   const { board, prediction } = forecast;
-  const files = board.work.kind === "files";
+  const kind = board.work.kind;
   return (
     <details className="bases">
-      <summary className="small-text muted">{t(files ? "basesSummaryFiles" : "basesSummaryComic")}</summary>
+      <summary className="small-text muted">{t(kindKey(kind, "basesSummary"), { unit: unitText(board.work, 1) })}</summary>
       <table>
         <tbody>
           {prediction.stages.map((b) => {
@@ -308,15 +309,17 @@ function StageBases({ forecast }: { forecast: Forecast }) {
               <tr key={b.stageId}>
                 <td>{stage?.name}</td>
                 <td className="num">{estimate(b.baseMs)}</td>
-                <td className="muted">{b.fromHint ? t("fromHint") : t(files ? "fromSamplesFiles" : "fromSamplesComic", { n: b.samples })}</td>
+                <td className="muted">
+                  {b.fromHint
+                    ? t("fromHint")
+                    : t(kindKey(kind, "fromSamples"), { n: b.samples, unit: unitText(board.work, b.samples) })}
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <p className="muted small-text">
-        {t(files ? "formulaFiles" : "formulaComic")}
-      </p>
+      <p className="muted small-text">{t(kindKey(kind, "formula"), { unit: unitText(board.work, 1) })}</p>
     </details>
   );
 }
@@ -441,7 +444,7 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
             onChange={(e) => run(() => api.setWorkOrder(workId, e.target.value))}
           >
             <option value="stage">{t("orderStage")}</option>
-            <option value="page">{t(board.work.kind === "files" ? "orderPageFiles" : "orderPageComic")}</option>
+            <option value="page">{t(kindKey(board.work.kind, "orderPage"), { unit: unitText(board.work, 1) })}</option>
           </select>
         </label>
       </div>

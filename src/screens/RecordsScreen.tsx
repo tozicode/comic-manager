@@ -4,6 +4,7 @@ import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { Heatmap } from "../components/Heatmap";
 import { dayKey, dayLabel, dayStartMs, fromInputs, hours, startOfDay, time, timeInDay } from "../format";
+import { kindKey, unitText } from "../i18n/common";
 import { t } from "../i18n/records";
 
 const DAY = 86_400_000;
@@ -166,7 +167,9 @@ export function RecordsScreen({ workId }: { workId: number }) {
   const header = (
     <tr>
       <th style={{ width: 230 }}>{t("col.time")}</th>
-      <th style={{ width: 110 }}>{t(board?.work.kind === "files" ? "col.rowFiles" : "col.rowComic")}</th>
+      <th style={{ width: 110 }}>
+        {board ? t(kindKey(board.work.kind, "col.row"), { unit: unitText(board.work, 1) }) : t("col.rowComic")}
+      </th>
       <th style={{ width: 130 }}>{t("col.stage")}</th>
       <th style={{ width: 110 }}>{t("col.length")}</th>
       <th />

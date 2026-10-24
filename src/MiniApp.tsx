@@ -204,7 +204,9 @@ export function MiniApp() {
         </div>
       ) : active ? (
         <div className="mbody">
-          {f && page && <Thumb path={page.path} spread={page.span === 2} free={f.board.work.kind === "files"} width={40} />}
+          {f && page && f.board.work.kind !== "manual" && (
+            <Thumb path={page.path} spread={page.span === 2} free={f.board.work.kind === "files"} width={40} />
+          )}
           <div className="grow">
             <div className="small-text">
               <b>{active.pageLabel}</b> · <span style={{ color: active.stageColor }}>●</span> {active.stageName}

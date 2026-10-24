@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, ModelStats, Span, StageDef, StageSet, TagApplies, TagGroup } from "../api";
+import { api, ModelStats, Span, StageDef, StageSet, TagGroup } from "../api";
 import { useApp } from "../app-context";
 import { dayLabel, estimate, factor, hours, weekdayName } from "../format";
-import { setName } from "../i18n/common";
+import { kindKey, setName, unitText } from "../i18n/common";
 import { t } from "../i18n/stats";
 import { factorDiffers, STATS_WEEKS, weekdayAverages } from "../stats";
 
 const HOUR = 3_600_000;
 // 月曜始まりの曜日（weekdayName の番号。0 = 日曜）
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
-// タググループの対象（名前は描画時に訳す）
-const APPLIES = { comic: "applies.comic", files: "applies.files", both: "applies.both" } as const satisfies Record<TagApplies, string>;
 
 /** 統計画面（仕様書 5.12）。全作品の実績から、予測の前提を見せる */
 export function StatsScreen() {
@@ -33,7 +31,7 @@ export function StatsScreen() {
 
   return (
     <div className="stats">
-      <TagFactors stats={stats} groups={groups} />
+      <TagFactors stats={stats} groups={groups} sets={sets} />
       <div className="stats-side">
         <WeekdayHours spans={spans} calendar={calendar} />
         <StageBases stats={stats} sets={sets} stages={stages} />
@@ -42,7 +40,7 @@ export function StatsScreen() {
   );
 }
 
-function TagFactors({ stats, groups }: { stats: ModelStats | null; groups: TagGroup[] }) {
+function TagFactors({ stats, groups, sets }: { stats: ModelStats | null; groups: TagGroup[]; sets: StageSet[] }) {
   const fits = new Map(stats?.tags.map((t) => [t.tagId, t]));
   const visible = groups.map((g) => ({ ...g, tags: g.tags.filter((t) => !t.hidden) })).filter((g) => g.tags.length > 0);
   let flagged = false;
@@ -68,7 +66,9 @@ function TagFactors({ stats, groups }: { stats: ModelStats | null; groups: TagGr
             <tr className="group-row">
               <td colSpan={5}>
                 {g.name}
-                <span className="muted small-text">　{t(APPLIES[g.applies])}</span>
+                <span className="muted small-text">
+                  　{g.setIds.length === 0 ? t("sets.all") : sets.filter((s) => g.setIds.includes(s.id)).map(setName).join("・")}
+                </span>
               </td>
             </tr>
             {g.tags.map((tag) => {
@@ -162,8 +162,8 @@ function StageBases({ stats, sets, stages }: { stats: ModelStats | null; sets: S
         return (
           <div key={set.id} className="stats-set">
             <h3>
-              {setName(set.kind)}
-              <span className="muted small-text">　{t(set.kind === "files" ? "base.perFiles" : "base.perComic")}</span>
+              {setName(set)}
+              <span className="muted small-text">　{t(kindKey(set.kind, "base.per"), { unit: unitText(set, 1) })}</span>
             </h3>
             <table className="rec stats-table">
               <tbody>

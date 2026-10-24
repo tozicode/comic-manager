@@ -119,6 +119,15 @@ describe("groupDay", () => {
     ]);
   });
 
+  it("名前の行は範囲にまとめず並べる", () => {
+    const names = ["頭", "胴", "右腕", "左腕"];
+    const g = groupDay([step(0, 0), step(1, 0), step(2, 0), step(3, 0)], (id) => names[id - 1], W);
+    expect(g[0].pages).toBe("頭、胴、右腕、左腕");
+    // 番号だけの行は数字でまとめる
+    const h = groupDay([step(0, 0), step(1, 0), step(2, 0)], (id) => String(id), W);
+    expect(h[0].pages).toBe("1〜3");
+  });
+
   it("途中まで・続きはまとめずに印を付ける", () => {
     const g = groupDay([step(6, 0, { continued: true }), step(7, 0), step(8, 0), step(9, 0), step(10, 0, { partial: true })], label, W);
     expect(g[0].pages).toBe("p7（続き）、p8〜p10、p11（途中まで）");

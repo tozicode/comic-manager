@@ -7,6 +7,7 @@ import { useApp } from "../app-context";
 import { buildIcs, DayPlan, DayWords, groupDay, IcsEvent, MonthOrder, planMonth, staleEvents } from "../calendar";
 import { Forecast, loadExported, loadMonthOrder, monthInput, saveExported, saveMonthOrder } from "../forecast";
 import { dayKey, dayLabel, estimate, monthLabel, weekdayName } from "../format";
+import { kindKey, unitText } from "../i18n/common";
 import { t } from "../i18n/month";
 import { addDays } from "../schedule";
 
@@ -26,7 +27,9 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
   const app = useApp();
   const { board, schedule, prediction, today, deadline } = forecast;
   const workId = board.work.id;
-  const files = board.work.kind === "files";
+  const kind = board.work.kind;
+  const unit = unitText(board.work);
+  const orderPageName = t(kindKey(kind, "orderPage"), { unit: unitText(board.work, 1) });
   const [order, setOrderState] = useState<MonthOrder>(
     () => loadMonthOrder(workId) ?? (schedule.workOrder === "page" ? "page" : "stage"),
   );
@@ -46,9 +49,9 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
   const [a, b] = board.stages.map((s) => s.name);
   const hint =
     order === "page"
-      ? t(files ? "orderHintPageFiles" : "orderHintPage")
+      ? t(kindKey(kind, "orderHintPage"), { unit: unitText(board.work, 1) })
       : order === "stage"
-        ? t(files ? "orderHintStageFiles" : "orderHintStage", { a: a ?? "", b: b ?? "" })
+        ? t(kindKey(kind, "orderHintStage"), { a: a ?? "", b: b ?? "", unit })
         : t("orderHintFit");
 
   // 今月から、完成予定と締切の遅いほうの月まで
@@ -97,7 +100,7 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
         <label className="small-text muted row tight">
           {t("order")}
           <select className="field" value={order} onChange={(e) => setOrder(e.target.value as MonthOrder)}>
-            <option value="page">{t(files ? "orderPageFiles" : "orderPageComic")}</option>
+            <option value="page">{orderPageName}</option>
             <option value="stage">{t("orderStage")}</option>
             <option value="fit">{t("orderFit")}</option>
           </select>
@@ -137,7 +140,7 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
                 <span>
                   {t("printMeta", {
                     date: dayLabel(today),
-                    order: t(order === "page" ? (files ? "orderPageFiles" : "orderPageComic") : order === "stage" ? "orderStage" : "orderFit"),
+                    order: order === "page" ? orderPageName : t(order === "stage" ? "orderStage" : "orderFit"),
                   })}
                 </span>
               </div>
