@@ -73,8 +73,10 @@ pub struct WorkSummary {
     pub id: i64,
     pub title: String,
     pub kind: String,
-    /// 登録時に選んだ工程のセット（単位の言葉とタグの出し分けに使う）
+    /// 登録時に選んだ工程のセット（タグの出し分けに使う）
     pub set_id: i64,
+    /// セットの単位の言葉（パーツ・章 など。漫画・イラストは画面側が今の言語で出すので使わない）
+    pub unit: String,
     /// 漫画の cmc の場所（漫画以外は None）
     pub cmc_path: Option<String>,
     /// 見開きを 2 ページと数えたページ数（イラストはファイルの数）
@@ -109,6 +111,7 @@ pub struct WorkInfo {
     pub title: String,
     pub kind: String,
     pub set_id: i64,
+    pub unit: String,
     pub cmc_path: Option<String>,
     pub last_synced_at: Option<i64>,
 }
@@ -823,7 +826,8 @@ impl Store {
     pub fn work_info(&self, work_id: i64) -> Result<WorkInfo> {
         self.conn
             .query_row(
-                "SELECT id, title, kind, set_id, cmc_path, last_synced_at FROM work WHERE id = ?1",
+                "SELECT w.id, w.title, w.kind, w.set_id, w.cmc_path, w.last_synced_at, COALESCE(s.unit, '')
+                 FROM work w LEFT JOIN stage_set s ON s.id = w.set_id WHERE w.id = ?1",
                 [work_id],
                 |r| {
                     Ok(WorkInfo {
@@ -833,6 +837,7 @@ impl Store {
                         set_id: r.get(3)?,
                         cmc_path: r.get(4)?,
                         last_synced_at: r.get(5)?,
+                        unit: r.get(6)?,
                     })
                 },
             )
@@ -858,8 +863,8 @@ impl Store {
                         FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
                     (SELECT MAX(COALESCE(ss.ended_at, ss.started_at))
                         FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
-                    w.set_id
-                 FROM work w ORDER BY w.created_at DESC",
+                    w.set_id, COALESCE(s.unit, '')
+                 FROM work w LEFT JOIN stage_set s ON s.id = w.set_id ORDER BY w.created_at DESC",
             )
             .map_err(db_err)?;
         let now = now_ms();
@@ -874,6 +879,7 @@ impl Store {
                 cmc_path: r.get(2)?,
                 kind: r.get(3)?,
                 set_id: r.get(9)?,
+                unit: r.get(10)?,
                 page_count: pages,
                 stage_count: stages,
                 progress: if total > 0 { done as f64 / total as f64 } else { 0.0 },
