@@ -2,11 +2,13 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { useApp } from "./app-context";
+import { usePomodoro } from "./components/Pomodoro";
 import { SaveToast } from "./components/Watchers";
 import { Thumb } from "./components/Thumb";
 import { loadChosenPlan, useForecast } from "./forecast";
 import { clock, estimate, hours } from "./format";
 import { t } from "./i18n/timer";
+import { pomoClock, remainingMs } from "./pomodoro";
 
 const COMPACT_KEY = "otosazu.miniCompact";
 const PIN_KEY = "otosazu.miniPinned";
@@ -80,6 +82,12 @@ export function MiniApp() {
 
   const { active, paused, now } = app;
   const f = forecast;
+  const pomo = usePomodoro();
+  const p = pomo.pomo;
+  const due = !!active && p?.phase === "due";
+  const onBreak = !active && !!paused && p?.phase === "break";
+  const breakOver = !active && !!paused && p?.phase === "breakOver";
+  const breakLabel = p && onBreak ? t(p.long ? "pomoLongBreak" : "pomoBreak", { time: pomoClock(remainingMs(p, pomo.now)) }) : "";
   const task = active && f ? f.task(active.pageId, active.stageId) : undefined;
   const page = active && f ? f.board.pages.find((p) => p.id === active.pageId) : undefined;
 
@@ -105,13 +113,27 @@ export function MiniApp() {
         {active ? <span className="dot" /> : <span className="dot off" />}
         <div className="grow" data-tauri-drag-region>
           <div className="small-text" data-tauri-drag-region>
-            {active ? `${active.pageLabel} ${active.stageName}` : paused ? t("pausedWith", { page: paused.pageLabel }) : t("notTracking")}
+            {due && p
+              ? t("pomoDue", { min: Math.round(p.alertAtMs / 60_000) })
+              : onBreak
+                ? breakLabel
+                : breakOver
+                  ? t("pomoBreakOver")
+                  : active
+                    ? `${active.pageLabel} ${active.stageName}`
+                    : paused
+                      ? t("pausedWith", { page: paused.pageLabel })
+                      : t("notTracking")}
           </div>
           <div className="num mtime-s" data-tauri-drag-region>
             {active ? clock(now - active.startedAt) : "--:--:--"}
           </div>
         </div>
-        {active ? (
+        {due ? (
+          <button className="icon-btn accent" title={t("takeBreak")} onClick={pomo.takeBreak}>
+            ☕
+          </button>
+        ) : active ? (
           <button className="icon-btn accent" title={t("pause")} onClick={app.pause}>
             <PauseIcon />
           </button>
@@ -130,6 +152,11 @@ export function MiniApp() {
         <span data-tauri-drag-region title={t("openMainHint")}>
           Otosazu{f ? ` · ${f.board.work.title}` : ""}
         </span>
+        {active && p?.phase === "work" && (
+          <span className="mpomo num" data-tauri-drag-region>
+            {t("pomoLeft", { time: pomoClock(remainingMs(p, now)) })}
+          </span>
+        )}
         <span className="mtools">
           <button className={pinned ? "on" : ""} title={pinned ? t("pinnedOn") : t("pinnedOff")} onClick={togglePin}>
             📌
@@ -157,6 +184,21 @@ export function MiniApp() {
             </button>
             <button className="btn small primary" onClick={() => app.answerStopped(true)}>
               {t("markDone")}
+            </button>
+          </div>
+        </div>
+      ) : due && p ? (
+        <div className="mbody column">
+          <b>{t("pomoDue", { min: Math.round(p.alertAtMs / 60_000) })}</b>
+          <span className="muted small-text">
+            {t("pomoDueBody")} · {active.pageLabel} {active.stageName} <span className="num">{clock(now - active.startedAt)}</span>
+          </span>
+          <div className="row tight" style={{ justifyContent: "flex-end" }}>
+            <button className="btn small" onClick={pomo.keepGoing}>
+              {t("keepGoing")}
+            </button>
+            <button className="btn small primary" onClick={pomo.takeBreak}>
+              {t("takeBreak")}
             </button>
           </div>
         </div>
@@ -190,7 +232,9 @@ export function MiniApp() {
           {paused ? (
             <>
               <div className="grow">
-                <div className="small-text muted">{t("paused")}</div>
+                <div className={`small-text${onBreak || breakOver ? " mbreak" : " muted"}`}>
+                  {onBreak ? breakLabel : breakOver ? t("pomoBreakOver") : t("paused")}
+                </div>
                 <div className="mnext">
                   {paused.pageLabel} {paused.stageName}
                 </div>

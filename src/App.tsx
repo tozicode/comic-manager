@@ -5,6 +5,7 @@ import { Dialog } from "./components/Dialog";
 import { Sidebar } from "./components/Sidebar";
 import { TimerChip } from "./components/TimerChip";
 import { UpdateNotice } from "./components/UpdateNotice";
+import { PomodoroDriver } from "./components/Pomodoro";
 import { SaveToast, Watchers } from "./components/Watchers";
 import { MiniApp } from "./MiniApp";
 import { hours } from "./format";
@@ -145,5 +146,10 @@ function Shell() {
 export default function App() {
   // 言語を切り替えたら、画面を作り直してすべての文言を入れ替える
   const lang = useLang();
-  return <AppProvider>{isMini ? <MiniApp key={lang} /> : <Shell key={lang} />}</AppProvider>;
+  return (
+    <AppProvider>
+      <PomodoroDriver />
+      {isMini ? <MiniApp key={lang} /> : <Shell key={lang} />}
+    </AppProvider>
+  );
 }

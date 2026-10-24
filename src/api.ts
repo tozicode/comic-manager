@@ -154,7 +154,17 @@ export type PageSplit = { pageId: number; label: string; newPageId: number; newL
 
 export type SyncResult = { added: number; missing: number; merges: PageMerge[]; splits: PageSplit[] };
 
-export type TimerPrefs = { idleMinutes: number; shortcut: string; watchSaves: boolean };
+export type TimerPrefs = {
+  idleMinutes: number;
+  shortcut: string;
+  watchSaves: boolean;
+  pomodoro: boolean;
+  pomoWorkMin: number;
+  pomoShortMin: number;
+  pomoLongMin: number;
+  pomoLongEvery: number;
+  pomoSound: boolean;
+};
 
 export const api = {
   listWorks: () => invoke<WorkSummary[]>("list_works"),

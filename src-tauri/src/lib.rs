@@ -499,6 +499,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // 開発・確認用に、環境変数 OTOSAZU_DB で保存先を差し替えられる
             let path = match std::env::var_os("OTOSAZU_DB") {

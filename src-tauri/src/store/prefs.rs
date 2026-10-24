@@ -30,7 +30,7 @@ impl Default for DisplayPrefs {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct TimerPrefs {
     /// この時間（分）PC の操作がなければ一時停止して確認する。0 なら確認しない
     pub idle_minutes: i64,
@@ -38,11 +38,31 @@ pub struct TimerPrefs {
     pub shortcut: String,
     /// 計測中に別のページが保存されたら知らせる
     pub watch_saves: bool,
+    /// ポモドーロを使う
+    pub pomodoro: bool,
+    /// ポモドーロの作業・短い休憩・長い休憩の長さ（分）
+    pub pomo_work_min: i64,
+    pub pomo_short_min: i64,
+    pub pomo_long_min: i64,
+    /// 何回ごとに長い休憩にするか
+    pub pomo_long_every: i64,
+    /// 時間になったら音で知らせる
+    pub pomo_sound: bool,
 }
 
 impl Default for TimerPrefs {
     fn default() -> Self {
-        Self { idle_minutes: 10, shortcut: "Ctrl+Alt+Space".into(), watch_saves: true }
+        Self {
+            idle_minutes: 10,
+            shortcut: "Ctrl+Alt+Space".into(),
+            watch_saves: true,
+            pomodoro: false,
+            pomo_work_min: 25,
+            pomo_short_min: 5,
+            pomo_long_min: 15,
+            pomo_long_every: 4,
+            pomo_sound: true,
+        }
     }
 }
 
@@ -59,6 +79,14 @@ impl Store {
     pub fn set_timer_prefs(&self, prefs: &TimerPrefs) -> Result<()> {
         if !(0..=240).contains(&prefs.idle_minutes) {
             return Err(tr(M::IdleMinutesRange).into());
+        }
+        let minutes_ok = |m: i64| (1..=180).contains(&m);
+        if !minutes_ok(prefs.pomo_work_min)
+            || !minutes_ok(prefs.pomo_short_min)
+            || !minutes_ok(prefs.pomo_long_min)
+            || !(1..=12).contains(&prefs.pomo_long_every)
+        {
+            return Err(tr(M::PomodoroRange).into());
         }
         self.conn
             .execute(
@@ -133,10 +161,36 @@ mod tests {
     fn 既定値と保存() {
         let store = Store::open_in_memory().unwrap();
         assert_eq!(store.timer_prefs().unwrap(), TimerPrefs::default());
-        let p = TimerPrefs { idle_minutes: 15, shortcut: "Ctrl+Shift+P".into(), watch_saves: false };
+        let p = TimerPrefs {
+            idle_minutes: 15,
+            shortcut: "Ctrl+Shift+P".into(),
+            watch_saves: false,
+            pomodoro: true,
+            pomo_work_min: 50,
+            ..Default::default()
+        };
         store.set_timer_prefs(&p).unwrap();
         assert_eq!(store.timer_prefs().unwrap(), p);
-        assert!(store.set_timer_prefs(&TimerPrefs { idle_minutes: -1, ..p }).is_err());
+        assert!(store.set_timer_prefs(&TimerPrefs { idle_minutes: -1, ..p.clone() }).is_err());
+        assert!(store.set_timer_prefs(&TimerPrefs { pomo_work_min: 0, ..p.clone() }).is_err());
+        assert!(store.set_timer_prefs(&TimerPrefs { pomo_long_every: 13, ..p }).is_err());
+    }
+
+    #[test]
+    fn ポモドーロの項目が無かった版のタイマー設定も読める() {
+        let store = Store::open_in_memory().unwrap();
+        // 2.0.0 までの設定（ポモドーロの項目が無い）
+        store
+            .conn
+            .execute(
+                "INSERT INTO setting (key, value) VALUES ('timer_prefs', ?1)",
+                [r#"{"idleMinutes":20,"shortcut":"Ctrl+Alt+P","watchSaves":false}"#],
+            )
+            .unwrap();
+        let p = store.timer_prefs().unwrap();
+        assert_eq!((p.idle_minutes, p.shortcut.as_str(), p.watch_saves), (20, "Ctrl+Alt+P", false));
+        assert!(!p.pomodoro);
+        assert_eq!(p.pomo_work_min, 25);
     }
 
     #[test]

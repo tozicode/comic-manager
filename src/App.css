@@ -275,6 +275,34 @@ select {
 .timer-chip.paused {
   background: #5a524b;
 }
+/* ポモドーロ：作業の時間になった・休憩中・休憩おわり */
+.timer-chip.due {
+  background: var(--accent);
+}
+.timer-chip.break {
+  background: #3f6b4a;
+}
+.timer-chip.break.over {
+  background: var(--accent);
+}
+.timer-chip .pomo {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.chip-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.chip-btn.primary {
+  background: #fff;
+  color: var(--accent);
+}
 .timer-chip .dot {
   width: 8px;
   height: 8px;
@@ -1561,6 +1589,17 @@ table.rec {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.miniwin .mpomo {
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.miniwin .mbreak {
+  color: var(--ok);
+  font-weight: 700;
 }
 .miniwin .mtools {
   display: flex;

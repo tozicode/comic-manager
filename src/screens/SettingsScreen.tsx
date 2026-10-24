@@ -1,4 +1,5 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
+import { askNotificationPermission } from "../components/Pomodoro";
 import { api, DisplayPrefs, StageDef, StageSet, Tag, TagApplies, TagGroup, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -620,6 +621,55 @@ function TimerSection() {
           {IS_MAC ? t("shortcut.helpMac") : t("shortcut.helpWin")}
           {saved && <span className="ok-text"> {saved}</span>}
         </p>
+      </div>
+
+      <div className="section-title" style={{ marginTop: 22 }}>
+        {t("pomo.title")}
+      </div>
+      <div className="card pad form">
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={prefs.pomodoro}
+            onChange={(e) => {
+              if (e.target.checked) askNotificationPermission();
+              save({ ...prefs, pomodoro: e.target.checked });
+            }}
+          />
+          <span>{t("pomo.enable")}</span>
+        </label>
+        {prefs.pomodoro && (
+          <>
+            {(
+              [
+                ["pomoWorkMin", "pomo.work", 180, "minutes"],
+                ["pomoShortMin", "pomo.short", 180, "minutes"],
+                ["pomoLongMin", "pomo.long", 180, "minutes"],
+                ["pomoLongEvery", "pomo.every", 12, "pomo.times"],
+              ] as const
+            ).map(([key, label, max, unit]) => (
+              <label key={key} className="row">
+                <span className="grow">{t(label)}</span>
+                <input
+                  className="field num"
+                  type="number"
+                  min={1}
+                  max={max}
+                  value={prefs[key]}
+                  onChange={(e) => setPrefs({ ...prefs, [key]: Number(e.target.value) })}
+                  onBlur={() => save(prefs)}
+                  style={{ width: 70 }}
+                />
+                <span>{t(unit)}</span>
+              </label>
+            ))}
+            <label className="row">
+              <input type="checkbox" checked={prefs.pomoSound} onChange={(e) => save({ ...prefs, pomoSound: e.target.checked })} />
+              <span>{t("pomo.sound")}</span>
+            </label>
+          </>
+        )}
+        <p className="muted small-text">{t("pomo.help")}</p>
       </div>
     </>
   );

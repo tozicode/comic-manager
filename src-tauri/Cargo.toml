@@ -28,6 +28,7 @@ base64 = "0.22"
 tauri-plugin-dialog = "2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sys-locale = "0.3"
+tauri-plugin-notification = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
