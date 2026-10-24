@@ -81,10 +81,13 @@ function chime(freqs: number[]) {
   }
 }
 
-/** 通知の許可を求める（設定でポモドーロをオンにしたとき） */
+/** 通知の許可を求める（設定でポモドーロをオンにしたとき）。
+ * Mac は許可済みと答えたうえで、最初の通知を出すときに OS が許可を聞き、その通知は出ない。
+ * 最初の「時間です」が消えないよう、ここで試しに 1 回知らせて、許可の確認を今出しておく */
 export async function askNotificationPermission() {
   try {
     if (!(await isPermissionGranted())) await requestPermission();
+    if (navigator.userAgent.includes("Mac")) sendNotification({ title: "Otosazu", body: t("pomoReadyBody") });
   } catch {
     // 許可されなくても、音と画面の表示で知らせる
   }

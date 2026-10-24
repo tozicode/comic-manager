@@ -59,6 +59,7 @@ export const { t, tn } = defineMessages({
     pomoBreakOverWith: "☕ 休憩おわり · {page} {stage}",
     pomoWorkDoneBody: "🍅 {min} 分たちました。休憩しましょう",
     pomoBreakDoneBody: "☕ 休憩おわりです。再開しましょう",
+    pomoReadyBody: "ポモドーロをオンにしました。時間になると、このように知らせます",
   },
   en: {
     expandHint: "Double-click to expand",
@@ -117,6 +118,7 @@ export const { t, tn } = defineMessages({
     pomoBreakOverWith: "☕ Break's over · {page} {stage}",
     pomoWorkDoneBody: "🍅 {min} minutes are up. Time for a break",
     pomoBreakDoneBody: "☕ Break's over. Ready to resume?",
+    pomoReadyBody: "Pomodoro is on. You'll be notified like this when time is up",
   },
   ko: {
     expandHint: "더블클릭하면 크게 표시",
@@ -175,6 +177,7 @@ export const { t, tn } = defineMessages({
     pomoBreakOverWith: "☕ 휴식 끝 · {page} {stage}",
     pomoWorkDoneBody: "🍅 {min}분이 지났습니다. 휴식하세요",
     pomoBreakDoneBody: "☕ 휴식이 끝났습니다. 다시 시작하세요",
+    pomoReadyBody: "뽀모도로를 켰습니다. 시간이 되면 이렇게 알려 드립니다",
   },
   "zh-Hans": {
     expandHint: "双击放大显示",
@@ -233,6 +236,7 @@ export const { t, tn } = defineMessages({
     pomoBreakOverWith: "☕ 休息结束 · {page} {stage}",
     pomoWorkDoneBody: "🍅 已过 {min} 分钟，休息一下吧",
     pomoBreakDoneBody: "☕ 休息结束，继续工作吧",
+    pomoReadyBody: "已开启番茄钟。时间到了会像这样通知你",
   },
   "zh-Hant": {
     expandHint: "按兩下放大顯示",
@@ -291,5 +295,6 @@ export const { t, tn } = defineMessages({
     pomoBreakOverWith: "☕ 休息結束 · {page} {stage}",
     pomoWorkDoneBody: "🍅 已過 {min} 分鐘，休息一下吧",
     pomoBreakDoneBody: "☕ 休息結束，繼續工作吧",
+    pomoReadyBody: "已開啟番茄鐘。時間到了會像這樣通知你",
   },
 });
