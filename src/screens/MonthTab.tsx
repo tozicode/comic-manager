@@ -1,11 +1,12 @@
 // スケジュール画面の「月の予定」タブ（仕様書 5.15）：完成まで日ごとの割り振りを月のカレンダーで見せ、.ics に書き出す
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import { useApp } from "../app-context";
 import { buildIcs, DayPlan, DayWords, groupDay, IcsEvent, MonthOrder, planMonth, staleEvents } from "../calendar";
 import { Forecast, loadExported, loadMonthOrder, monthInput, saveExported, saveMonthOrder } from "../forecast";
-import { dayKey, estimate, monthLabel, weekdayName } from "../format";
+import { dayKey, dayLabel, estimate, monthLabel, weekdayName } from "../format";
 import { t } from "../i18n/month";
 import { addDays } from "../schedule";
 
@@ -100,6 +101,9 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
         </label>
         <span className="muted small-text">{hint}</span>
         <span className="grow" />
+        <button className="btn small" disabled={plan.days.length === 0} onClick={() => api.printPage().catch(app.showError)}>
+          {t("print")}
+        </button>
         <button className="btn small" disabled={plan.days.length === 0} onClick={exportIcs}>
           {t("export")}
         </button>
@@ -120,6 +124,26 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
         />
       ))}
       <p className="muted small-text">{t("basis")}</p>
+      {/* 印刷するときだけ出す（画面のほかの部分は印刷しない）。月ごとに 1 枚、A4 横 */}
+      {createPortal(
+        <div className="print-root">
+          {months.map((m) => (
+            <div key={m.getTime()} className="print-page">
+              <div className="print-head">
+                <b>{t("printTitle", { title: board.work.title })}</b>
+                <span>
+                  {t("printMeta", {
+                    date: dayLabel(today),
+                    order: t(order === "page" ? (files ? "orderPageFiles" : "orderPageComic") : order === "stage" ? "orderStage" : "orderFit"),
+                  })}
+                </span>
+              </div>
+              <MonthGrid month={m} forecast={forecast} byDay={byDay} finish={plan.finish} label={label} words={w} full />
+            </div>
+          ))}
+        </div>,
+        document.body,
+      )}
     </>
   );
 }
@@ -137,6 +161,7 @@ function MonthGrid({
   finish,
   label,
   words: w,
+  full = false,
 }: {
   month: Date;
   forecast: Forecast;
@@ -144,21 +169,23 @@ function MonthGrid({
   finish: Date | null;
   label: (id: number) => string;
   words: DayWords;
+  /** 今日より前の週も出す（印刷用） */
+  full?: boolean;
 }) {
   const { board, today, deadline, cal } = forecast;
   // 月曜はじまりで、月の初めの週の月曜から月の終わりの週の日曜まで
   const end = new Date(month.getFullYear(), month.getMonth() + 1, 0);
   const cells: Date[] = [];
   for (let d = addDays(month, -((month.getDay() + 6) % 7)); d <= end || cells.length % 7 !== 0; d = addDays(d, 1)) {
-    // 今日より前の週は出さない
-    if (d >= addDays(today, -((today.getDay() + 6) % 7))) cells.push(d);
+    // 画面では今日より前の週は出さない
+    if (full || d >= addDays(today, -((today.getDay() + 6) % 7))) cells.push(d);
   }
   const stage = (id: number) => board.stages.find((s) => s.id === id);
 
   return (
     <div className="card month">
       <div className="section-title">{t("monthTitle", { y: month.getFullYear(), m: monthLabel(month.getMonth()) })}</div>
-      <div className="month-grid">
+      <div className="month-grid" style={{ "--weeks": cells.length / 7 } as React.CSSProperties}>
         {[1, 2, 3, 4, 5, 6, 0].map((wd) => (
           <div key={wd} className="month-wd">
             {weekdayName(wd)}

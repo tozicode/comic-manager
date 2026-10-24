@@ -270,6 +270,13 @@ messages! {
         "无法保存日历文件：{e}",
         "無法儲存行事曆檔案：{e}",
     ],
+    PrintFailed => [
+        "印刷できませんでした: {e}",
+        "Couldn't print: {e}",
+        "인쇄할 수 없습니다: {e}",
+        "无法打印：{e}",
+        "無法列印：{e}",
+    ],
     OpenDataDirFailed => [
         "保存場所を開けませんでした: {e}",
         "Couldn't open the save location: {e}",

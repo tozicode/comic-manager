@@ -1992,3 +1992,113 @@ button.lost:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* 月の予定の印刷（MonthTab の print-root だけを、月ごとに A4 横 1 枚で印刷する。色はダークでもライトの色にする） */
+.print-root {
+  display: none;
+}
+@media print {
+  /* 余白を 0 にして、印刷画面が付け足すヘッダー・フッター（日時や URL）が出ないようにする。余白は .print-page で取る */
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+  :root,
+  html,
+  body {
+    color-scheme: light !important;
+    background: #fff !important;
+    height: auto;
+    overflow: visible;
+  }
+  body > *:not(.print-root) {
+    display: none !important;
+  }
+  .print-root {
+    display: block;
+    color: #2b2723;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .print-page {
+    padding: 10mm;
+    break-after: page;
+  }
+  .print-page:last-child {
+    break-after: auto;
+  }
+  .print-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 9pt;
+    color: #7a7169;
+    margin-bottom: 2mm;
+  }
+  .print-head b {
+    font-size: 11pt;
+    color: #2b2723;
+  }
+  .print-root .card.month {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
+    background: none;
+  }
+  .print-root .section-title {
+    font-size: 16pt;
+    font-weight: 700;
+    color: #2b2723;
+    margin: 0 0 2mm;
+  }
+  .print-root .month-grid {
+    gap: 0;
+    border-top: 0.3mm solid #b3aaa1;
+    border-left: 0.3mm solid #b3aaa1;
+  }
+  .print-root .month-wd {
+    font-size: 8pt;
+    color: #7a7169;
+    padding: 1mm 0;
+    border-right: 0.3mm solid #b3aaa1;
+    border-bottom: 0.3mm solid #b3aaa1;
+  }
+  .print-root .month-day {
+    /* 用紙の高さ（約 190mm）から見出しと曜日の行を引き、週の数で割る */
+    height: calc(158mm / var(--weeks));
+    min-height: 0;
+    border: none;
+    border-right: 0.3mm solid #b3aaa1;
+    border-bottom: 0.3mm solid #b3aaa1;
+    border-radius: 0;
+    font-size: 8pt;
+    padding: 1mm 1.2mm;
+    box-shadow: none;
+    opacity: 1;
+  }
+  .print-root .month-day.out {
+    border-color: #b3aaa1;
+    background: none;
+  }
+  .print-root .month-day.off {
+    background: #f3f0ec;
+  }
+  .print-root .month-day.today {
+    box-shadow: none;
+  }
+  .print-root .month-num .muted {
+    color: #7a7169;
+    font-size: 7pt;
+  }
+  .print-root .month-mark {
+    font-size: 7pt;
+  }
+  .print-root .month-mark.deadline {
+    background: #4f8a5b;
+  }
+  .print-root .month-mark.finish {
+    background: #c8553d;
+    color: #fff;
+  }
+}

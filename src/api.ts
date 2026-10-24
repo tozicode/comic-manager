@@ -234,6 +234,7 @@ export const api = {
   dataInfo: () => invoke<{ dbPath: string; version: string }>("data_info"),
   backupData: (dest: string) => invoke<void>("backup_data", { dest }),
   saveCalendar: (dest: string, text: string) => invoke<void>("save_calendar", { dest, text }),
+  printPage: () => invoke<void>("print_page"),
   revealData: () => invoke<void>("reveal_data"),
   checkRelink: (workId: number, cmcPath: string) => invoke<RelinkCheck>("check_relink", { workId, cmcPath }),
   relinkWork: (workId: number, cmcPath: string) => invoke<SyncResult>("relink_work", { workId, cmcPath }),

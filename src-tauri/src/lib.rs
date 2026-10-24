@@ -477,6 +477,12 @@ fn save_calendar(dest: String, text: String) -> Cmd<()> {
     std::fs::write(&dest, text).map_err(|e| trf(M::CalendarSaveFailed, &[("e", &e)]))
 }
 
+/// 今の画面を印刷する（印刷の画面で PDF にも保存できる）。Mac の WKWebView は window.print() が効かないため Tauri 経由で呼ぶ
+#[tauri::command]
+fn print_page(webview: tauri::Webview) -> Cmd<()> {
+    webview.print().map_err(|e| trf(M::PrintFailed, &[("e", &e)]))
+}
+
 /// データの保存場所をエクスプローラーで開く
 #[tauri::command]
 fn reveal_data(app: AppHandle, state: State<AppState>) -> Cmd<()> {
@@ -568,6 +574,7 @@ pub fn run() {
             data_info,
             backup_data,
             save_calendar,
+            print_page,
             reveal_data,
             check_relink,
             relink_work,
