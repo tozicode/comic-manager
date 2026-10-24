@@ -125,6 +125,18 @@ export type Prediction = {
   stages: { stageId: number; baseMs: number; samples: number; fromHint: boolean }[];
 };
 
+export type TagFit = {
+  tagId: number;
+  /** 予測に使う倍率（学習後） */
+  factor: number;
+  /** 初期倍率を混ぜず、実績だけから見た倍率 */
+  observed: number;
+  samples: number;
+};
+
+/** 統計画面に出す、予測の前提（実績のあるタグと、全工程の基準時間） */
+export type ModelStats = { tags: TagFit[]; stages: Prediction["stages"] };
+
 export type WorkSchedule = {
   /** 月〜日の作業時間（時間） */
   weekdayHours: number[];
@@ -189,6 +201,7 @@ export const api = {
   setTagHidden: (id: number, hidden: boolean) => invoke<void>("set_tag_hidden", { id, hidden }),
 
   getPrediction: (workId: number) => invoke<Prediction>("get_prediction", { workId }),
+  getModelStats: () => invoke<ModelStats>("get_model_stats"),
   getSchedule: (workId: number) => invoke<WorkSchedule>("get_schedule", { workId }),
   setWorkHours: (workId: number, hours: number[] | null) => invoke<void>("set_work_hours", { workId, hours }),
   setDefaultHours: (hours: number[]) => invoke<void>("set_default_hours", { hours }),

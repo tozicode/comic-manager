@@ -282,6 +282,11 @@ fn get_prediction(state: State<AppState>, work_id: i64) -> Cmd<store::Prediction
 }
 
 #[tauri::command]
+fn get_model_stats(state: State<AppState>) -> Cmd<store::ModelStats> {
+    with_store(&state, |s| s.model_stats())
+}
+
+#[tauri::command]
 fn get_schedule(state: State<AppState>, work_id: i64) -> Cmd<store::WorkSchedule> {
     with_store(&state, |s| s.schedule(work_id))
 }
@@ -505,6 +510,7 @@ pub fn run() {
             update_tag,
             set_tag_hidden,
             get_prediction,
+            get_model_stats,
             get_schedule,
             set_work_hours,
             set_default_hours,

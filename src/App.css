@@ -1703,3 +1703,87 @@ button.lost:hover {
 .pinfo .tags {
   flex-wrap: wrap;
 }
+
+/* 統計 */
+.stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.stats-side {
+  display: grid;
+  gap: 18px;
+}
+.stats .card {
+  padding: 16px;
+}
+.stats .card > p {
+  margin: 0 0 10px;
+}
+.stats .card > p:last-child {
+  margin: 10px 0 0;
+}
+.stats-table th.right,
+.stats-table td.right {
+  text-align: right;
+}
+.stats-table .group-row td {
+  background: var(--surface-2);
+  font-weight: 700;
+  font-size: 12px;
+}
+.stats-table td.differs {
+  color: var(--warn);
+  font-weight: 700;
+}
+.stats .card > p.differs-note {
+  margin-top: 10px;
+  color: var(--warn);
+}
+.stats-set + .stats-set {
+  margin-top: 14px;
+}
+.stats-set h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.wd-legend {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+.wd-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.wd-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.wd-stat {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.wd-bars {
+  display: grid;
+  gap: 3px;
+}
+.wd-stat .num {
+  min-width: 150px;
+  text-align: right;
+}
+.stats .actual {
+  background: var(--accent);
+}
+.stats .planned {
+  background: #c9c0b5;
+}

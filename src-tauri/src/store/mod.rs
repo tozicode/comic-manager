@@ -18,7 +18,7 @@ mod schedule;
 mod tags;
 
 pub use pages::{PageMerge, PageSplit};
-pub use predict::Prediction;
+pub use predict::{ModelStats, Prediction};
 pub use prefs::{DisplayPrefs, TimerPrefs};
 pub use schedule::WorkSchedule;
 pub use tags::TagGroup;

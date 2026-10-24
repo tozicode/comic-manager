@@ -11,10 +11,11 @@ import { BoardScreen } from "./screens/BoardScreen";
 import { RecordsScreen } from "./screens/RecordsScreen";
 import { ScheduleScreen } from "./screens/ScheduleScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import { StatsScreen } from "./screens/StatsScreen";
 import { WorksScreen } from "./screens/WorksScreen";
 import "./App.css";
 
-export type Screen = "works" | "board" | "schedule" | "records" | "settings";
+export type Screen = "works" | "board" | "schedule" | "records" | "stats" | "settings";
 
 const WORK_KEY = "otosazu.workId";
 
@@ -99,6 +100,8 @@ function Shell() {
             <ScheduleScreen key={work.id} workId={work.id} />
           ) : screen === "records" && work ? (
             <RecordsScreen key={work.id} workId={work.id} />
+          ) : screen === "stats" ? (
+            <StatsScreen />
           ) : (
             <SettingsScreen />
           )}
@@ -138,6 +141,7 @@ const TITLES: Record<Screen, string> = {
   board: "進捗ボード",
   schedule: "スケジュール",
   records: "作業記録",
+  stats: "統計",
   settings: "設定",
 };
 

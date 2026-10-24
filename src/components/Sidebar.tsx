@@ -27,6 +27,12 @@ const ICONS: Record<Screen, ReactElement> = {
       <path d="M7 9h6M7 12h6" />
     </svg>
   ),
+  stats: (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M3 17h14" />
+      <path d="M5.5 14V9M10 14V4.5M14.5 14v-7" />
+    </svg>
+  ),
   settings: (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
       <circle cx="10" cy="10" r="2.6" />
@@ -81,6 +87,7 @@ export function Sidebar({ works, work, screen, onScreen, onWork }: Props) {
       {item("records", "作業記録", !work)}
       <div className="nav-spacer" />
       {item("works", "作品一覧")}
+      {item("stats", "統計")}
       {item("settings", "設定")}
     </aside>
   );

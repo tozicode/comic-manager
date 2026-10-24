@@ -71,8 +71,46 @@ pub struct Prediction {
     pub stages: Vec<StageBase>,
 }
 
+#[derive(Debug, Serialize, PartialEq, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub struct TagFit {
+    pub tag_id: i64,
+    /// 予測に使う倍率（学習後）
+    pub factor: f64,
+    /// 初期倍率を混ぜず、実績だけから見た倍率
+    pub observed: f64,
+    /// そのタグが付いた完了タスクの数
+    pub samples: i64,
+}
+
+/// 統計画面に出す、予測の前提
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelStats {
+    /// 実績のあるタグだけ（無いタグは初期倍率のまま）
+    pub tags: Vec<TagFit>,
+    /// 全工程（隠した工程も含む）
+    pub stages: Vec<StageBase>,
+}
+
+/// 全作品の実績から作る、予測の前提（基準時間・タグの倍率・ずれ）
+struct Model {
+    page_tags: PageTags,
+    fits: HashMap<i64, TagFit>,
+    factors: HashMap<i64, f64>,
+    bases: HashMap<i64, StageBase>,
+    /// 1 タスクのずれ
+    sigma: f64,
+}
+
+impl Model {
+    fn factor(&self, page: i64) -> f64 {
+        page_factor(&self.page_tags, &self.factors, page)
+    }
+}
+
 impl Store {
-    pub fn prediction(&self, work_id: i64, now: i64) -> Result<Prediction> {
+    fn model(&self) -> Result<Model> {
         let page_tags = self.tag_priors()?;
 
         // 全作品の完了タスクの実績（計測中の記録は含めない）
@@ -91,10 +129,11 @@ impl Store {
         let samples: Vec<(i64, i64, f64)> =
             samples.into_iter().filter(|s| s.2 > 0).map(|(page, stage, spent)| (page, stage, spent as f64)).collect();
 
-        let tag_factors = learn_factors(&samples, &page_tags);
-        let factor = |page: i64| page_factor(&page_tags, &tag_factors, page);
+        let fits = learn_factors(&samples, &page_tags);
+        let factors: HashMap<i64, f64> = fits.iter().map(|(&tag, fit)| (tag, fit.factor)).collect();
         // (工程, 実績, ページの倍率)
-        let samples: Vec<(i64, f64, f64)> = samples.iter().map(|&(page, stage, spent)| (stage, spent, factor(page))).collect();
+        let samples: Vec<(i64, f64, f64)> =
+            samples.iter().map(|&(page, stage, spent)| (stage, spent, page_factor(&page_tags, &factors, page))).collect();
 
         // 工程ごとの基準時間
         let hints: HashMap<i64, i64> = self.list_stages()?.into_iter().map(|s| (s.id, s.hint_minutes * 60_000)).collect();
@@ -129,12 +168,28 @@ impl Store {
             DEFAULT_SIGMA
         };
 
+        Ok(Model { page_tags, fits, factors, bases, sigma })
+    }
+
+    pub fn model_stats(&self) -> Result<ModelStats> {
+        let model = self.model()?;
+        let mut tags: Vec<TagFit> = model.fits.into_values().collect();
+        tags.sort_by_key(|t| t.tag_id);
+        let mut stages: Vec<StageBase> = model.bases.into_values().collect();
+        stages.sort_by_key(|s| s.stage_id);
+        Ok(ModelStats { tags, stages })
+    }
+
+    pub fn prediction(&self, work_id: i64, now: i64) -> Result<Prediction> {
+        let model = self.model()?;
+        let sigma = model.sigma;
+
         // この作品のタスク
         let board = self.board(work_id, now)?;
         let mut tasks = Vec::new();
         for page in board.pages.iter().filter(|p| !p.missing) {
             for cell in &page.cells {
-                let predicted = bases.get(&cell.stage_id).map(|b| b.base_ms as f64).unwrap_or(0.0) * factor(page.id);
+                let predicted = model.bases.get(&cell.stage_id).map(|b| b.base_ms as f64).unwrap_or(0.0) * model.factor(page.id);
                 let remaining = if cell.done {
                     0.0
                 } else {
@@ -151,6 +206,7 @@ impl Store {
             }
         }
 
+        let mut bases = model.bases;
         let open: Vec<&TaskPrediction> = tasks.iter().filter(|t| !t.done).collect();
         let remaining: i64 = open.iter().map(|t| t.remaining_ms).sum();
         let open_stages: Vec<i64> = board.stages.iter().map(|s| s.id).filter(|id| open.iter().any(|t| t.stage_id == *id)).collect();
@@ -208,7 +264,17 @@ fn page_factor(page_tags: &PageTags, learned: &HashMap<i64, f64>, page: i64) -> 
 
 /// 完了タスクの実績 (ページ, 工程, 実績) から、タグの倍率を縮小推定で学習する。
 /// 実績のあるタグだけを返す
-fn learn_factors(samples: &[(i64, i64, f64)], page_tags: &PageTags) -> HashMap<i64, f64> {
+fn learn_factors(samples: &[(i64, i64, f64)], page_tags: &PageTags) -> HashMap<i64, TagFit> {
+    let observed = fit_factors(samples, page_tags, 0.0);
+    fit_factors(samples, page_tags, PRIOR_WEIGHT)
+        .into_iter()
+        .map(|(tag, (factor, n))| (tag, TagFit { tag_id: tag, factor, observed: observed[&tag].0, samples: n }))
+        .collect()
+}
+
+/// 基準時間とタグの倍率を交互に推定する。初期倍率を実績 `prior_weight` 件分として混ぜる（0 なら実績だけ）。
+/// タグごとの (倍率, 実績の数) を返す
+fn fit_factors(samples: &[(i64, i64, f64)], page_tags: &PageTags, prior_weight: f64) -> HashMap<i64, (f64, i64)> {
     let mut prior: HashMap<i64, f64> = HashMap::new();
     for &(page, _, _) in samples {
         for &(tag, f0) in page_tags.get(&page).into_iter().flatten() {
@@ -218,6 +284,7 @@ fn learn_factors(samples: &[(i64, i64, f64)], page_tags: &PageTags) -> HashMap<i
     let mut tags: Vec<i64> = prior.keys().copied().collect();
     tags.sort(); // 更新の順番を毎回同じにする
     let mut learned = prior.clone();
+    let mut fits = HashMap::new();
 
     for _ in 0..LEARN_ROUNDS {
         // 今の倍率で揃えた、工程ごとの基準時間（log）。
@@ -246,11 +313,12 @@ fn learn_factors(samples: &[(i64, i64, f64)], page_tags: &PageTags) -> HashMap<i
                 sum += spent.ln() - log_base[&stage] - others;
                 n += 1.0;
             }
-            let f = ((sum + PRIOR_WEIGHT * prior[&tag].ln()) / (n + PRIOR_WEIGHT)).exp();
-            learned.insert(tag, f.clamp(0.1, 10.0));
+            let f = ((sum + prior_weight * prior[&tag].ln()) / (n + prior_weight)).exp().clamp(0.1, 10.0);
+            learned.insert(tag, f);
+            fits.insert(tag, (f, n as i64));
         }
     }
-    learned
+    fits
 }
 
 fn median(v: &mut [f64]) -> f64 {
@@ -385,25 +453,52 @@ mod tests {
     #[test]
     fn 実績が初期倍率どおりなら倍率は変わらない() {
         let (samples, tags) = tagged_samples(10, 78.0);
-        assert!((learn_factors(&samples, &tags)[&7] - 1.3).abs() < 1e-6);
+        assert!((learn_factors(&samples, &tags)[&7].factor - 1.3).abs() < 1e-6);
     }
 
     #[test]
     fn 実績が増えるほど倍率は実績に寄る() {
         // 実際には ×2.0 かかっている
-        let few = learn_factors(&tagged_samples(1, 120.0).0, &tagged_samples(1, 120.0).1)[&7];
-        let some = learn_factors(&tagged_samples(5, 120.0).0, &tagged_samples(5, 120.0).1)[&7];
-        let many = learn_factors(&tagged_samples(100, 120.0).0, &tagged_samples(100, 120.0).1)[&7];
+        let few = learn_factors(&tagged_samples(1, 120.0).0, &tagged_samples(1, 120.0).1)[&7].factor;
+        let some = learn_factors(&tagged_samples(5, 120.0).0, &tagged_samples(5, 120.0).1)[&7].factor;
+        let many = learn_factors(&tagged_samples(100, 120.0).0, &tagged_samples(100, 120.0).1)[&7].factor;
         assert!(1.3 < few && few < some && some < many && many < 2.0, "{few} {some} {many}");
         assert!(few < 1.5); // 1 件ではまだ初期倍率に近い
         assert!(many > 1.9);
     }
 
     #[test]
+    fn 実績から見た倍率は初期倍率を混ぜない() {
+        let (samples, tags) = tagged_samples(1, 120.0);
+        let fit = learn_factors(&samples, &tags)[&7];
+        assert!((fit.observed - 2.0).abs() < 0.05, "{}", fit.observed);
+        assert!(fit.factor < 1.5);
+        assert_eq!(fit.samples, 1);
+    }
+
+    #[test]
+    fn 統計には全工程と実績のあるタグが出る() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let pages: Vec<i64> = store.board(id, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        let mut at = 0;
+        finish(&store, pages[0], st[0], 60, &mut at);
+        finish(&store, pages[1], st[0], 120, &mut at); // 見開き
+
+        let stats = store.model_stats().unwrap();
+        assert_eq!(stats.stages.len(), store.list_stages().unwrap().len());
+        let draft = stats.stages.iter().find(|s| s.stage_id == st[0]).unwrap();
+        assert_eq!((draft.samples, draft.from_hint), (2, false));
+        assert!(stats.stages.iter().find(|s| s.stage_id == st[1]).unwrap().from_hint);
+        let spread = store.list_tags().unwrap().into_iter().flat_map(|g| g.tags).find(|t| t.system).unwrap().id;
+        assert_eq!(stats.tags.iter().map(|t| (t.tag_id, t.samples)).collect::<Vec<_>>(), [(spread, 1)]);
+    }
+
+    #[test]
     fn 実績の無いタグは学習しない() {
         let (samples, mut tags) = tagged_samples(3, 78.0);
         tags.insert(5000, vec![(8, 2.0)]); // 実績の無いページのタグ
-        let learned = learn_factors(&samples, &tags);
+        let learned: HashMap<i64, f64> = learn_factors(&samples, &tags).into_iter().map(|(t, fit)| (t, fit.factor)).collect();
         assert!(!learned.contains_key(&8));
         assert!((page_factor(&tags, &learned, 5000) - 2.0).abs() < 1e-9);
         assert!((page_factor(&tags, &learned, 1) - 1.0).abs() < 1e-9);
@@ -413,7 +508,7 @@ mod tests {
     fn 全部のページに付いたタグは基準時間と区別できないので初期倍率のまま() {
         let samples: Vec<(i64, i64, f64)> = (0..10).map(|i| (i, 1, 100.0 + i as f64)).collect();
         let tags: PageTags = (0..10).map(|i| (i, vec![(7, 1.3)])).collect();
-        assert!((learn_factors(&samples, &tags)[&7] - 1.3).abs() < 1e-6);
+        assert!((learn_factors(&samples, &tags)[&7].factor - 1.3).abs() < 1e-6);
     }
 
     #[test]
