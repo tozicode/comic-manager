@@ -9,9 +9,14 @@ import { dayLabel, hours } from "../format";
 import { kindKey, setName, unitText } from "../i18n/common";
 import { t } from "../i18n/works";
 
-type Props = { works: WorkSummary[]; onOpen: (workId: number) => void };
+type Props = {
+  works: WorkSummary[];
+  onOpen: (workId: number) => void;
+  /** 作品の追加で「新しいセットを作る」を選んだ（設定の工程へ飛ぶ） */
+  onAddSet: () => void;
+};
 
-export function WorksScreen({ works, onOpen }: Props) {
+export function WorksScreen({ works, onOpen, onAddSet }: Props) {
   const app = useApp();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<WorkSummary | null>(null);
@@ -106,6 +111,7 @@ export function WorksScreen({ works, onOpen }: Props) {
       {adding && (
         <AddWorkDialog
           onClose={() => setAdding(false)}
+          onAddSet={onAddSet}
           onAdded={(id) => {
             setAdding(false);
             app.refresh();
@@ -187,7 +193,15 @@ function WorkOutlook({ workId }: { workId: number }) {
 }
 
 /** 作品を追加するダイアログ：種類と工程のセットを選んでから、ファイルを選ぶ（ファイルを持たない作品は行の名前を入れる） */
-function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (workId: number) => void }) {
+function AddWorkDialog({
+  onClose,
+  onAdded,
+  onAddSet,
+}: {
+  onClose: () => void;
+  onAdded: (workId: number) => void;
+  onAddSet: () => void;
+}) {
   const app = useApp();
   const [kind, setKind] = useState<WorkKind>("comic");
   const [sets, setSets] = useState<StageSet[]>([]);
@@ -306,12 +320,21 @@ function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (wo
         )}
         <label className="row">
           <span style={{ width: 90 }}>{t("stages")}</span>
-          <select className="field grow" value={setId ?? ""} onChange={(e) => setSetId(Number(e.target.value))}>
+          <select
+            className="field grow"
+            value={setId ?? ""}
+            onChange={(e) => {
+              // 欲しい工程のセットが無いときは、設定の工程でセットを作ってから戻ってきてもらう
+              if (e.target.value === "new") onAddSet();
+              else setSetId(Number(e.target.value));
+            }}
+          >
             {sets.map((st) => (
               <option key={st.id} value={st.id}>
                 {t("stageSet", { name: setName(st) })}
               </option>
             ))}
+            <option value="new">{t("stageSetNew")}</option>
           </select>
         </label>
         {kind === "manual" && (

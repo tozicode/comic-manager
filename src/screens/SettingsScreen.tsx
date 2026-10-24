@@ -35,7 +35,13 @@ function useRun(): Run {
   };
 }
 
-export function SettingsScreen() {
+type SettingsProps = {
+  /** 作品の追加から飛んできた：工程の節を開き、セットの追加の入力を出す */
+  addSet?: boolean;
+  onAddSetShown?: () => void;
+};
+
+export function SettingsScreen({ addSet = false, onAddSetShown }: SettingsProps) {
   const [section, setSection] = useState<Section>("stages");
   return (
     <div className="settings">
@@ -48,7 +54,7 @@ export function SettingsScreen() {
       </nav>
       <div>
         {section === "stages" ? (
-          <StagesSection />
+          <StagesSection addSet={addSet} onAddSetShown={onAddSetShown} />
         ) : section === "tags" ? (
           <TagsSection />
         ) : section === "hours" ? (
@@ -71,7 +77,7 @@ export function SettingsScreen() {
 // 工程
 // ---------------------------------------------------------------------------
 
-function StagesSection() {
+function StagesSection({ addSet, onAddSetShown }: SettingsProps) {
   const app = useApp();
   const run = useRun();
   const [allStages, setAllStages] = useState<StageDef[]>([]);
@@ -79,8 +85,14 @@ function StagesSection() {
   const [setId, setSetId] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
   /** 自作のセットの追加・変更の入力（id が null なら追加） */
-  const [editing, setEditing] = useState<{ id: number | null; name: string; unit: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: number | null; name: string; unit: string } | null>(
+    addSet ? { id: null, name: "", unit: "" } : null,
+  );
   const [removingSet, setRemovingSet] = useState<StageSet | null>(null);
+  // 飛んできたときだけ開く（次に設定を開いたときには出さない）
+  useEffect(() => {
+    if (addSet) onAddSetShown?.();
+  }, [addSet, onAddSetShown]);
   /** ドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<StageDef[] | null>(null);
   const dragging = useRef<number | null>(null);

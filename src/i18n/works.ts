@@ -54,6 +54,7 @@ export const { t, tn } = defineMessages({
     workNamePlaceholder: "空欄なら最初のファイル名",
     stages: "工程",
     stageSet: "{name}のセット",
+    stageSetNew: "＋ 新しいセットを作る…（設定の工程へ）",
   },
   en: {
     leadIntro: "To get started, add a work you're drawing in CLIP STUDIO PAINT.",
@@ -110,6 +111,7 @@ export const { t, tn } = defineMessages({
     workNamePlaceholder: "Leave blank to use the first file name",
     stages: "Stages",
     stageSet: "{name} set",
+    stageSetNew: "+ Create a new set… (opens Settings → Stages)",
   },
   ko: {
     leadIntro: "먼저 CLIP STUDIO PAINT로 그리고 있는 작품을 등록하세요.",
@@ -164,6 +166,7 @@ export const { t, tn } = defineMessages({
     workNamePlaceholder: "비워 두면 첫 번째 파일 이름",
     stages: "공정",
     stageSet: "{name} 세트",
+    stageSetNew: "＋ 새 세트 만들기…(설정 → 공정으로)",
   },
   "zh-Hans": {
     leadIntro: "首先，登记你正在用 CLIP STUDIO PAINT 绘制的作品吧。",
@@ -217,6 +220,7 @@ export const { t, tn } = defineMessages({
     workNamePlaceholder: "留空则使用第一个文件名",
     stages: "工序",
     stageSet: "{name}套组",
+    stageSetNew: "＋ 创建新工序组…（前往设置 → 工序）",
   },
   "zh-Hant": {
     leadIntro: "首先，登錄你正在用 CLIP STUDIO PAINT 繪製的作品吧。",
@@ -270,5 +274,6 @@ export const { t, tn } = defineMessages({
     workNamePlaceholder: "留空則使用第一個檔案名稱",
     stages: "工序",
     stageSet: "{name}組合",
+    stageSetNew: "＋ 建立新工序組…（前往設定 → 工序）",
   },
 });

@@ -37,6 +37,8 @@ function Shell() {
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [workId, setWorkIdState] = useState<number | null>(loadWorkId);
   const [screen, setScreen] = useState<Screen>(workId ? "board" : "works");
+  /** 作品の追加から「新しいセットを作る」で設定に飛んだとき、セットの追加を開いた状態で出す */
+  const [addSet, setAddSet] = useState(false);
 
   const setWorkId = (id: number | null) => {
     setWorkIdState(id);
@@ -97,7 +99,14 @@ function Shell() {
             </div>
           )}
           {screen === "works" || needsWork ? (
-            <WorksScreen works={works} onOpen={openWork} />
+            <WorksScreen
+              works={works}
+              onOpen={openWork}
+              onAddSet={() => {
+                setAddSet(true);
+                setScreen("settings");
+              }}
+            />
           ) : screen === "board" && work ? (
             <BoardScreen key={work.id} workId={work.id} onNavigate={setScreen} />
           ) : screen === "schedule" && work ? (
@@ -107,7 +116,7 @@ function Shell() {
           ) : screen === "stats" ? (
             <StatsScreen />
           ) : (
-            <SettingsScreen />
+            <SettingsScreen addSet={addSet} onAddSetShown={() => setAddSet(false)} />
           )}
         </div>
       </div>
