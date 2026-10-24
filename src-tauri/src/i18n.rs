@@ -262,6 +262,14 @@ messages! {
         "无法创建备份：{e}",
         "無法建立備份：{e}",
     ],
+    // ----- カレンダーへの書き出し -----
+    CalendarSaveFailed => [
+        "カレンダーのファイルを保存できませんでした: {e}",
+        "Couldn't save the calendar file: {e}",
+        "캘린더 파일을 저장할 수 없습니다: {e}",
+        "无法保存日历文件：{e}",
+        "無法儲存行事曆檔案：{e}",
+    ],
     OpenDataDirFailed => [
         "保存場所を開けませんでした: {e}",
         "Couldn't open the save location: {e}",

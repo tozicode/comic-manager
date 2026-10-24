@@ -1231,6 +1231,84 @@ table.rec {
 .wd.off {
   color: var(--faint);
 }
+/* 月の予定 */
+.card.month {
+  padding: 14px 16px 16px;
+  margin-bottom: 14px;
+}
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.month-wd {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  padding-bottom: 2px;
+}
+.month-day {
+  min-height: 78px;
+  padding: 4px 5px 5px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+}
+.month-day.out {
+  border-color: transparent;
+}
+.month-day.off {
+  background: var(--surface-2);
+}
+.month-day.past {
+  opacity: 0.45;
+}
+.month-day.today {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.month-num {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.month-num .muted {
+  font-weight: 400;
+  font-size: 10px;
+}
+.month-item {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  overflow-wrap: anywhere;
+}
+.month-item i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: translateY(-1px);
+}
+.month-mark {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+.month-mark.deadline {
+  background: var(--ok);
+}
+.month-mark.finish {
+  background: var(--accent);
+  color: var(--accent-text);
+}
 .result3 {
   display: grid;
   grid-template-columns: 1fr 1.3fr 1fr;

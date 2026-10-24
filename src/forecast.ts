@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, Board, Prediction, Span, TaskPrediction, WorkSchedule } from "./api";
 import { useApp } from "./app-context";
+import type { MonthInput, MonthOrder } from "./calendar";
 import { dailyTotals, dayKey, dayStartMs, startOfDay } from "./format";
 import {
   addDays,
@@ -47,6 +48,8 @@ export type Forecast = {
   quotaMet: boolean;
   /** 着手できるタスク（ページ内で前の工程が完了しているもの） */
   candidates: Candidate[];
+  /** 終わっていないタスクすべて（月の予定を割り振るときに使う） */
+  openTasks: Candidate[];
   plans: Plan[];
   notice: string | null;
   task: (pageId: number, stageId: number) => TaskPrediction | undefined;
@@ -127,19 +130,15 @@ export function computeForecast(
     prediction.tasks.find((t) => t.pageId === pageId && t.stageId === stageId);
   const pages = board.pages.filter((p) => !p.missing);
   const candidates: Candidate[] = [];
+  const openTasks: Candidate[] = [];
   pages.forEach((page, pageIndex) => {
     board.stages.forEach((stage, stageIndex) => {
       const t = task(page.id, stage.id);
       if (!t || t.done) return;
+      const c = { pageId: page.id, stageId: stage.id, pageIndex, stageIndex, remainingMs: t.remainingMs, inProgress: t.spentMs > 0 };
+      openTasks.push(c);
       if (stageIndex > 0 && !page.cells[stageIndex - 1].done) return;
-      candidates.push({
-        pageId: page.id,
-        stageId: stage.id,
-        pageIndex,
-        stageIndex,
-        remainingMs: t.remainingMs,
-        inProgress: t.spentMs > 0,
-      });
+      candidates.push(c);
     });
   });
   const stageInfos: StageInfo[] = board.stages.map((s) => ({
@@ -164,6 +163,7 @@ export function computeForecast(
     planQuotaMs,
     quotaMet,
     candidates,
+    openTasks,
     plans: buildPlans(candidates, stageInfos, planQuotaMs, schedule.workOrder, board.work.kind),
     notice: catchUpNotice(candidates, stageInfos, openCounts, board.work.kind),
     task,
@@ -194,5 +194,39 @@ export function saveChosenPlan(workId: number, plan: ChosenPlan | null) {
     else localStorage.removeItem(planKey(workId));
   } catch {
     // 保存できなくても、その場では選んだ案が表示される
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 月の予定（仕様書 5.15）
+// ---------------------------------------------------------------------------
+
+/**
+ * 月の予定を割り振る条件。1 日の時間は今日のノルマと同じ考え方：
+ * 締切に間に合うなら締切までの作業可能時間に比例させ、そうでなければ作業可能時間をいっぱいに使う
+ */
+export function monthInput(f: Forecast, order: MonthOrder): MonthInput {
+  const plan = f.deadline?.plan;
+  const ratio =
+    plan && plan.feasible && plan.capacityMs > 0 ? (f.prediction.remainingMs + f.workedTodayMs) / plan.capacityMs : 1;
+  return { tasks: f.openTasks, today: f.today, cal: f.cal, todayMs: Math.max(0, f.quotaMs - f.workedTodayMs), ratio, order };
+}
+
+const orderKey = (workId: number) => `otosazu.monthOrder.${workId}`;
+
+export function loadMonthOrder(workId: number): MonthOrder | null {
+  try {
+    const v = localStorage.getItem(orderKey(workId));
+    return v === "page" || v === "stage" || v === "fit" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveMonthOrder(workId: number, order: MonthOrder) {
+  try {
+    localStorage.setItem(orderKey(workId), order);
+  } catch {
+    // 保存できなくても、その場では選んだ進め方で表示される
   }
 }

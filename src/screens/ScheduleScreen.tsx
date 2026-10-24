@@ -3,17 +3,20 @@ import { api } from "../api";
 import { useApp } from "../app-context";
 import { ChosenPlan, Forecast, loadChosenPlan, saveChosenPlan, useForecast } from "../forecast";
 import { dayKey, dayLabel, estimate, hours, weekdayName } from "../format";
+import { t as tm } from "../i18n/month";
 import { t, tn } from "../i18n/schedule";
 import { addDays, HOUR, Plan, PlanStep } from "../schedule";
+import { MonthTab } from "./MonthTab";
 
-type Tab = "finish" | "deadline";
+type Tab = "finish" | "deadline" | "month";
 const TAB_KEY = "otosazu.scheduleTab";
 
 export function ScheduleScreen({ workId }: { workId: number }) {
   const app = useApp();
   const [tab, setTabState] = useState<Tab>(() => {
     try {
-      return localStorage.getItem(TAB_KEY) === "finish" ? "finish" : "deadline";
+      const v = localStorage.getItem(TAB_KEY);
+      return v === "finish" || v === "month" ? v : "deadline";
     } catch {
       return "deadline";
     }
@@ -42,15 +45,24 @@ export function ScheduleScreen({ workId }: { workId: number }) {
           <button className={tab === "deadline" ? "on" : ""} onClick={() => setTab("deadline")}>
             {t("tabDeadline")}
           </button>
+          <button className={tab === "month" ? "on" : ""} onClick={() => setTab("month")}>
+            {tm("tab")}
+          </button>
         </span>
         <span className="muted small-text">
-          {tab === "finish" ? t("tabFinishHint") : t("tabDeadlineHint")}
+          {tab === "finish"
+            ? t("tabFinishHint")
+            : tab === "deadline"
+              ? t("tabDeadlineHint")
+              : tm(forecast.board.work.kind === "files" ? "tabHintFiles" : "tabHint")}
         </span>
       </div>
       {tab === "finish" ? (
         <FinishTab forecast={forecast} draftHours={draftHours} setDraftHours={setDraftHours} />
-      ) : (
+      ) : tab === "deadline" ? (
         <DeadlineTab forecast={forecast} onError={app.showError} />
+      ) : (
+        <MonthTab forecast={forecast} />
       )}
     </>
   );

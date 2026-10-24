@@ -471,6 +471,12 @@ fn backup_data(state: State<AppState>, dest: String) -> Cmd<()> {
     with_store(&state, |s| s.backup_to(Path::new(&dest)))
 }
 
+/// 月の予定の .ics を保存する（中身は画面側で作る）
+#[tauri::command]
+fn save_calendar(dest: String, text: String) -> Cmd<()> {
+    std::fs::write(&dest, text).map_err(|e| trf(M::CalendarSaveFailed, &[("e", &e)]))
+}
+
 /// データの保存場所をエクスプローラーで開く
 #[tauri::command]
 fn reveal_data(app: AppHandle, state: State<AppState>) -> Cmd<()> {
@@ -561,6 +567,7 @@ pub fn run() {
             focus_main,
             data_info,
             backup_data,
+            save_calendar,
             reveal_data,
             check_relink,
             relink_work,
