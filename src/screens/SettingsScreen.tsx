@@ -4,6 +4,7 @@ import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { dayKey, dayLabel, estimate, hours, startOfDay, TimeFormat } from "../format";
+import type { ThemePref } from "../theme";
 
 type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data" | "about";
 const SECTIONS: { key: Section; label: string }[] = [
@@ -788,6 +789,12 @@ const TIME_FORMATS: { key: TimeFormat; label: string }[] = [
   { key: "decimal", label: "小数" },
 ];
 
+const THEMES: { key: ThemePref; label: string; note: string }[] = [
+  { key: "system", label: "自動", note: "パソコンの設定（ライト／ダーク）に合わせます" },
+  { key: "light", label: "ライト", note: "明るい色" },
+  { key: "dark", label: "ダーク", note: "暗い色。夜の作業でまぶしくありません" },
+];
+
 const MIN = 60_000;
 const EXAMPLES = [30 * MIN, 90 * MIN, 155 * 60 * MIN + 50 * MIN];
 
@@ -801,15 +808,16 @@ function DisplaySection() {
 
   if (!prefs) return <p className="muted">読み込み中…</p>;
 
-  const choose = async (timeFormat: TimeFormat) => {
+  const save = async (next: DisplayPrefs) => {
     try {
-      await api.setDisplayPrefs({ timeFormat });
-      setPrefs({ timeFormat });
+      await api.setDisplayPrefs(next);
+      setPrefs(next);
       app.refresh();
     } catch (e) {
       app.showError(e);
     }
   };
+  const choose = (timeFormat: TimeFormat) => save({ ...prefs, timeFormat });
 
   return (
     <>
@@ -830,6 +838,22 @@ function DisplaySection() {
           記録した時間は 1 分単位、予測した時間は 5 分単位で表示します（例：予測 {estimate(68 * MIN)}）。
           タイマーの経過時間（00:42:13）は、どの表記でも変わりません。
         </p>
+      </div>
+
+      <div className="section-title" style={{ marginTop: 22 }}>
+        色
+      </div>
+      <div className="card pad form">
+        {THEMES.map((t) => (
+          <button key={t.key} className={`choice${prefs.theme === t.key ? " on" : ""}`} onClick={() => save({ ...prefs, theme: t.key })}>
+            <span className="radio" />
+            <span className="grow">
+              <b>{t.label}</b>
+              <br />
+              <span className="muted">{t.note}</span>
+            </span>
+          </button>
+        ))}
       </div>
     </>
   );

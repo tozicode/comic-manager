@@ -18,11 +18,81 @@
   --info-soft: #e3eaf5;
   --radius: 10px;
 
+  /* 細かい部品の色（ダークでは下の :root[data-theme="dark"] で差し替える） */
+  --hover: #f0ebe4;
+  --line-soft: #f0ebe4;
+  --chip-bg: #efebe5;
+  --chip-text: #5e5650;
+  --track: #ece7e0;
+  --track-hover: #e0d9d0;
+  --seg-bg: #ebe6df;
+  --dialog-text: #4d4741;
+  --locked-border: #eee8e1;
+  --locked-text: #d5cec6;
+  --select-bg: #fdf6f3;
+  --warn-soft: #faefd9;
+  --warn-text: #7a5214;
+  --warn-border: #efd9a8;
+  --ok-soft: #e1efe2;
+  --planned: #c9c0b5;
+  --accent-hover: #b04a34;
+  /* 暗い地に白い字の部品（計測中のチップ・通知など）の地の色 */
+  --inverse: #2b2723;
+  --overlay: rgba(43, 39, 35, 0.42);
+  --heat-1: #f2cfc3;
+  --heat-2: #e4a08c;
+  --heat-3: #d27459;
+  --heat-4: #a8402b;
+
   font-family: "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text);
   background: var(--bg);
+}
+
+/* ダークモード（設定 → 表示 → 色。theme.ts が <html data-theme> を切り替える） */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1b1916;
+  --surface: #24211e;
+  --surface-2: #2b2724;
+  --text: #ece6de;
+  --muted: #a39a90;
+  --faint: #6b635b;
+  --border: #3a3530;
+  --accent: #e06a50;
+  --accent-soft: #4a2a22;
+  --ok: #6fb07c;
+  --warn: #d9a04a;
+  --danger: #e0705c;
+  --danger-soft: #45231e;
+  --info: #8fb0de;
+  --info-soft: #23324a;
+
+  --hover: #312c28;
+  --line-soft: #2f2b27;
+  --chip-bg: #36312c;
+  --chip-text: #c8bfb5;
+  --track: #36312c;
+  --track-hover: #433d37;
+  --seg-bg: #312c28;
+  --dialog-text: #d6cec5;
+  --locked-border: #34302b;
+  --locked-text: #5a534c;
+  --select-bg: #33241f;
+  --warn-soft: #3d3020;
+  --warn-text: #e2b66a;
+  --warn-border: #5c4626;
+  --ok-soft: #213526;
+  --planned: #5c554e;
+  --accent-hover: #c85a42;
+  --inverse: #3d3732;
+  --overlay: rgba(0, 0, 0, 0.55);
+  --heat-1: #4a2a22;
+  --heat-2: #7a3a2b;
+  --heat-3: #b2503a;
+  --heat-4: #e47a5e;
 }
 
 * {
@@ -136,7 +206,7 @@ select {
   flex: none;
 }
 .nav-item:hover:not(:disabled) {
-  background: #f0ebe4;
+  background: var(--hover);
 }
 .nav-item.on {
   background: var(--accent-soft);
@@ -184,7 +254,7 @@ select {
   gap: 10px;
   padding: 5px 6px 5px 14px;
   border-radius: 999px;
-  background: var(--text);
+  background: var(--inverse);
   color: #fff;
 }
 .timer-chip.paused {
@@ -273,7 +343,7 @@ select {
   color: var(--muted);
 }
 .btn.ghost:hover:not(:disabled) {
-  background: #f0ebe4;
+  background: var(--hover);
 }
 .btn.small {
   padding: 3px 10px;
@@ -291,8 +361,8 @@ select {
   border-radius: 999px;
   font-size: 11px;
   line-height: 20px;
-  background: #efebe5;
-  color: #5e5650;
+  background: var(--chip-bg);
+  color: var(--chip-text);
   white-space: nowrap;
 }
 .tag.sys {
@@ -302,7 +372,7 @@ select {
 .bar {
   height: 6px;
   border-radius: 3px;
-  background: #ece7e0;
+  background: var(--track);
   overflow: hidden;
 }
 .bar > span {
@@ -321,7 +391,7 @@ select {
   display: inline-flex;
   padding: 3px;
   border-radius: 9px;
-  background: #ebe6df;
+  background: var(--seg-bg);
 }
 .seg button {
   padding: 4px 14px;
@@ -419,8 +489,8 @@ select {
   color: #fff;
 }
 .mini.dark {
-  border-color: var(--text);
-  background: var(--text);
+  border-color: var(--inverse);
+  background: var(--inverse);
   color: #fff;
   font-size: 9px;
 }
@@ -438,7 +508,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(43, 39, 35, 0.42);
+  background: var(--overlay);
 }
 .dialog {
   width: 420px;
@@ -455,7 +525,7 @@ select {
 .dialog p {
   margin: 0 0 4px;
   font-size: 13px;
-  color: #4d4741;
+  color: var(--dialog-text);
 }
 .dialog .dlabel {
   font-size: 11px;
@@ -617,7 +687,7 @@ table.board {
 }
 .board td {
   padding: 6px 8px;
-  border-bottom: 1px solid #f0ebe4;
+  border-bottom: 1px solid var(--line-soft);
   vertical-align: middle;
 }
 .board tr:last-child td {
@@ -672,8 +742,8 @@ table.board {
   border-color: var(--accent);
 }
 .cell.locked {
-  border: 1px dashed #eee8e1;
-  color: #d5cec6;
+  border: 1px dashed var(--locked-border);
+  color: var(--locked-text);
 }
 .cell.done {
   color: #fff;
@@ -743,26 +813,26 @@ table.board {
 .heat i,
 .heat-legend i {
   border-radius: 3px;
-  background: #ece7e0;
+  background: var(--track);
 }
 .heat i {
   cursor: pointer;
 }
 .heat .l1,
 .heat-legend .l1 {
-  background: #f2cfc3;
+  background: var(--heat-1);
 }
 .heat .l2,
 .heat-legend .l2 {
-  background: #e4a08c;
+  background: var(--heat-2);
 }
 .heat .l3,
 .heat-legend .l3 {
-  background: #d27459;
+  background: var(--heat-3);
 }
 .heat .l4,
 .heat-legend .l4 {
-  background: #a8402b;
+  background: var(--heat-4);
 }
 .heat i.future {
   background: transparent;
@@ -797,7 +867,7 @@ table.board {
   border-radius: 7px;
   font-size: 12px;
   white-space: nowrap;
-  background: var(--text);
+  background: var(--inverse);
   color: #fff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   pointer-events: none;
@@ -848,7 +918,7 @@ table.rec {
 .rec td,
 .rec th {
   padding: 7px 12px;
-  border-bottom: 1px solid #f0ebe4;
+  border-bottom: 1px solid var(--line-soft);
   font-size: 13px;
   text-align: left;
 }
@@ -875,7 +945,7 @@ table.rec {
   white-space: nowrap;
 }
 .rec tr.editing td {
-  background: #fdf6f3;
+  background: var(--select-bg);
 }
 .rec .edited {
   font-size: 11px;
@@ -956,8 +1026,8 @@ table.rec {
   grid-template-columns: 1.4fr 1fr 1fr;
 }
 .notice.warn {
-  color: #7a5214;
-  background: #faefd9;
+  color: var(--warn-text);
+  background: var(--warn-soft);
   padding: 10px 14px;
 }
 .notice.info {
@@ -982,11 +1052,11 @@ table.rec {
   cursor: pointer;
 }
 .tag.status.ok {
-  background: #e1efe2;
+  background: var(--ok-soft);
   color: var(--ok);
 }
 .tag.status.warn {
-  background: #faefd9;
+  background: var(--warn-soft);
   color: var(--warn);
 }
 .tag.status.late {
@@ -999,7 +1069,7 @@ table.rec {
   gap: 4px;
 }
 .board tr.selected td {
-  background: #fdf6f3;
+  background: var(--select-bg);
 }
 .cell .bar {
   height: 4px;
@@ -1105,8 +1175,8 @@ table.rec {
   cursor: pointer;
 }
 .popover .opt.on {
-  background: var(--text);
-  border-color: var(--text);
+  background: var(--inverse);
+  border-color: var(--inverse);
   color: #fff;
 }
 .popover .opt.lock {
@@ -1307,7 +1377,7 @@ table.rec {
   background: var(--surface-2);
 }
 .pick.on {
-  background: #fdf6f3;
+  background: var(--select-bg);
 }
 
 /* 設定：ナビ・タグ・作業時間 */
@@ -1414,7 +1484,7 @@ table.rec {
   font-size: 12px;
 }
 .miniwin .mtools button:hover {
-  background: #ece7e0;
+  background: var(--track);
 }
 .miniwin .mtools button:not(.on):first-child {
   opacity: 0.4;
@@ -1469,16 +1539,16 @@ table.rec {
   color: #fff;
 }
 .icon-btn.accent:hover {
-  background: #b04a34;
+  background: var(--accent-hover);
 }
 .icon-btn.sec {
   width: 36px;
   height: 36px;
-  background: #ece7e0;
+  background: var(--track);
   color: var(--text);
 }
 .icon-btn.sec:hover {
-  background: #e0d9d0;
+  background: var(--track-hover);
 }
 .icon-btn.big {
   width: 44px;
@@ -1528,7 +1598,7 @@ table.rec {
   width: 340px;
   padding: 12px 14px;
   border-radius: 12px;
-  background: var(--text);
+  background: var(--inverse);
   color: #fff;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   font-size: 13px;
@@ -1572,7 +1642,7 @@ table.rec {
 }
 .choice.on {
   border-color: var(--accent);
-  background: #fdf6f3;
+  background: var(--select-bg);
 }
 .choice .radio {
   width: 16px;
@@ -1630,8 +1700,8 @@ table.rec {
   padding: 6px 8px 6px 10px;
   border-radius: 8px;
   font-size: 12px;
-  color: #7a5214;
-  background: #faefd9;
+  color: var(--warn-text);
+  background: var(--warn-soft);
   cursor: default;
 }
 
@@ -1657,11 +1727,11 @@ table.rec {
 }
 .pcell .lost {
   padding: 1px 10px;
-  border: 1px solid #efd9a8;
+  border: 1px solid var(--warn-border);
   border-radius: 999px;
   font-size: 11px;
-  color: #7a5214;
-  background: #faefd9;
+  color: var(--warn-text);
+  background: var(--warn-soft);
   white-space: nowrap;
 }
 button.lost {
@@ -1785,7 +1855,7 @@ button.lost:hover {
   background: var(--accent);
 }
 .stats .planned {
-  background: #c9c0b5;
+  background: var(--planned);
 }
 
 /* 更新のお知らせ */

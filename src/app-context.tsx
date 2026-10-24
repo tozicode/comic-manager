@@ -5,6 +5,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ActiveSession, api, StopResult } from "./api";
 import { setDayStartHour, setTimeFormat } from "./format";
+import { setThemePref } from "./theme";
 
 /** 一時停止中のタスク（再開ボタン用）。アプリを閉じても残るよう localStorage に置く */
 export type PausedTask = { workId: number; pageId: number; pageLabel: string; stageId: number; stageName: string };
@@ -116,6 +117,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     Promise.all([api.getDisplayPrefs(), api.getDayStartHour()])
       .then(([p, dayStart]) => {
         setTimeFormat(p.timeFormat);
+        setThemePref(p.theme);
         setDayStartHour(dayStart);
         const key = `${p.timeFormat}|${dayStart}`;
         setTimeFormatState((old) => {

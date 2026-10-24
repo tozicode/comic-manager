@@ -11,15 +11,17 @@ const CHECK_UPDATES_KEY: &str = "check_updates";
 
 /// 表示の設定
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct DisplayPrefs {
     /// 時間の表記："hm"（1時間30分）/ "clock"（1:30）/ "decimal"（1.5h）
     pub time_format: String,
+    /// 色："system"（OS に合わせる）/ "light" / "dark"
+    pub theme: String,
 }
 
 impl Default for DisplayPrefs {
     fn default() -> Self {
-        Self { time_format: "hm".into() }
+        Self { time_format: "hm".into(), theme: "system".into() }
     }
 }
 
@@ -79,6 +81,9 @@ impl Store {
         if !["hm", "clock", "decimal"].contains(&prefs.time_format.as_str()) {
             return Err("時間の表記の指定が正しくありません".into());
         }
+        if !["system", "light", "dark"].contains(&prefs.theme.as_str()) {
+            return Err("色の指定が正しくありません".into());
+        }
         self.conn
             .execute(
                 "INSERT INTO setting (key, value) VALUES (?1, ?2)
@@ -131,9 +136,24 @@ mod tests {
     fn 時間の表記は既定が時間と分() {
         let store = Store::open_in_memory().unwrap();
         assert_eq!(store.display_prefs().unwrap().time_format, "hm");
-        store.set_display_prefs(&DisplayPrefs { time_format: "clock".into() }).unwrap();
+        store.set_display_prefs(&DisplayPrefs { time_format: "clock".into(), ..Default::default() }).unwrap();
         assert_eq!(store.display_prefs().unwrap().time_format, "clock");
-        assert!(store.set_display_prefs(&DisplayPrefs { time_format: "x".into() }).is_err());
+        assert!(store.set_display_prefs(&DisplayPrefs { time_format: "x".into(), ..Default::default() }).is_err());
+    }
+
+    #[test]
+    fn 色は既定が自動で_前の版の設定も読める() {
+        let store = Store::open_in_memory().unwrap();
+        assert_eq!(store.display_prefs().unwrap().theme, "system");
+        // 色の項目が無かった版（1.0.0）で保存した設定
+        store
+            .conn
+            .execute("INSERT INTO setting (key, value) VALUES (?1, ?2)", params![DISPLAY_KEY, r#"{"timeFormat":"clock"}"#])
+            .unwrap();
+        assert_eq!(store.display_prefs().unwrap(), DisplayPrefs { time_format: "clock".into(), theme: "system".into() });
+        store.set_display_prefs(&DisplayPrefs { time_format: "hm".into(), theme: "dark".into() }).unwrap();
+        assert_eq!(store.display_prefs().unwrap().theme, "dark");
+        assert!(store.set_display_prefs(&DisplayPrefs { time_format: "hm".into(), theme: "x".into() }).is_err());
     }
 
     #[test]

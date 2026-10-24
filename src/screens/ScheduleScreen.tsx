@@ -242,10 +242,10 @@ function ProgressChart({ forecast }: { forecast: Forecast }) {
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="chart">
-      <g fontSize="11" fill="#7a7169">
-        <line x1={L} y1={B} x2={R} y2={B} stroke="#e2dcd3" />
-        <line x1={L} y1={T} x2={R} y2={T} stroke="#f0ebe4" />
-        <line x1={L} y1={(T + B) / 2} x2={R} y2={(T + B) / 2} stroke="#f0ebe4" />
+      <g fontSize="11" style={{ fill: "var(--muted)" }}>
+        <line x1={L} y1={B} x2={R} y2={B} style={{ stroke: "var(--border)" }} />
+        <line x1={L} y1={T} x2={R} y2={T} style={{ stroke: "var(--line-soft)" }} />
+        <line x1={L} y1={(T + B) / 2} x2={R} y2={(T + B) / 2} style={{ stroke: "var(--line-soft)" }} />
         <text x={L - 6} y={T + 4} textAnchor="end">100%</text>
         <text x={L - 6} y={(T + B) / 2 + 4} textAnchor="end">50%</text>
         <text x={L - 6} y={B + 4} textAnchor="end">0%</text>
@@ -255,27 +255,27 @@ function ProgressChart({ forecast }: { forecast: Forecast }) {
           </text>
         ))}
       </g>
-      <path d={`M${nowX} ${nowY} L${fx(finish.low)} ${T} L${fx(finish.high)} ${T} Z`} fill="#c8553d" opacity=".12" />
-      <polyline points={points.join(" ")} fill="none" stroke="#2b2723" strokeWidth="2.5" />
-      <line x1={nowX} y1={nowY} x2={fx(finish.mid)} y2={T} stroke="#c8553d" strokeWidth="2.5" strokeDasharray="6 5" />
+      <path d={`M${nowX} ${nowY} L${fx(finish.low)} ${T} L${fx(finish.high)} ${T} Z`} style={{ fill: "var(--accent)" }} opacity=".12" />
+      <polyline points={points.join(" ")} fill="none" style={{ stroke: "var(--text)" }} strokeWidth="2.5" />
+      <line x1={nowX} y1={nowY} x2={fx(finish.mid)} y2={T} style={{ stroke: "var(--accent)" }} strokeWidth="2.5" strokeDasharray="6 5" />
       {finish.mid && (
         <>
-          <circle cx={fx(finish.mid)} cy={T} r="5" fill="#c8553d" />
-          <text x={fx(finish.mid)} y={T + 20} fontSize="12" fill="#c8553d" textAnchor="middle" fontWeight="700">
+          <circle cx={fx(finish.mid)} cy={T} r="5" style={{ fill: "var(--accent)" }} />
+          <text x={fx(finish.mid)} y={T + 20} fontSize="12" style={{ fill: "var(--accent)" }} textAnchor="middle" fontWeight="700">
             {finish.mid.getMonth() + 1}/{finish.mid.getDate()}
           </text>
         </>
       )}
       {deadline && (
         <>
-          <line x1={fx(deadline.date)} y1={T - 6} x2={fx(deadline.date)} y2={B} stroke="#4f8a5b" strokeWidth="1.5" />
-          <text x={fx(deadline.date) - 4} y={B - 10} fontSize="11" fill="#4f8a5b" textAnchor="end">
+          <line x1={fx(deadline.date)} y1={T - 6} x2={fx(deadline.date)} y2={B} style={{ stroke: "var(--ok)" }} strokeWidth="1.5" />
+          <text x={fx(deadline.date) - 4} y={B - 10} fontSize="11" style={{ fill: "var(--ok)" }} textAnchor="end">
             締切 {deadline.date.getMonth() + 1}/{deadline.date.getDate()}
           </text>
         </>
       )}
-      <line x1={nowX} y1={T - 6} x2={nowX} y2={B} stroke="#b3aaa1" strokeDasharray="2 3" />
-      <text x={nowX} y={B + 18} fontSize="11" fill="#7a7169" textAnchor="middle">
+      <line x1={nowX} y1={T - 6} x2={nowX} y2={B} style={{ stroke: "var(--faint)" }} strokeDasharray="2 3" />
+      <text x={nowX} y={B + 18} fontSize="11" style={{ fill: "var(--muted)" }} textAnchor="middle">
         今日
       </text>
     </svg>

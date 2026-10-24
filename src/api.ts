@@ -1,6 +1,7 @@
 // Rust 側（src-tauri/src/lib.rs）のコマンドを呼ぶ薄いラッパー。
 // 型は src-tauri/src/store.rs の構造体に対応する。時刻はすべて UNIX 時間のミリ秒。
 import { invoke } from "@tauri-apps/api/core";
+import type { ThemePref } from "./theme";
 
 /** 作品の種類：漫画（cmc）とイラスト（.clip / .psd を束ねたもの） */
 export type WorkKind = "comic" | "files";
@@ -32,7 +33,7 @@ export type WorkSummary = {
   fileMissing: boolean;
 };
 
-export type DisplayPrefs = { timeFormat: "hm" | "clock" | "decimal" };
+export type DisplayPrefs = { timeFormat: "hm" | "clock" | "decimal"; theme: ThemePref };
 
 export type RelinkCheck = { title: string; newPages: number; oldPages: number; matched: number };
 

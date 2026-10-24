@@ -282,7 +282,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             未着手
           </span>
           <span>
-            <i style={{ background: "#ece7e0" }} />
+            <i style={{ background: "var(--track)" }} />
             作業中
           </span>
           <span>
@@ -290,7 +290,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             完了
           </span>
           <span>
-            <i style={{ border: "1px dashed #e4ddd5" }} />
+            <i style={{ border: "1px dashed var(--locked-border)" }} />
             前の工程待ち
           </span>
         </div>
