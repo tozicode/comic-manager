@@ -491,18 +491,18 @@ messages! {
         "此操作不適用於漫畫作品",
     ],
     NoRowsGiven => [
-        "行の名前を 1 つ以上入力してください",
-        "Enter at least one row name",
-        "행 이름을 1개 이상 입력해 주세요",
-        "请至少输入 1 个行名称",
-        "請至少輸入 1 個列名稱",
+        "{unit}の名前を 1 つ以上入力してください",
+        "Enter at least one {unit} name",
+        "{unit} 이름을 1개 이상 입력해 주세요",
+        "请至少输入 1 个{unit}名称",
+        "請至少輸入 1 個{unit}名稱",
     ],
     LastRow => [
-        "最後の行は外せません（作品ごと外すときは作品一覧から）",
-        "You can't remove the last row (to remove the whole work, use the work list)",
-        "마지막 행은 제외할 수 없습니다(작품 전체를 제외하려면 작품 목록에서)",
-        "无法移除最后一行（要移除整个作品，请在作品列表中操作）",
-        "無法移除最後一列（要移除整個作品，請在作品清單中操作）",
+        "最後の{unit}は外せません（作品ごと外すときは作品一覧から）",
+        "You can't remove the last {unit} (to remove the whole work, use the work list)",
+        "마지막 {unit}은(는) 제외할 수 없습니다(작품 전체를 제외하려면 작품 목록에서)",
+        "无法移除最后一个{unit}（要移除整个作品，请在作品列表中操作）",
+        "無法移除最後一個{unit}（要移除整個作品，請在作品清單中操作）",
     ],
 
     // ----- ファイルの読み込み（cmc / clip / psd） -----

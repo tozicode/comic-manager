@@ -142,7 +142,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     setAddingRows(null);
     try {
       const n = await api.addRows(workId, names);
-      setSyncNote(t("rowsAdded", { n }));
+      setSyncNote(t("rowsAdded", { n, unit: unitText(board.work, n) }));
       app.refresh();
     } catch (e) {
       app.showError(e);
@@ -228,7 +228,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             </button>
           ) : isManual ? (
             <button className="btn small ghost" onClick={() => setAddingRows("")}>
-              {t("addRows")}
+              {t("addRows", { unit })}
             </button>
           ) : (
             <button className="btn small ghost" onClick={startRelink} title={t("changeLocationHint")}>
@@ -423,7 +423,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                   {hasRows && (
                     <button
                       className="mini remove"
-                      title={t(isManual ? "removeRowHint" : "removeFileHint")}
+                      title={isManual ? t("removeRowHint", { unit: unitText(board.work, 1) }) : t("removeFileHint")}
                       onClick={() => setRemoving(page)}
                     >
                       ×
@@ -605,7 +605,10 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           }
         >
           <p>
-            {t(isManual ? "removeRowBody" : "removeBody", { time: hours(removing.cells.reduce((n, c) => n + c.totalMs, 0)) })}
+            {t(isManual ? "removeRowBody" : "removeBody", {
+              time: hours(removing.cells.reduce((n, c) => n + c.totalMs, 0)),
+              unit: unitText(board.work, 1),
+            })}
             {!isManual && (
               <>
                 <br />
@@ -617,7 +620,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       )}
       {addingRows !== null && (
         <Dialog
-          title={t("addRowsTitle")}
+          title={t("addRowsTitle", { unit })}
           onClose={() => setAddingRows(null)}
           actions={
             <>

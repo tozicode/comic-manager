@@ -6,7 +6,7 @@
 
 use rusqlite::params;
 
-use crate::i18n::{M, tr};
+use crate::i18n::{M, tr, trf};
 
 use super::{KIND_MANUAL, Result, Store, db_err, valid_name};
 
@@ -28,7 +28,7 @@ impl Store {
         let title = valid_name(title)?;
         let names = row_names(names);
         if names.is_empty() {
-            return Err(tr(M::NoRowsGiven).into());
+            return Err(trf(M::NoRowsGiven, &[("unit", &self.stage_set(set_id)?.unit)]));
         }
         self.conn
             .execute(
@@ -47,7 +47,7 @@ impl Store {
         self.ensure_manual_work(work_id)?;
         let names = row_names(names);
         if names.is_empty() {
-            return Err(tr(M::NoRowsGiven).into());
+            return Err(trf(M::NoRowsGiven, &[("unit", &self.work_info(work_id)?.unit)]));
         }
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let mut next: i64 = tx
@@ -150,14 +150,14 @@ mod tests {
         for pid in [ids[3], ids[1]] {
             store.remove_file(pid).unwrap();
         }
-        assert!(store.remove_file(ids[2]).unwrap_err().contains("最後の行"));
+        assert!(store.remove_file(ids[2]).unwrap_err().contains("最後のパーツ"));
     }
 
     #[test]
     fn 行が無ければ登録できず_漫画には行の操作を使えない() {
         let (store, id) = setup();
         let set = store.add_stage_set("小説", "章").unwrap();
-        assert!(store.add_manual_work("x", &s(&[""]), set.id, 0).unwrap_err().contains("行"));
+        assert!(store.add_manual_work("x", &s(&[""]), set.id, 0).unwrap_err().contains("章の名前"));
         // 工程の無いセットでは登録できない
         assert!(store.add_manual_work("x", &s(&["1"]), set.id, 0).is_err());
         assert!(store.add_rows(id, &s(&["a"])).is_err());

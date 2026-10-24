@@ -91,7 +91,11 @@ impl Store {
             .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1 AND id != ?2", params![work_id, page_id], |r| r.get(0))
             .map_err(db_err)?;
         if rest == 0 {
-            return Err(tr(if kind == KIND_MANUAL { M::LastRow } else { M::LastFile }).into());
+            return Err(if kind == KIND_MANUAL {
+                trf(M::LastRow, &[("unit", &self.work_info(work_id)?.unit)])
+            } else {
+                tr(M::LastFile).into()
+            });
         }
         self.conn.execute("DELETE FROM page WHERE id = ?1", [page_id]).map_err(db_err)?;
         self.renumber(work_id)

@@ -220,6 +220,10 @@ function AddWorkDialog({
     if (first) setSetId(first.id);
   }, [kind, sets]);
 
+  // 選んだセットの単位の言葉（「パーツの名前」のように、行の呼び方を入力欄に出す）
+  const chosen = sets.find((st) => st.id === setId);
+  const rowUnit = chosen ? unitText(chosen) : "";
+
   const addManual = async () => {
     if (setId === null) return;
     setBusy(true);
@@ -339,11 +343,11 @@ function AddWorkDialog({
         </label>
         {kind === "manual" && (
           <label className="row" style={{ alignItems: "flex-start" }}>
-            <span style={{ width: 90, paddingTop: 6 }}>{t("rows")}</span>
+            <span style={{ width: 90, paddingTop: 6 }}>{t("rows", { unit: rowUnit })}</span>
             <textarea
               className="field grow"
               rows={5}
-              placeholder={t("rowsPlaceholder")}
+              placeholder={t("rowsPlaceholder", { unit: rowUnit })}
               value={rows}
               onChange={(e) => setRows(e.target.value)}
               style={{ resize: "vertical" }}
