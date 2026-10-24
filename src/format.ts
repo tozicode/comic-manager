@@ -1,7 +1,27 @@
-// 時間・日付の表示用の関数
+// 時間・日付の表示用の関数（言語ごとの書き方は SPANS などにまとめ、今の言語で選ぶ）
+import { getLang, Lang } from "./i18n";
 
 const HOUR = 3_600_000;
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+
+/** 時間と分の書き方（h 時間 m 分）。under は「step 分未満」 */
+const SPANS: Record<Lang, { hm: (h: number, m: number) => string; h: (h: number) => string; m: (m: number) => string; under: (step: number) => string }> = {
+  ja: { hm: (h, m) => `${h}時間${m}分`, h: (h) => `${h}時間`, m: (m) => `${m}分`, under: (s) => `${s}分未満` },
+  en: { hm: (h, m) => `${h}h ${m}m`, h: (h) => `${h}h`, m: (m) => `${m}m`, under: (s) => `< ${s}m` },
+  ko: { hm: (h, m) => `${h}시간 ${m}분`, h: (h) => `${h}시간`, m: (m) => `${m}분`, under: (s) => `${s}분 미만` },
+  "zh-Hans": { hm: (h, m) => `${h}小时${m}分钟`, h: (h) => `${h}小时`, m: (m) => `${m}分钟`, under: (s) => `不到${s}分钟` },
+  "zh-Hant": { hm: (h, m) => `${h}小時${m}分鐘`, h: (h) => `${h}小時`, m: (m) => `${m}分鐘`, under: (s) => `不到${s}分鐘` },
+};
+
+/** 曜日（日曜始まり）。単独で出すときの短い形 */
+const WEEKDAYS: Record<Lang, string[]> = {
+  ja: ["日", "月", "火", "水", "木", "金", "土"],
+  en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+  ko: ["일", "월", "화", "수", "목", "금", "토"],
+  "zh-Hans": ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+  "zh-Hant": ["週日", "週一", "週二", "週三", "週四", "週五", "週六"],
+};
+
+const EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** 時間の表記（仕様書 5.9）。hm = 1時間30分、clock = 1:30、decimal = 1.5h */
 export type TimeFormat = "hm" | "clock" | "decimal";
@@ -17,12 +37,13 @@ export function setTimeFormat(f: TimeFormat) {
 function formatSpan(ms: number, step: number, fmt: TimeFormat): string {
   if (fmt === "decimal") return `${(ms / HOUR).toFixed(1)}h`;
   const min = Math.round(ms / 60_000 / step) * step;
-  if (ms > 0 && min === 0) return `${step}分未満`;
+  const w = SPANS[getLang()];
+  if (ms > 0 && min === 0) return w.under(step);
   const h = Math.floor(min / 60);
   const m = min % 60;
   if (fmt === "clock") return `${h}:${String(m).padStart(2, "0")}`;
-  if (h === 0) return `${m}分`;
-  return m === 0 ? `${h}時間` : `${h}時間${m}分`;
+  if (h === 0) return w.m(m);
+  return m === 0 ? w.h(h) : w.hm(h, m);
 }
 
 /** 記録した時間の表記（1 分単位） */
@@ -55,9 +76,30 @@ export function time(ms: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-/** 10/23（木） */
+/** 曜日の短い名前（0 = 日曜） */
+export function weekdayName(day: number): string {
+  return WEEKDAYS[getLang()][day];
+}
+
+/** 10/23（木）。英語は Thu 10/23 */
 export function dayLabel(d: Date): string {
-  return `${d.getMonth() + 1}/${d.getDate()}（${WEEKDAYS[d.getDay()]}）`;
+  const md = `${d.getMonth() + 1}/${d.getDate()}`;
+  const w = weekdayName(d.getDay());
+  switch (getLang()) {
+    case "en":
+      return `${w} ${md}`;
+    case "ko":
+      return `${md} (${w})`;
+    default:
+      return `${md}（${w}）`;
+  }
+}
+
+/** ヒートマップの月の見出し（4月 / Apr / 4월） */
+export function monthLabel(month: number): string {
+  const lang = getLang();
+  if (lang === "en") return EN_MONTHS[month];
+  return lang === "ko" ? `${month + 1}월` : `${month + 1}月`;
 }
 
 // 1 日の区切り（仕様書 5.11）。0 なら午前 0 時、5 なら朝 5 時〜翌 4:59 を 1 日とする。
@@ -102,10 +144,20 @@ export function fromInputs(date: string, hm: string): number | null {
   return new Date(y, mo - 1, d + (h < dayStartHour ? 1 : 0), h, mi).getTime();
 }
 
-/** 作業記録の時刻。その日（区切りに沿った日付）より後の暦日なら「翌」を付ける（例：翌01:40） */
+/** 作業記録の時刻。その日（区切りに沿った日付）より後の暦日なら「翌」を付ける（例：翌01:40。英語は 01:40 (+1)） */
 export function timeInDay(ms: number, day: Date): string {
   const next = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
-  return `${ms >= next ? "翌" : ""}${time(ms)}`;
+  if (ms < next) return time(ms);
+  switch (getLang()) {
+    case "en":
+      return `${time(ms)} (+1)`;
+    case "ko":
+      return `익일 ${time(ms)}`;
+    case "ja":
+      return `翌${time(ms)}`;
+    default:
+      return `次日${time(ms)}`;
+  }
 }
 
 /** 作業記録を日ごとに分割して合計する（日をまたぐ記録は 1 日の区切りで分ける） */

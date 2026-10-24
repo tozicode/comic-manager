@@ -5,6 +5,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ActiveSession, api, StopResult } from "./api";
 import { setDayStartHour, setTimeFormat } from "./format";
+import { setLang } from "./i18n";
 import { setThemePref } from "./theme";
 
 /** 一時停止中のタスク（再開ボタン用）。アプリを閉じても残るよう localStorage に置く */
@@ -114,10 +115,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 時間の表記と 1 日の区切り。変わったら、画面全体を描き直すために version を進める
   const [timeFormat, setTimeFormatState] = useState<string | null>(null);
   useEffect(() => {
-    Promise.all([api.getDisplayPrefs(), api.getDayStartHour()])
-      .then(([p, dayStart]) => {
+    Promise.all([api.getDisplayPrefs(), api.getDayStartHour(), api.getSystemLanguage()])
+      .then(([p, dayStart, systemLang]) => {
         setTimeFormat(p.timeFormat);
         setThemePref(p.theme);
+        setLang(p.language === "system" ? systemLang : p.language);
         setDayStartHour(dayStart);
         const key = `${p.timeFormat}|${dayStart}`;
         setTimeFormatState((old) => {

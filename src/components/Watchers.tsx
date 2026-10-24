@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, StopResult, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { hours, time } from "../format";
+import { t } from "../i18n/timer";
 import { Dialog } from "./Dialog";
 
 const IDLE_CHECK_MS = 20_000;
@@ -122,37 +123,38 @@ export function Watchers() {
   const s = prompt.stopped;
   return (
     <Dialog
-      label={`${prefs?.idleMinutes ?? ""} 分間 PC の操作がありませんでした`}
-      title="休憩していましたか？"
+      label={t("idleLabel", { min: prefs?.idleMinutes ?? "" })}
+      title={t("idleTitle")}
       onClose={() => answer(false)}
       actions={
         <>
           <button className="btn" onClick={() => answer(false)}>
-            止めたままにする
+            {t("keepStopped")}
           </button>
           <button className="btn primary" autoFocus onClick={() => answer(true)}>
-            再開する
+            {t("resumeAction")}
           </button>
         </>
       }
     >
       <p>
-        {s.pageLabel} の{s.stageName}を計測していましたが、{time(prompt.idleSince)} から操作がなかったので一時停止しました。
+        {t("idleBody", { page: s.pageLabel, stage: s.stageName, time: time(prompt.idleSince) })}
       </p>
       <button className={`choice${working ? "" : " on"}`} onClick={() => setWorking(false)}>
         <span className="radio" />
         <span>
-          <b>休憩していた</b>
+          <b>{t("wasResting")}</b>
           <br />
-          <span className="muted">{time(prompt.idleSince)} 以降は記録しない</span>
+          <span className="muted">{t("restingNote", { time: time(prompt.idleSince) })}</span>
         </span>
       </button>
       <button className={`choice${working ? " on" : ""}`} onClick={() => setWorking(true)}>
         <span className="radio" />
         <span>
-          <b>作業していた</b>（資料を読んでいた など）
+          <b>{t("wasWorking")}</b>
+          {t("wasWorkingExample")}
           <br />
-          <span className="muted">止まっていた {hours(prompt.detectedAt - prompt.idleSince)} も記録する</span>
+          <span className="muted">{t("workingNote", { time: hours(prompt.detectedAt - prompt.idleSince) })}</span>
         </span>
       </button>
     </Dialog>
@@ -166,13 +168,13 @@ export function SaveToast() {
   if (!n || !app.active || app.active.pageId === n.pageId) return null;
   return (
     <div className="toast" role="status">
-      <b>{n.pageLabel} が保存されました</b>
+      <b>{t("savedTitle", { page: n.pageLabel })}</b>
       <div>
-        計測中は「{app.active.pageLabel} {app.active.stageName}」です。{n.pageLabel} を作業していますか？
+        {t("savedBody", { current: `${app.active.pageLabel} ${app.active.stageName}`, page: n.pageLabel })}
       </div>
       <div className="actions">
         <button className="btn small" onClick={app.clearSaveNotice}>
-          いいえ
+          {t("no")}
         </button>
         <button
           className="btn small primary"
@@ -181,7 +183,7 @@ export function SaveToast() {
             app.start(n.pageId, n.stageId);
           }}
         >
-          {n.pageLabel} {n.stageName}に切り替える
+          {t("switchTo", { page: n.pageLabel, stage: n.stageName })}
         </button>
       </div>
     </div>

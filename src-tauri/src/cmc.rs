@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 
+use crate::i18n::{M, tr, trf};
+
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Comic {
@@ -34,7 +36,7 @@ pub struct Page {
 /// cmc を読み、作品名とページ一覧（表示順）を返す。
 pub fn read_comic(cmc_path: &Path) -> Result<Comic, String> {
     let bytes = std::fs::read(cmc_path)
-        .map_err(|e| format!("漫画ファイルを開けませんでした（{}）: {e}", cmc_path.display()))?;
+        .map_err(|e| trf(M::CmcOpenFailed, &[("path", &cmc_path.display()), ("e", &e)]))?;
     let db = TempDb::new(&bytes)?;
     let conn = db.open()?;
 
@@ -77,10 +79,10 @@ pub fn read_thumbnail(clip_path: &Path, max_width: u32) -> Result<Vec<u8>, Strin
     let conn = db.open()?;
     let png: Vec<u8> = conn
         .query_row("SELECT ImageData FROM CanvasPreview LIMIT 1", [], |r| r.get(0))
-        .map_err(|e| format!("サムネイルが見つかりませんでした: {e}"))?;
+        .map_err(|e| trf(M::ThumbNotFound, &[("e", &e)]))?;
 
     let img = image::load_from_memory_with_format(&png, image::ImageFormat::Png)
-        .map_err(|e| format!("サムネイルを読み込めませんでした: {e}"))?;
+        .map_err(|e| trf(M::ThumbReadFailed, &[("e", &e)]))?;
     let img = if img.width() > max_width {
         img.resize(max_width, u32::MAX, image::imageops::FilterType::Triangle)
     } else {
@@ -88,7 +90,7 @@ pub fn read_thumbnail(clip_path: &Path, max_width: u32) -> Result<Vec<u8>, Strin
     };
     let mut out = Vec::new();
     img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
-        .map_err(|e| format!("サムネイルを変換できませんでした: {e}"))?;
+        .map_err(|e| trf(M::ThumbConvertFailed, &[("e", &e)]))?;
     Ok(out)
 }
 
@@ -96,12 +98,12 @@ pub fn read_thumbnail(clip_path: &Path, max_width: u32) -> Result<Vec<u8>, Strin
 /// CLIP STUDIO や Photoshop で保存したファイルには通常入っている（CLIP STUDIO の書き出しは 160×120）。
 /// 画像そのもの（合成画像）は大きい絵だと読むのが重いので、ここでは読まない
 pub fn read_psd_thumbnail(path: &Path) -> Result<Vec<u8>, String> {
-    let err = |e: std::io::Error| format!("画像ファイルを読めませんでした（{}）: {e}", path.display());
+    let err = |e: std::io::Error| trf(M::ImageReadFailed, &[("path", &path.display()), ("e", &e)]);
     let mut f = File::open(path).map_err(err)?;
     let mut header = [0u8; 26];
     f.read_exact(&mut header).map_err(err)?;
     if &header[0..4] != b"8BPS" {
-        return Err("Photoshop 形式（.psd）のファイルではありません".into());
+        return Err(tr(M::NotPsd).into());
     }
     let mut len = [0u8; 4];
     f.read_exact(&mut len).map_err(err)?;
@@ -109,7 +111,7 @@ pub fn read_psd_thumbnail(path: &Path) -> Result<Vec<u8>, String> {
     f.read_exact(&mut len).map_err(err)?;
     let size = u32::from_be_bytes(len) as usize;
     if size > 64 * 1024 * 1024 {
-        return Err("画像リソースが大きすぎます".into());
+        return Err(tr(M::ImageResourceTooLarge).into());
     }
     let mut res = vec![0u8; size];
     f.read_exact(&mut res).map_err(err)?;
@@ -137,7 +139,7 @@ pub fn read_psd_thumbnail(path: &Path) -> Result<Vec<u8>, String> {
         }
         pos = data + data_len + data_len % 2;
     }
-    Err("サムネイルが入っていませんでした".into())
+    Err(tr(M::NoThumbnail).into())
 }
 
 struct Node {
@@ -156,7 +158,7 @@ fn read_nodes(conn: &Connection) -> Result<Vec<Node>, String> {
             "SELECT MainId, Type, NextIndex, FirstChildIndex, PageFlag, Memo, LinkPath
              FROM CanvasNode ORDER BY _PW_ID",
         )
-        .map_err(|e| format!("ページ一覧を読めませんでした（対応していない形式の可能性があります）: {e}"))?;
+        .map_err(|e| trf(M::PageListUnsupported, &[("e", &e)]))?;
     let rows = stmt
         .query_map([], |r| {
             Ok(Node {
@@ -170,7 +172,7 @@ fn read_nodes(conn: &Connection) -> Result<Vec<Node>, String> {
             })
         })
         .and_then(|rows| rows.collect::<Result<Vec<_>, _>>())
-        .map_err(|e| format!("ページ一覧を読めませんでした: {e}"))?;
+        .map_err(|e| trf(M::PageListReadFailed, &[("e", &e)]))?;
     Ok(rows)
 }
 
@@ -222,18 +224,18 @@ fn file_stem(path: &Path) -> String {
 /// .clip のチャンクをたどり、CHNKSQLi の中身（SQLite データベース）を取り出す。
 /// レイヤー画像のチャンクは大きいので、読み飛ばして SQLite の部分だけ読む。
 fn read_clip_sqlite(clip_path: &Path) -> Result<Vec<u8>, String> {
-    let err = |e: std::io::Error| format!("ページファイルを読めませんでした（{}）: {e}", clip_path.display());
+    let err = |e: std::io::Error| trf(M::PageFileReadFailed, &[("path", &clip_path.display()), ("e", &e)]);
     let mut f = File::open(clip_path).map_err(err)?;
 
     let mut header = [0u8; 24];
     f.read_exact(&mut header).map_err(err)?;
     if &header[0..8] != b"CSFCHUNK" {
-        return Err("CLIP STUDIO のページファイルではありません".into());
+        return Err(tr(M::NotClipPageFile).into());
     }
     let mut chunk = [0u8; 16];
     loop {
         if f.read_exact(&mut chunk).is_err() {
-            return Err("ページファイル内にデータベースが見つかりませんでした".into());
+            return Err(tr(M::PageDbNotFound).into());
         }
         let size = u64::from_be_bytes(chunk[8..16].try_into().unwrap());
         match &chunk[0..8] {
@@ -242,7 +244,7 @@ fn read_clip_sqlite(clip_path: &Path) -> Result<Vec<u8>, String> {
                 f.read_exact(&mut buf).map_err(err)?;
                 return Ok(buf);
             }
-            b"CHNKFoot" => return Err("ページファイル内にデータベースが見つかりませんでした".into()),
+            b"CHNKFoot" => return Err(tr(M::PageDbNotFound).into()),
             _ => {
                 f.seek(SeekFrom::Current(size as i64)).map_err(err)?;
             }
@@ -257,14 +259,14 @@ struct TempDb(tempfile::NamedTempFile);
 impl TempDb {
     fn new(bytes: &[u8]) -> Result<Self, String> {
         use std::io::Write;
-        let mut f = tempfile::NamedTempFile::new().map_err(|e| format!("一時ファイルを作れませんでした: {e}"))?;
-        f.write_all(bytes).map_err(|e| format!("一時ファイルに書き込めませんでした: {e}"))?;
+        let mut f = tempfile::NamedTempFile::new().map_err(|e| trf(M::TempCreateFailed, &[("e", &e)]))?;
+        f.write_all(bytes).map_err(|e| trf(M::TempWriteFailed, &[("e", &e)]))?;
         Ok(Self(f))
     }
 
     fn open(&self) -> Result<Connection, String> {
         Connection::open_with_flags(self.0.path(), OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(|e| format!("データベースとして開けませんでした（対応していない形式の可能性があります）: {e}"))
+            .map_err(|e| trf(M::DbOpenUnsupported, &[("e", &e)]))
     }
 }
 

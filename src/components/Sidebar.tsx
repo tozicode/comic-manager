@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { WorkSummary } from "../api";
 import type { Screen } from "../App";
+import { t } from "../i18n/shell";
 
 const ICONS: Record<Screen, ReactElement> = {
   board: (
@@ -55,7 +56,7 @@ export function Sidebar({ works, work, screen, onScreen, onWork }: Props) {
       className={`nav-item${screen === key ? " on" : ""}`}
       disabled={disabled}
       onClick={() => onScreen(key)}
-      title={disabled ? "作品を選ぶと使えます" : undefined}
+      title={disabled ? t("needsWork") : undefined}
     >
       {ICONS[key]}
       {label}
@@ -65,16 +66,16 @@ export function Sidebar({ works, work, screen, onScreen, onWork }: Props) {
   return (
     <aside className="sidebar">
       <div className="logo">
-        Otosazu<small>原稿を落とさず描き上げる</small>
+        Otosazu<small>{t("tagline")}</small>
       </div>
       <label className="work-switch">
-        <span className="label">作品</span>
+        <span className="label">{t("work")}</span>
         <select
           value={work?.id ?? ""}
           onChange={(e) => onWork(Number(e.target.value))}
           disabled={works.length === 0}
         >
-          {!work && <option value="">（作品を選んでください）</option>}
+          {!work && <option value="">{t("chooseWork")}</option>}
           {works.map((w) => (
             <option key={w.id} value={w.id}>
               {w.title}
@@ -82,13 +83,13 @@ export function Sidebar({ works, work, screen, onScreen, onWork }: Props) {
           ))}
         </select>
       </label>
-      {item("board", "進捗ボード", !work)}
-      {item("schedule", "スケジュール", !work)}
-      {item("records", "作業記録", !work)}
+      {item("board", t("screen.board"), !work)}
+      {item("schedule", t("screen.schedule"), !work)}
+      {item("records", t("screen.records"), !work)}
       <div className="nav-spacer" />
-      {item("works", "作品一覧")}
-      {item("stats", "統計")}
-      {item("settings", "設定")}
+      {item("works", t("screen.works"))}
+      {item("stats", t("screen.stats"))}
+      {item("settings", t("screen.settings"))}
     </aside>
   );
 }

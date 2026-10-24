@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, Span } from "../api";
 import { useApp } from "../app-context";
-import { dailyTotals, dayKey, dayLabel, dayStartMs, hours, startOfDay } from "../format";
+import { dailyTotals, dayKey, dayLabel, dayStartMs, hours, monthLabel, startOfDay, weekdayName } from "../format";
+import { t } from "../i18n/records";
 
 const WEEKS = 26;
 const HOUR = 3_600_000;
@@ -44,7 +45,7 @@ export function Heatmap({ selected, onSelect }: { selected: string | null; onSel
     const d = days[w * 7];
     const prev = w > 0 ? days[(w - 1) * 7] : null;
     if ((!prev || prev.getMonth() !== d.getMonth()) && (months.length === 0 || w - months[months.length - 1].week >= 3)) {
-      months.push({ week: w, label: `${d.getMonth() + 1}月` });
+      months.push({ week: w, label: monthLabel(d.getMonth()) });
     }
   }
 
@@ -83,9 +84,9 @@ export function Heatmap({ selected, onSelect }: { selected: string | null; onSel
       <div style={{ position: "relative" }}>
         <div className="row" style={{ marginBottom: 8 }}>
           <div className="section-title" style={{ margin: 0 }}>
-            日ごとの作業時間（すべての作品）
+            {t("heat.title")}
           </div>
-          <span className="muted small-text">マスをクリックすると、その日の記録へ移動</span>
+          <span className="muted small-text">{t("heat.hint")}</span>
         </div>
         <div className="heat-wrap">
           <div className="heat-months">
@@ -96,13 +97,13 @@ export function Heatmap({ selected, onSelect }: { selected: string | null; onSel
             ))}
           </div>
           <div className="heat-days">
-            <span>月</span>
+            <span>{weekdayName(1)}</span>
             <span />
-            <span>水</span>
+            <span>{weekdayName(3)}</span>
             <span />
-            <span>金</span>
+            <span>{weekdayName(5)}</span>
             <span />
-            <span>日</span>
+            <span>{weekdayName(0)}</span>
           </div>
           <div className="heat">
             {days.map((d) => {
@@ -128,15 +129,15 @@ export function Heatmap({ selected, onSelect }: { selected: string | null; onSel
           </div>
         </div>
         <div className="heat-legend">
-          <span style={{ marginRight: 4 }}>少</span>
+          <span style={{ marginRight: 4 }}>{t("heat.less")}</span>
           <i className="l0" />
           <i className="l1" />
           <i className="l2" />
           <i className="l3" />
           <i className="l4" />
-          <span style={{ marginLeft: 4 }}>多</span>
+          <span style={{ marginLeft: 4 }}>{t("heat.more")}</span>
           <span style={{ marginLeft: 14 }}>
-            {hours(0)} ／ 〜{hours(HOUR)} ／ 〜{hours(2 * HOUR)} ／ 〜{hours(4 * HOUR)} ／ {hours(4 * HOUR)}〜
+            {t("heat.scale", { a: hours(0), b: hours(HOUR), c: hours(2 * HOUR), d: hours(4 * HOUR) })}
           </span>
         </div>
         {hover && (
@@ -156,24 +157,24 @@ export function Heatmap({ selected, onSelect }: { selected: string | null; onSel
       </div>
       <div className="heat-stats">
         <div>
-          <div className="lbl">今週</div>
+          <div className="lbl">{t("heat.thisWeek")}</div>
           <div className="v num">{hours(thisWeek)}</div>
-          <div className="d muted">先週の同じ曜日まで {hours(lastWeekSame)}</div>
+          <div className="d muted">{t("heat.lastWeekSame", { time: hours(lastWeekSame) })}</div>
         </div>
         <div>
-          <div className="lbl">先週</div>
+          <div className="lbl">{t("heat.lastWeek")}</div>
           <div className="v num">{hours(lastWeek)}</div>
-          <div className="d muted">1日平均 {hours(lastWeek / 7)}</div>
+          <div className="d muted">{t("heat.dailyAvg", { time: hours(lastWeek / 7) })}</div>
         </div>
         <div>
-          <div className="lbl">連続で作業した日</div>
-          <div className="v num">{streak} 日</div>
-          <div className="d muted">最長 {longest} 日</div>
+          <div className="lbl">{t("heat.streak")}</div>
+          <div className="v num">{t("heat.days", { n: streak })}</div>
+          <div className="d muted">{t("heat.longest", { n: longest })}</div>
         </div>
         <div>
-          <div className="lbl">半年の合計</div>
+          <div className="lbl">{t("heat.halfYear")}</div>
           <div className="v num">{hours(halfYear)}</div>
-          <div className="d muted">作業した日 {workedDays} 日</div>
+          <div className="d muted">{t("heat.workedDays", { n: workedDays })}</div>
         </div>
       </div>
     </div>

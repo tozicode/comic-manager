@@ -4,6 +4,8 @@
 use rusqlite::params;
 use serde::Serialize;
 
+use crate::i18n::{M, tr};
+
 use super::{Result, Store, db_err};
 
 /// システムタグの種類（tag_def.system）
@@ -160,9 +162,9 @@ impl Store {
                 [tag_id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
-            .map_err(|_| "タグが見つかりませんでした".to_string())?;
+            .map_err(|_| tr(M::TagNotFound).to_string())?;
         if system {
-            return Err("このタグは CLIP STUDIO の設定から自動で付きます".into());
+            return Err(tr(M::TagSetAutomatically).into());
         }
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         for page_id in page_ids {
@@ -240,7 +242,7 @@ impl Store {
             )
             .map_err(db_err)?;
         if system {
-            return Err("このグループにはタグを追加できません".into());
+            return Err(tr(M::TagGroupLocked).into());
         }
         self.conn
             .execute(
@@ -277,15 +279,15 @@ impl Store {
 
 fn valid(name: &str) -> Result<&str> {
     let name = name.trim();
-    if name.is_empty() { Err("名前を入力してください".into()) } else { Ok(name) }
+    if name.is_empty() { Err(tr(M::NameRequired).into()) } else { Ok(name) }
 }
 
 fn check_applies(applies: &str) -> Result<()> {
-    if APPLIES.contains(&applies) { Ok(()) } else { Err("使う作品の種類の指定が正しくありません".into()) }
+    if APPLIES.contains(&applies) { Ok(()) } else { Err(tr(M::AppliesInvalid).into()) }
 }
 
 fn check_factor(f: f64) -> Result<()> {
-    if (0.1..=10.0).contains(&f) { Ok(()) } else { Err("倍率は ×0.1 〜 ×10 の範囲にしてください".into()) }
+    if (0.1..=10.0).contains(&f) { Ok(()) } else { Err(tr(M::FactorRange).into()) }
 }
 
 #[cfg(test)]

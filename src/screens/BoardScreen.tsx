@@ -1,6 +1,6 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup, UNIT } from "../api";
+import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup } from "../api";
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { Dialog } from "../components/Dialog";
@@ -8,7 +8,9 @@ import { useRelink } from "../components/Relink";
 import { TagPopover } from "../components/TagPopover";
 import { Thumb } from "../components/Thumb";
 import { Forecast, loadChosenPlan, useForecast } from "../forecast";
+import { planName } from "../schedule";
 import { clock, dayLabel, estimate, hours, time } from "../format";
+import { t, tn } from "../i18n/board";
 
 /** 同期で見つかった見開きの変化（1 件ずつ確認する） */
 type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSplit };
@@ -16,7 +18,7 @@ type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSp
 type Filter = "all" | "open";
 
 /** イラストとして登録できるファイル */
-const ILLUST_FILTER = [{ name: "イラスト（.clip / .psd）", extensions: ["clip", "psd", "psb"] }];
+const illustFilter = () => [{ name: t("illustFilter"), extensions: ["clip", "psd", "psb"] }];
 
 const HOUR = 3_600_000;
 
@@ -68,14 +70,14 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       // 作品を開いた直後はまだ予測を読み込んでいないので、種類は作品の情報から確かめる
       const files = (forecastRef.current?.board ?? (await api.getBoard(workId))).work.kind === "files";
       const parts = [];
-      if (r.added > 0) parts.push(`${r.added} ページ増えました`);
+      if (r.added > 0) parts.push(t("syncAdded", { n: r.added }));
       if (r.missing > 0)
         parts.push(
           files
-            ? `${r.missing} 個のファイルが見つかりません。行の「場所を指定」から指定し直すと、記録をそのまま引き継げます`
-            : `${r.missing} ページが CLIP STUDIO から消えています`,
+            ? t("syncMissingFiles", { n: r.missing })
+            : t("syncMissingPages", { n: r.missing }),
         );
-      setSyncNote(parts.length ? parts.join("・") : manual ? "変更はありませんでした" : null);
+      setSyncNote(parts.length ? parts.join(t("sep")) : manual ? t("noChanges") : null);
       const found = [
         ...r.merges.map((m): SpreadChange => ({ kind: "merge", m })),
         ...r.splits.map((s): SpreadChange => ({ kind: "split", s })),
@@ -88,7 +90,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       setSyncFailed(false);
       app.refresh();
     } catch (e) {
-      setSyncNote(`${e}。前回読み込んだページ一覧を表示しています。`);
+      setSyncNote(t("syncError", { error: String(e) }));
       setSyncFailed(true);
     } finally {
       syncing.current = false;
@@ -104,9 +106,9 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     if (found.length > 0) setChanges((prev) => [...prev, ...found]);
     setSyncFailed(false);
     setSyncNote(
-      ["漫画ファイルの場所を指定し直しました", r.added > 0 && `${r.added} ページ増えました`, r.missing > 0 && `${r.missing} ページが見つかりません`]
+      [t("relinked"), r.added > 0 && t("syncAdded", { n: r.added }), r.missing > 0 && t("relinkMissing", { n: r.missing })]
         .filter(Boolean)
-        .join("・"),
+        .join(t("sep")),
     );
   });
 
@@ -119,21 +121,20 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     }
   };
 
-  if (!forecast) return <p className="muted">読み込み中…</p>;
+  if (!forecast) return <p className="muted">{t("loading")}</p>;
   const { board } = forecast;
   const startRelink = () => relink.start(workId, board.work.title);
   const isFiles = board.work.kind === "files";
-  const unit = UNIT[board.work.kind];
   // 付け外しの画面には、この作品の種類で使うタググループだけを出す
   const usableTags = tags.filter((g) => g.applies === "both" || g.applies === board.work.kind);
 
   const addFiles = async () => {
-    const picked = await openDialog({ title: "ファイルを追加", multiple: true, directory: false, filters: ILLUST_FILTER });
+    const picked = await openDialog({ title: t("addFilesTitle"), multiple: true, directory: false, filters: illustFilter() });
     const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
     if (paths.length === 0) return;
     try {
       const n = await api.addFiles(workId, paths);
-      setSyncNote(n > 0 ? `${n} 個のファイルを追加しました` : "選んだファイルはすでに登録されています");
+      setSyncNote(n > 0 ? t("filesAdded", { n }) : t("alreadyAdded"));
       app.refresh();
     } catch (e) {
       app.showError(e);
@@ -141,7 +142,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   };
 
   const relinkFile = async (page: BoardPage) => {
-    const picked = await openDialog({ title: `「${page.label}」のファイルを選ぶ`, multiple: false, directory: false, filters: ILLUST_FILTER });
+    const picked = await openDialog({ title: t("chooseFileFor", { label: page.label }), multiple: false, directory: false, filters: illustFilter() });
     if (typeof picked !== "string") return;
     await run(() => api.relinkFile(page.id, picked));
   };
@@ -192,21 +193,21 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     <>
       <div className="board-head">
         <div className="muted small-text">
-          {board.work.lastSyncedAt && <>最終同期 {time(board.work.lastSyncedAt)} · </>}
-          {isFiles ? `${pageCount} 枚のファイル` : `cmc から ${pageCount} ページ`}
+          {board.work.lastSyncedAt && t("lastSynced", { time: time(board.work.lastSyncedAt) })}
+          {isFiles ? t("fileCount", { n: pageCount }) : t("cmcPageCount", { n: pageCount })}
         </div>
         <div className="row tight">
           {isFiles ? (
             <button className="btn small ghost" onClick={addFiles}>
-              ＋ ファイルを追加
+              {t("addFiles")}
             </button>
           ) : (
-            <button className="btn small ghost" onClick={startRelink} title="cmc を移動したり名前を変えたりしたとき">
-              📁 場所を変更
+            <button className="btn small ghost" onClick={startRelink} title={t("changeLocationHint")}>
+              {t("changeLocation")}
             </button>
           )}
           <button className="btn small ghost" onClick={() => sync(true)}>
-            {isFiles ? "⟳ 読み直す" : "⟳ cmc を読み直す"}
+            {isFiles ? t("reload") : t("reloadCmc")}
           </button>
         </div>
       </div>
@@ -214,22 +215,22 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         <div className={`notice ${syncFailed ? "warn" : "info"}`}>
           <span className="grow">
             {syncNote}
-            {syncFailed && " 漫画ファイルを移動したり名前を変えたりした場合は、場所を指定し直すと記録をそのまま引き継げます。"}
+            {syncFailed && t("syncFailedHint")}
           </span>
           {syncFailed && (
             <button className="btn small primary" onClick={startRelink}>
-              場所を指定し直す
+              {t("relinkButton")}
             </button>
           )}
           <button className="btn small ghost" onClick={() => setSyncNote(null)}>
-            閉じる
+            {t("close")}
           </button>
         </div>
       )}
 
       <div className="summary three">
         <div className="card">
-          <div className="section-title">工程ごとの進み具合</div>
+          <div className="section-title">{t("stageProgress")}</div>
           {board.stages.map((s, i) => {
             const done = pages.reduce((n, p) => n + (p.cells[i].done ? p.span : 0), 0);
             return (
@@ -254,21 +255,21 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       <div className="toolbar">
         <span className="seg">
           <button className={filter === "all" ? "on" : ""} onClick={() => setFilter("all")}>
-            すべて
+            {t("filterAll")}
           </button>
           <button className={filter === "open" ? "on" : ""} onClick={() => setFilter("open")}>
-            未完了だけ
+            {t("filterOpen")}
           </button>
         </span>
         <div style={{ position: "relative" }}>
           <button className="btn small" disabled={selected.length === 0} onClick={() => setTagging("bulk")}>
             {selected.length > 0
-              ? `選んだ ${selected.length} ${unit.count}にタグを付ける`
-              : `${unit.row}を選ぶとまとめてタグを付けられます`}
+              ? t(isFiles ? "bulkTagFiles" : "bulkTagComic", { n: selected.length })
+              : t(isFiles ? "bulkHintFiles" : "bulkHintComic")}
           </button>
           {tagging === "bulk" && (
             <TagPopover
-              title={`${selected.length} ${unit.count}のタグ`}
+              title={t(isFiles ? "bulkTitleFiles" : "bulkTitleComic", { n: selected.length })}
               groups={usableTags}
               active={activeTags}
               onToggle={toggleTag}
@@ -279,19 +280,19 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         <div className="legend">
           <span>
             <i style={{ border: "1px dashed var(--faint)" }} />
-            未着手
+            {t("notStarted")}
           </span>
           <span>
             <i style={{ background: "var(--track)" }} />
-            作業中
+            {t("inProgress")}
           </span>
           <span>
             <i style={{ background: "var(--accent)" }} />
-            完了
+            {t("done")}
           </span>
           <span>
             <i style={{ border: "1px dashed var(--locked-border)" }} />
-            前の工程待ち
+            {t("waiting")}
           </span>
         </div>
       </div>
@@ -302,12 +303,12 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             <th style={{ width: 28 }}>
               <input
                 type="checkbox"
-                title="すべて選ぶ"
+                title={t("selectAll")}
                 checked={allChecked}
                 onChange={() => setSelected(allChecked ? [] : shown.map((p) => p.id))}
               />
             </th>
-            <th>{unit.row}</th>
+            <th>{t(isFiles ? "rowFiles" : "rowComic")}</th>
             {board.stages.map((s) => (
               <th key={s.id} style={{ width: board.stages.length >= 4 ? 140 : 180 }}>
                 <span className="sdot" style={{ background: s.color }} />
@@ -339,7 +340,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                     <span
                       className="handle"
                       draggable
-                      title="ドラッグで並べ替え"
+                      title={t("dragToReorder")}
                       onDragStart={(e) => {
                         e.dataTransfer.effectAllowed = "move";
                         dragging.current = page.id;
@@ -356,11 +357,11 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                     </span>
                     {!page.found &&
                       (isFiles ? (
-                        <button className="lost" title="このファイルが見つかりません" onClick={() => relinkFile(page)}>
-                          ⚠ 場所を指定
+                        <button className="lost" title={t("fileNotFound")} onClick={() => relinkFile(page)}>
+                          {t("setLocation")}
                         </button>
                       ) : (
-                        <span className="lost">⚠ 見つかりません</span>
+                        <span className="lost">{t("notFound")}</span>
                       ))}
                     <div className="tags">
                       {page.tags.map((id) => {
@@ -373,20 +374,20 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                           )
                         );
                       })}
-                      <button className="tag add" title="タグを付ける" onClick={() => setTagging(page.id)}>
+                      <button className="tag add" title={t("addTag")} onClick={() => setTagging(page.id)}>
                         ＋
                       </button>
                     </div>
                   </div>
                   {isFiles && (
-                    <button className="mini remove" title="このファイルを作品から外す" onClick={() => setRemoving(page)}>
+                    <button className="mini remove" title={t("removeFileHint")} onClick={() => setRemoving(page)}>
                       ×
                     </button>
                   )}
                 </div>
                 {tagging === page.id && (
                   <TagPopover
-                    title={`${page.label} のタグ`}
+                    title={t("pageTags", { label: page.label })}
                     groups={usableTags}
                     active={page.tags}
                     onToggle={toggleTag}
@@ -413,12 +414,12 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           ))}
         </tbody>
       </table>
-      {shown.length === 0 && <p className="muted center">表示するページがありません</p>}
+      {shown.length === 0 && <p className="muted center">{t("noPages")}</p>}
       <div style={{ height: 160 }} />
 
       {missing.length > 0 && (
         <>
-          <div className="section-title">CLIP STUDIO から消えたページ（作業記録は残しています）</div>
+          <div className="section-title">{t("missingTitle")}</div>
           <table className="board missing">
             <tbody>
               {missing.map((page) => (
@@ -440,7 +441,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                         value={moveTo[page.id] ?? ""}
                         onChange={(e) => setMoveTo({ ...moveTo, [page.id]: Number(e.target.value) })}
                       >
-                        <option value="">移す先のページ…</option>
+                        <option value="">{t("moveToPlaceholder")}</option>
                         {pages.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.label}
@@ -452,7 +453,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                         disabled={!moveTo[page.id]}
                         onClick={() => run(() => api.mergePages(page.id, moveTo[page.id]))}
                       >
-                        記録を移す
+                        {t("moveRecords")}
                       </button>
                     </div>
                   </td>
@@ -465,13 +466,13 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
 
       {changes[0]?.kind === "merge" && (
         <Dialog
-          label="cmc を読み直したら見開きになっていました"
-          title={`${changes[0].m.toLabel} が見開きになりました`}
+          label={t("mergeLabel")}
+          title={t("mergeTitle", { label: changes[0].m.toLabel })}
           onClose={() => setChanges(changes.slice(1))}
           actions={
             <>
               <button className="btn" onClick={() => setChanges(changes.slice(1))}>
-                あとで決める
+                {t("later")}
               </button>
               <button
                 className="btn primary"
@@ -482,22 +483,25 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                   run(() => api.mergePages(m.fromPageId, m.toPageId));
                 }}
               >
-                まとめる
+                {t("merge")}
               </button>
             </>
           }
         >
           <p>
-            消えたページ（{changes[0].m.fromFileName}）の作業記録 <b>{hours(changes[0].m.ms)}</b> とタグを、見開きページ（
-            {changes[0].m.toLabel}）にまとめますか？
+            {tn("mergeBody", {
+              file: changes[0].m.fromFileName,
+              time: <b>{hours(changes[0].m.ms)}</b>,
+              label: changes[0].m.toLabel,
+            })}
           </p>
-          <p className="muted small-text">「あとで決める」を選ぶと、ボードの下の「CLIP STUDIO から消えたページ」に残ります。</p>
+          <p className="muted small-text">{t("mergeNote")}</p>
         </Dialog>
       )}
       {changes[0]?.kind === "split" && (
         <Dialog
-          label="cmc を読み直したら見開きが解除されていました"
-          title={`見開きが ${changes[0].s.label} と ${changes[0].s.newLabel} に分かれました`}
+          label={t("splitLabel")}
+          title={t("splitTitle", { a: changes[0].s.label, b: changes[0].s.newLabel })}
           onClose={() => setChanges(changes.slice(1))}
           actions={
             <button
@@ -509,24 +513,24 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                 run(() => api.splitPage(s.pageId, s.newPageId, splitHalf));
               }}
             >
-              決定
+              {t("decide")}
             </button>
           }
         >
           <p>
-            見開きのときの作業記録 <b>{hours(changes[0].s.ms)}</b> をどう扱いますか？（完了とタグは両方のページに付けます）
+            {tn("splitBody", { time: <b>{hours(changes[0].s.ms)}</b> })}
           </p>
           <button className={`choice${splitHalf ? " on" : ""}`} onClick={() => setSplitHalf(true)}>
             <span className="radio" />
             <span>
-              <b>半分ずつ分ける</b>（{changes[0].s.label} に {hours(changes[0].s.ms / 2)}、{changes[0].s.newLabel} に{" "}
-              {hours(changes[0].s.ms / 2)}）
+              <b>{t("splitHalf")}</b>
+              {t("splitHalfDetail", { a: changes[0].s.label, b: changes[0].s.newLabel, half: hours(changes[0].s.ms / 2) })}
             </span>
           </button>
           <button className={`choice${splitHalf ? "" : " on"}`} onClick={() => setSplitHalf(false)}>
             <span className="radio" />
             <span>
-              <b>元のページ（{changes[0].s.label}）に残す</b>
+              <b>{t("splitKeep", { a: changes[0].s.label })}</b>
             </span>
           </button>
         </Dialog>
@@ -535,12 +539,12 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       {relink.dialog}
       {removing && (
         <Dialog
-          title={`「${removing.label}」を作品から外しますか？`}
+          title={t("removeTitle", { label: removing.label })}
           onClose={() => setRemoving(null)}
           actions={
             <>
               <button className="btn" onClick={() => setRemoving(null)}>
-                やめる
+                {t("cancel")}
               </button>
               <button
                 className="btn danger"
@@ -550,26 +554,26 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                   run(() => api.removeFile(page.id));
                 }}
               >
-                外す
+                {t("remove")}
               </button>
             </>
           }
         >
           <p>
-            このファイルの作業記録（{hours(removing.cells.reduce((n, c) => n + c.totalMs, 0))}）も Otosazu から消えます。
+            {t("removeBody", { time: hours(removing.cells.reduce((n, c) => n + c.totalMs, 0)) })}
             <br />
-            ファイルそのものは消えません。
+            {t("removeBodyNote")}
           </p>
         </Dialog>
       )}
       {undo && (
         <Dialog
-          title={`${undo.page.label} の${undo.stage.name}を未完了に戻しますか？`}
+          title={t("undoTitle", { page: undo.page.label, stage: undo.stage.name })}
           onClose={() => setUndo(null)}
           actions={
             <>
               <button className="btn" onClick={() => setUndo(null)}>
-                やめる
+                {t("cancel")}
               </button>
               <button
                 className="btn primary"
@@ -578,7 +582,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                   setUndo(null);
                 }}
               >
-                未完了に戻す
+                {t("undoDone")}
               </button>
             </>
           }
@@ -593,31 +597,34 @@ function FinishCard({ forecast }: { forecast: Forecast }) {
   if (prediction.remainingMs === 0) {
     return (
       <div className="card">
-        <div className="section-title">完成見込み</div>
-        <div className="big">完成しました 🎉</div>
+        <div className="section-title">{t("finishTitle")}</div>
+        <div className="big">{t("finished")}</div>
       </div>
     );
   }
   const week = schedule.weekdayHours;
-  const weekday = week.slice(0, 5).every((h) => h === week[0]) ? `平日${hours(week[0] * HOUR)}` : "平日";
-  const weekend = week[5] === week[6] ? `土日${hours(week[5] * HOUR)}` : "土日";
+  const weekday = week.slice(0, 5).every((h) => h === week[0]) ? t("weekdayHours", { h: hours(week[0] * HOUR) }) : t("weekdays");
+  const weekend =
+    week[5] === week[6]
+      ? t("weekendHours", { h: hours(week[5] * HOUR) })
+      : t("satSun", { sat: hours(week[5] * HOUR), sun: hours(week[6] * HOUR) });
   return (
     <div className="card">
-      <div className="section-title">完成見込み</div>
+      <div className="section-title">{t("finishTitle")}</div>
       {finish.mid ? (
         <>
           <div className="big">{dayLabel(finish.mid)}</div>
           <div className="range">
-            早ければ {finish.low ? dayLabel(finish.low) : "—"} ・ 遅ければ {finish.high ? dayLabel(finish.high) : "—"}
+            {t("finishRange", { low: finish.low ? dayLabel(finish.low) : "—", high: finish.high ? dayLabel(finish.high) : "—" })}
           </div>
           <div className="range">
-            残り約 {estimate(prediction.remainingMs)}（{weekday}・{weekend}で計算）
+            {t("remaining", { time: estimate(prediction.remainingMs), weekday, weekend })}
           </div>
         </>
       ) : (
         <>
           <div className="big">—</div>
-          <div className="range">作業する時間が設定されていません（スケジュールで設定できます）</div>
+          <div className="range">{t("noWorkHours")}</div>
         </>
       )}
     </div>
@@ -625,22 +632,22 @@ function FinishCard({ forecast }: { forecast: Forecast }) {
 }
 
 const STATUS = {
-  ok: { label: "余裕あり", cls: "ok" },
-  tight: { label: "ギリギリ", cls: "warn" },
-  late: { label: "遅れぎみ", cls: "late" },
-};
+  ok: { label: "status.ok", cls: "ok" },
+  tight: { label: "status.tight", cls: "warn" },
+  late: { label: "status.late", cls: "late" },
+} as const;
 
 function DeadlineCard({ forecast, onSet }: { forecast: Forecast; onSet: () => void }) {
   const d = forecast.deadline;
   if (!d) {
     return (
       <div className="card">
-        <div className="section-title">締切</div>
+        <div className="section-title">{t("deadline")}</div>
         <p className="range" style={{ margin: "0 0 10px" }}>
-          締切を決めると、今日やる量と進め方の案を出します
+          {t("deadlineHint")}
         </p>
         <button className="btn small" onClick={onSet}>
-          締切を決める
+          {t("setDeadline")}
         </button>
       </div>
     );
@@ -648,10 +655,10 @@ function DeadlineCard({ forecast, onSet }: { forecast: Forecast; onSet: () => vo
   const s = STATUS[d.status];
   return (
     <div className="card">
-      <div className="section-title">締切 {dayLabel(d.date)}</div>
-      <div className="big">{d.plan.days > 0 ? `あと ${d.plan.days} 日` : "締切を過ぎています"}</div>
+      <div className="section-title">{t("deadlineOn", { date: dayLabel(d.date) })}</div>
+      <div className="big">{d.plan.days > 0 ? t("daysLeft", { n: d.plan.days }) : t("overdue")}</div>
       <div className="range">
-        <span className={`tag status ${s.cls}`}>{s.label}</span> 間に合う見込み {Math.round(d.probability * 100)}%
+        <span className={`tag status ${s.cls}`}>{t(s.label)}</span> {t("onTimeChance", { p: Math.round(d.probability * 100) })}
       </div>
     </div>
   );
@@ -665,11 +672,13 @@ function TodayStrip({ forecast, onChoose }: { forecast: Forecast; onChoose: () =
     return (
       <div className="today-strip empty">
         <span className="grow muted">
-          今日のノルマは <b className="num">{estimate(forecast.quotaMs)}</b>
-          {forecast.deadline ? "（締切から逆算）" : "（今日の作業時間）"}。進め方の案から、今日やることを選べます
+          {tn("quotaIntro", {
+            time: <b className="num">{estimate(forecast.quotaMs)}</b>,
+            basis: forecast.deadline ? t("quotaFromDeadline") : t("quotaFromHours"),
+          })}
         </span>
         <button className="btn small primary" onClick={onChoose}>
-          今日の進め方を選ぶ
+          {t("choosePlan")}
         </button>
       </div>
     );
@@ -680,8 +689,8 @@ function TodayStrip({ forecast, onChoose }: { forecast: Forecast; onChoose: () =
   return (
     <div className="today-strip">
       <div>
-        <div className="small-text muted">今日のやること</div>
-        <b>{plan.name}</b>
+        <div className="small-text muted">{t("todayTodo")}</div>
+        <b>{planName(plan, board.stages)}</b>
       </div>
       <div className="gauge">
         <div className="row small-text" style={{ justifyContent: "space-between" }}>
@@ -707,21 +716,21 @@ function TodayStrip({ forecast, onChoose }: { forecast: Forecast; onChoose: () =
               key={`${step.pageId}-${step.stageId}`}
               className={`task-chip${done ? " done" : ""}${running ? " now" : ""}`}
               disabled={done || running}
-              title={done ? "完了しています" : "クリックで計測を始める"}
+              title={done ? t("chipDone") : t("clickToStart")}
               onClick={() => app.start(page.id, stage.id)}
             >
               <span className="sdot" style={{ background: stage.color }}>
                 {stage.name.slice(0, 1)}
               </span>
               {page.label} {stage.name}
-              {running ? " · 計測中" : done ? "" : ` ${estimate(step.ms)}${step.partial ? "（途中まで）" : ""}`}
+              {running ? t("chipTracking") : done ? "" : ` ${estimate(step.ms)}${step.partial ? t("partial") : ""}`}
             </button>
           );
         })}
       </div>
       <span className="grow" />
       <button className="btn small" onClick={onChoose}>
-        案を選び直す
+        {t("rechoose")}
       </button>
     </div>
   );
@@ -740,16 +749,16 @@ type CellProps = {
 };
 
 function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onPause, onDone, onUndo }: CellProps) {
-  if (state === "locked") return <div className="cell locked">前の工程待ち</div>;
+  if (state === "locked") return <div className="cell locked">{t("waiting")}</div>;
   if (state === "done") {
     return (
       <div className="cell done" style={{ background: stage.color }}>
         <div className="line">
-          <span>✓ 完了</span>
+          <span>{t("cellDone")}</span>
           <span className="num">{hours(totalMs)}</span>
         </div>
         <div className="cell-actions">
-          <button className="mini light" title="未完了に戻す" onClick={onUndo}>
+          <button className="mini light" title={t("undoDone")} onClick={onUndo}>
             ↺
           </button>
         </div>
@@ -764,19 +773,19 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
           <span className="num">
             <b>{clock(runningMs)}</b>
           </span>
-          <span>計測中</span>
+          <span>{t("tracking")}</span>
         </div>
         <div className="line muted">
-          <span className="num">合計 {hours(totalMs)}</span>
+          <span className="num">{t("total", { time: hours(totalMs) })}</span>
         </div>
         <div className="line muted">
-          <span className="num">予測 {estimate(predictedMs)}</span>
+          <span className="num">{t("predicted", { time: estimate(predictedMs) })}</span>
         </div>
         <div className="bar">
           <span style={{ width: `${pct}%`, background: stage.color }} />
         </div>
         <div className="cell-actions show">
-          <button className="mini dark" title="一時停止" onClick={onPause}>
+          <button className="mini dark" title={t("pause")} onClick={onPause}>
             ❚❚
           </button>
         </div>
@@ -784,17 +793,17 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
     );
   }
   return (
-    <div className={`cell ${state}`} onClick={onStart} title="クリックで計測を始める">
+    <div className={`cell ${state}`} onClick={onStart} title={t("clickToStart")}>
       {state === "doing" ? (
         <>
           <div className="line">
-            <span>途中</span>
+            <span>{t("cellPartial")}</span>
             <span className="num">
               <b>{hours(totalMs)}</b>
             </span>
           </div>
           <div className="line muted">
-            <span className="num">予測 {estimate(predictedMs)}</span>
+            <span className="num">{t("predicted", { time: estimate(predictedMs) })}</span>
           </div>
           <div className="bar">
             <span style={{ width: `${pct}%`, background: stage.color }} />
@@ -803,17 +812,17 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
       ) : (
         <>
           <div className="line">
-            <span>未着手</span>
+            <span>{t("notStarted")}</span>
           </div>
           <div className="line">
-            <span className="num">予測 {estimate(predictedMs)}</span>
+            <span className="num">{t("predicted", { time: estimate(predictedMs) })}</span>
           </div>
         </>
       )}
       <div className="cell-actions">
         <button
           className="mini"
-          title="完了にする"
+          title={t("markDone")}
           onClick={(e) => {
             e.stopPropagation();
             onDone();
@@ -821,7 +830,7 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
         >
           ✓
         </button>
-        <button className="mini accent" title="計測を始める">
+        <button className="mini accent" title={t("startTracking")}>
           ▶
         </button>
       </div>

@@ -3,6 +3,8 @@
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::{M, tr};
+
 use super::{Result, Store, db_err};
 
 const KEY: &str = "timer_prefs";
@@ -17,11 +19,13 @@ pub struct DisplayPrefs {
     pub time_format: String,
     /// 色："system"（OS に合わせる）/ "light" / "dark"
     pub theme: String,
+    /// 言語："system"（OS に合わせる）/ "ja" / "en" / "ko" / "zh-Hans" / "zh-Hant"
+    pub language: String,
 }
 
 impl Default for DisplayPrefs {
     fn default() -> Self {
-        Self { time_format: "hm".into(), theme: "system".into() }
+        Self { time_format: "hm".into(), theme: "system".into(), language: "system".into() }
     }
 }
 
@@ -54,7 +58,7 @@ impl Store {
 
     pub fn set_timer_prefs(&self, prefs: &TimerPrefs) -> Result<()> {
         if !(0..=240).contains(&prefs.idle_minutes) {
-            return Err("確認するまでの時間は 0〜240 分にしてください".into());
+            return Err(tr(M::IdleMinutesRange).into());
         }
         self.conn
             .execute(
@@ -79,10 +83,13 @@ impl Store {
 
     pub fn set_display_prefs(&self, prefs: &DisplayPrefs) -> Result<()> {
         if !["hm", "clock", "decimal"].contains(&prefs.time_format.as_str()) {
-            return Err("時間の表記の指定が正しくありません".into());
+            return Err(tr(M::TimeFormatInvalid).into());
         }
         if !["system", "light", "dark"].contains(&prefs.theme.as_str()) {
-            return Err("色の指定が正しくありません".into());
+            return Err(tr(M::ThemeInvalid).into());
+        }
+        if !["system", "ja", "en", "ko", "zh-Hans", "zh-Hant"].contains(&prefs.language.as_str()) {
+            return Err(tr(M::LanguageInvalid).into());
         }
         self.conn
             .execute(
@@ -150,10 +157,16 @@ mod tests {
             .conn
             .execute("INSERT INTO setting (key, value) VALUES (?1, ?2)", params![DISPLAY_KEY, r#"{"timeFormat":"clock"}"#])
             .unwrap();
-        assert_eq!(store.display_prefs().unwrap(), DisplayPrefs { time_format: "clock".into(), theme: "system".into() });
-        store.set_display_prefs(&DisplayPrefs { time_format: "hm".into(), theme: "dark".into() }).unwrap();
+        assert_eq!(
+            store.display_prefs().unwrap(),
+            DisplayPrefs { time_format: "clock".into(), theme: "system".into(), language: "system".into() }
+        );
+        store.set_display_prefs(&DisplayPrefs { theme: "dark".into(), ..Default::default() }).unwrap();
         assert_eq!(store.display_prefs().unwrap().theme, "dark");
-        assert!(store.set_display_prefs(&DisplayPrefs { time_format: "hm".into(), theme: "x".into() }).is_err());
+        assert!(store.set_display_prefs(&DisplayPrefs { theme: "x".into(), ..Default::default() }).is_err());
+        store.set_display_prefs(&DisplayPrefs { language: "zh-Hant".into(), ..Default::default() }).unwrap();
+        assert_eq!(store.display_prefs().unwrap().language, "zh-Hant");
+        assert!(store.set_display_prefs(&DisplayPrefs { language: "fr".into(), ..Default::default() }).is_err());
     }
 
     #[test]

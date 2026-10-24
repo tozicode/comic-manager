@@ -4,6 +4,8 @@
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 
+use crate::i18n::{M, tr};
+
 use super::{Result, Store, db_err};
 
 /// 月〜日の作業時間（時間）
@@ -72,7 +74,7 @@ impl Store {
             )
             .optional()
             .map_err(db_err)?
-            .ok_or_else(|| "作品が見つかりませんでした".to_string())?;
+            .ok_or_else(|| tr(M::WorkNotFound).to_string())?;
         let default = self.default_hours()?;
         let custom = hours.as_deref().and_then(from_json);
         Ok(WorkSchedule {
@@ -111,7 +113,7 @@ impl Store {
 
     pub fn set_work_order(&self, work_id: i64, order: &str) -> Result<()> {
         if order != "stage" && order != "page" {
-            return Err("作業順の指定が正しくありません".into());
+            return Err(tr(M::WorkOrderInvalid).into());
         }
         self.conn
             .execute("UPDATE work SET work_order = ?2 WHERE id = ?1", params![work_id, order])
@@ -130,7 +132,7 @@ impl Store {
 
     pub fn set_day_start_hour(&self, hour: i64) -> Result<()> {
         if !(0..=12).contains(&hour) {
-            return Err("1 日の区切りは 0〜12 時にしてください".into());
+            return Err(tr(M::DayStartRange).into());
         }
         self.conn
             .execute(
@@ -171,7 +173,7 @@ fn check_hours(h: &WeekHours) -> Result<()> {
     if h.iter().all(|v| (0.0..=24.0).contains(v)) {
         Ok(())
     } else {
-        Err("作業時間は 0〜24 時間の範囲にしてください".into())
+        Err(tr(M::HoursRange).into())
     }
 }
 
@@ -179,7 +181,7 @@ fn check_hours(h: &WeekHours) -> Result<()> {
 fn check_date(d: &str) -> Result<()> {
     let ok = d.len() == 10
         && d.chars().enumerate().all(|(i, c)| if i == 4 || i == 7 { c == '-' } else { c.is_ascii_digit() });
-    if ok { Ok(()) } else { Err("日付の形式が正しくありません".into()) }
+    if ok { Ok(()) } else { Err(tr(M::DateFormatInvalid).into()) }
 }
 
 #[cfg(test)]

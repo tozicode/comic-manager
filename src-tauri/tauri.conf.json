@@ -45,7 +45,11 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": [
-          "Japanese"
+          "Japanese",
+          "English",
+          "Korean",
+          "SimpChinese",
+          "TradChinese"
         ],
         "displayLanguageSelector": false
       }

@@ -7,6 +7,8 @@
 use rusqlite::params;
 use serde::Serialize;
 
+use crate::i18n::{M, tr};
+
 use super::{Result, Store, db_err, page_label};
 
 /// 同期の前後で見比べるためのページの状態
@@ -144,7 +146,7 @@ impl Store {
     /// 完了は「両方とも完了していた工程」だけ残す（見開きの片方しか終わっていなければ未完了）
     pub fn merge_pages(&self, from: i64, to: i64) -> Result<()> {
         if from == to {
-            return Err("同じページにはまとめられません".into());
+            return Err(tr(M::MergeSamePage).into());
         }
         let same_work: bool = self
             .conn
@@ -155,7 +157,7 @@ impl Store {
             )
             .map_err(db_err)?;
         if !same_work {
-            return Err("別の作品のページにはまとめられません".into());
+            return Err(tr(M::MergeOtherWork).into());
         }
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         tx.execute("UPDATE work_session SET page_id = ?2 WHERE page_id = ?1", params![from, to])

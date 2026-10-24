@@ -3,6 +3,7 @@ import { check, Update } from "@tauri-apps/plugin-updater";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useApp } from "../app-context";
+import { t } from "../i18n/update";
 import { Dialog } from "./Dialog";
 
 /**
@@ -51,30 +52,30 @@ export function UpdateNotice() {
       await relaunch();
     } catch (e) {
       setProgress(null);
-      app.showError(`更新できませんでした：${e}`);
+      app.showError(t("failed", { error: String(e) }));
     }
   };
 
   const busy = progress !== null;
   return (
     <Dialog
-      label="新しい版"
-      title={`Otosazu ${update.version} が出ています（今は ${update.currentVersion}）`}
+      label={t("label")}
+      title={t("title", { version: update.version, current: update.currentVersion })}
       onClose={() => !busy && setUpdate(null)}
       actions={
         <>
           <button className="btn" disabled={busy} onClick={() => setUpdate(null)}>
-            あとで
+            {t("later")}
           </button>
           <button className="btn primary" disabled={busy} autoFocus onClick={install}>
-            {busy ? `ダウンロード中… ${progress}%` : "更新する"}
+            {busy ? t("downloading", { pct: progress }) : t("install")}
           </button>
         </>
       }
     >
       {update.body && <div className="update-notes">{update.body}</div>}
       <p className="muted small-text">
-        更新すると Otosazu が一度閉じて、新しい版で開き直します。作業記録はそのまま引き継がれます。計測中のタイマーも止まりません。
+        {t("note")}
       </p>
     </Dialog>
   );

@@ -1,6 +1,7 @@
 // Rust 側（src-tauri/src/lib.rs）のコマンドを呼ぶ薄いラッパー。
 // 型は src-tauri/src/store.rs の構造体に対応する。時刻はすべて UNIX 時間のミリ秒。
 import { invoke } from "@tauri-apps/api/core";
+import type { Lang, LangPref } from "./i18n";
 import type { ThemePref } from "./theme";
 
 /** 作品の種類：漫画（cmc）とイラスト（.clip / .psd を束ねたもの） */
@@ -33,7 +34,7 @@ export type WorkSummary = {
   fileMissing: boolean;
 };
 
-export type DisplayPrefs = { timeFormat: "hm" | "clock" | "decimal"; theme: ThemePref };
+export type DisplayPrefs = { timeFormat: "hm" | "clock" | "decimal"; theme: ThemePref; language: LangPref };
 
 export type RelinkCheck = { title: string; newPages: number; oldPages: number; matched: number };
 
@@ -236,14 +237,10 @@ export const api = {
   checkRelink: (workId: number, cmcPath: string) => invoke<RelinkCheck>("check_relink", { workId, cmcPath }),
   relinkWork: (workId: number, cmcPath: string) => invoke<SyncResult>("relink_work", { workId, cmcPath }),
   getDisplayPrefs: () => invoke<DisplayPrefs>("get_display_prefs"),
+  /** OS の言語（ja / en / ko / zh-Hans / zh-Hant のどれか） */
+  getSystemLanguage: () => invoke<Lang>("get_system_language"),
   /** 起動時に新しい版を確認するか */
   getCheckUpdates: () => invoke<boolean>("get_check_updates"),
   setCheckUpdates: (on: boolean) => invoke<void>("set_check_updates", { on }),
   setDisplayPrefs: (prefs: DisplayPrefs) => invoke<void>("set_display_prefs", { prefs }),
-};
-
-/** 作品の種類ごとの言葉 */
-export const UNIT: Record<WorkKind, { row: string; count: string }> = {
-  comic: { row: "ページ", count: "ページ" },
-  files: { row: "ファイル", count: "枚" },
 };

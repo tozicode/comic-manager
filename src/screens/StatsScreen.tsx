@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, ModelStats, Span, StageDef, StageSet, TagApplies, TagGroup } from "../api";
 import { useApp } from "../app-context";
-import { dayLabel, estimate, factor, hours } from "../format";
+import { dayLabel, estimate, factor, hours, weekdayName } from "../format";
+import { setName } from "../i18n/common";
+import { t } from "../i18n/stats";
 import { factorDiffers, STATS_WEEKS, weekdayAverages } from "../stats";
 
 const HOUR = 3_600_000;
-const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
-const APPLIES: Record<TagApplies, string> = { comic: "漫画", files: "イラスト", both: "漫画・イラスト" };
+// 月曜始まりの曜日（weekdayName の番号。0 = 日曜）
+const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
+// タググループの対象（名前は描画時に訳す）
+const APPLIES = { comic: "applies.comic", files: "applies.files", both: "applies.both" } as const satisfies Record<TagApplies, string>;
 
 /** 統計画面（仕様書 5.12）。全作品の実績から、予測の前提を見せる */
 export function StatsScreen() {
@@ -45,18 +49,18 @@ function TagFactors({ stats, groups }: { stats: ModelStats | null; groups: TagGr
 
   return (
     <div className="card">
-      <div className="section-title">タグの倍率</div>
+      <div className="section-title">{t("tags.title")}</div>
       <p className="muted small-text">
-        予測には、初期倍率と実績を混ぜた倍率を使います。実績が増えるほど「実績から見た倍率」に近づきます。
+        {t("tags.lead")}
       </p>
       <table className="rec stats-table">
         <thead>
           <tr>
-            <th>タグ</th>
-            <th className="right">初期倍率</th>
-            <th className="right">予測に使う倍率</th>
-            <th className="right">実績から見た倍率</th>
-            <th className="right">実績の数</th>
+            <th>{t("col.tag")}</th>
+            <th className="right">{t("col.initial")}</th>
+            <th className="right">{t("col.used")}</th>
+            <th className="right">{t("col.observed")}</th>
+            <th className="right">{t("col.samples")}</th>
           </tr>
         </thead>
         {visible.map((g) => (
@@ -64,23 +68,23 @@ function TagFactors({ stats, groups }: { stats: ModelStats | null; groups: TagGr
             <tr className="group-row">
               <td colSpan={5}>
                 {g.name}
-                <span className="muted small-text">　{APPLIES[g.applies]}</span>
+                <span className="muted small-text">　{t(APPLIES[g.applies])}</span>
               </td>
             </tr>
-            {g.tags.map((t) => {
-              const fit = fits.get(t.id);
-              const differs = fit ? factorDiffers(t.initialFactor, fit.observed, fit.samples) : false;
+            {g.tags.map((tag) => {
+              const fit = fits.get(tag.id);
+              const differs = fit ? factorDiffers(tag.initialFactor, fit.observed, fit.samples) : false;
               flagged ||= differs;
               return (
-                <tr key={t.id}>
-                  <td>{t.name}</td>
-                  <td className="num right">×{factor(t.initialFactor)}</td>
-                  <td className="num right">×{fit ? fit.factor.toFixed(2) : factor(t.initialFactor)}</td>
+                <tr key={tag.id}>
+                  <td>{tag.name}</td>
+                  <td className="num right">×{factor(tag.initialFactor)}</td>
+                  <td className="num right">×{fit ? fit.factor.toFixed(2) : factor(tag.initialFactor)}</td>
                   <td className={`num right${differs ? " differs" : ""}`}>
                     {fit ? `×${fit.observed.toFixed(2)}` : "—"}
                     {differs && " ⚠"}
                   </td>
-                  <td className="num right">{fit ? `${fit.samples} 件` : <span className="muted">0 件</span>}</td>
+                  <td className="num right">{fit ? t("count", { n: fit.samples }) : <span className="muted">{t("count", { n: 0 })}</span>}</td>
                 </tr>
               );
             })}
@@ -89,10 +93,10 @@ function TagFactors({ stats, groups }: { stats: ModelStats | null; groups: TagGr
       </table>
       {flagged && (
         <p className="small-text differs-note">
-          ⚠ 実績から見た倍率が初期倍率と大きく違うタグがあります。設定 → タグ で初期倍率を見直せます。
+          {t("tags.differs")}
         </p>
       )}
-      <p className="muted small-text">実績の数は、そのタグが付いた完了したタスク（ページ × 工程）の数です。</p>
+      <p className="muted small-text">{t("tags.note")}</p>
     </div>
   );
 }
@@ -106,24 +110,24 @@ function WeekdayHours({ spans, calendar }: { spans: Span[]; calendar: [number[],
 
   return (
     <div className="card">
-      <div className="section-title">曜日ごとの作業時間</div>
+      <div className="section-title">{t("wd.title")}</div>
       {!result.from ? (
-        <p className="muted">まだ作業記録がありません。</p>
+        <p className="muted">{t("wd.empty")}</p>
       ) : (
         <>
           <div className="wd-legend small-text">
             <span>
               <i className="actual" />
-              実際（平均）
+              {t("wd.actual")}
             </span>
             <span>
               <i className="planned" />
-              設定
+              {t("wd.planned")}
             </span>
           </div>
           {WEEKDAYS.map((d, i) => (
             <div key={d} className="wd-stat">
-              <b>{d}</b>
+              <b>{weekdayName(d)}</b>
               <div className="wd-bars">
                 <div className="bar">
                   <span className="actual" style={{ width: `${(result.averages[i].avgMs / max) * 100}%` }} />
@@ -139,8 +143,7 @@ function WeekdayHours({ spans, calendar }: { spans: Span[]; calendar: [number[],
             </div>
           ))}
           <p className="muted small-text">
-            {dayLabel(result.from)}〜{dayLabel(result.to)}（直近 {STATS_WEEKS} 週間・休みの日を除く）の、全作品を合わせた 1
-            日あたりの平均です。設定は 設定 → 作業時間・休み で変えられます。
+            {t("wd.note", { from: dayLabel(result.from), to: dayLabel(result.to), weeks: STATS_WEEKS })}
           </p>
         </>
       )}
@@ -152,15 +155,15 @@ function StageBases({ stats, sets, stages }: { stats: ModelStats | null; sets: S
   const bases = new Map(stats?.stages.map((s) => [s.stageId, s]));
   return (
     <div className="card">
-      <div className="section-title">工程ごとの基準時間</div>
+      <div className="section-title">{t("base.title")}</div>
       {sets.map((set) => {
         const list = stages.filter((s) => s.setId === set.id && !s.hidden).sort((a, b) => a.sortOrder - b.sortOrder);
         if (list.length === 0) return null;
         return (
           <div key={set.id} className="stats-set">
             <h3>
-              {set.name}
-              <span className="muted small-text">　1{set.unit}あたり・タグの影響を除いた時間</span>
+              {setName(set.kind)}
+              <span className="muted small-text">　{t(set.kind === "files" ? "base.perFiles" : "base.perComic")}</span>
             </h3>
             <table className="rec stats-table">
               <tbody>
@@ -176,9 +179,9 @@ function StageBases({ stats, sets, stages }: { stats: ModelStats | null; sets: S
                       </td>
                       <td className="num right">{b ? estimate(b.baseMs) : "—"}</td>
                       <td className="muted small-text">
-                        {!b || b.fromHint ? "目安を使用中" : `実績 ${b.samples} 件`}
+                        {!b || b.fromHint ? t("base.fromHint") : t("base.samples", { n: b.samples })}
                       </td>
-                      <td className="muted small-text right">目安 {estimate(s.hintMinutes * 60_000)}</td>
+                      <td className="muted small-text right">{t("base.hint", { time: estimate(s.hintMinutes * 60_000) })}</td>
                     </tr>
                   );
                 })}

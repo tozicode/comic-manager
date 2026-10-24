@@ -1,5 +1,6 @@
 import { useApp } from "../app-context";
 import { clock } from "../format";
+import { t } from "../i18n/timer";
 
 const PauseIcon = () => (
   <svg viewBox="0 0 10 10">
@@ -30,10 +31,10 @@ export function TimerChip({ onOpenWork }: { onOpenWork: (workId: number) => void
           {active.pageLabel} · {active.stageName}
         </button>
         <span className="time num">{clock(now - active.startedAt)}</span>
-        <button className="icon-btn" title="一時停止" onClick={pause}>
+        <button className="icon-btn" title={t("pause")} onClick={pause}>
           <PauseIcon />
         </button>
-        <button className="icon-btn" title="止める" onClick={stop}>
+        <button className="icon-btn" title={t("stop")} onClick={stop}>
           <StopIcon />
         </button>
       </div>
@@ -43,16 +44,16 @@ export function TimerChip({ onOpenWork }: { onOpenWork: (workId: number) => void
     return (
       <div className="timer-chip paused">
         <span className="what">
-          一時停止中 · {paused.pageLabel} {paused.stageName}
+          {t("chipPaused", { page: paused.pageLabel, stage: paused.stageName })}
         </span>
-        <button className="icon-btn" title="再開" onClick={resume}>
+        <button className="icon-btn" title={t("resume")} onClick={resume}>
           <PlayIcon />
         </button>
-        <button className="icon-btn" title="計測をやめる" onClick={stop}>
+        <button className="icon-btn" title={t("stopTracking")} onClick={stop}>
           <StopIcon />
         </button>
       </div>
     );
   }
-  return <div className="timer-idle">⏱ 計測していません</div>;
+  return <div className="timer-idle">{t("chipIdle")}</div>;
 }

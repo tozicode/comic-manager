@@ -1,5 +1,6 @@
 mod cmc;
 mod desktop;
+mod i18n;
 mod store;
 
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ use base64::Engine;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
+use i18n::{M, tr, trf};
 use store::{Store, now_ms};
 
 /// サムネイルの最大幅（px）
@@ -27,7 +29,7 @@ struct AppState {
 type Cmd<T> = Result<T, String>;
 
 fn with_store<T>(state: &State<AppState>, f: impl FnOnce(&Store) -> store::Result<T>) -> Cmd<T> {
-    let store = state.store.lock().map_err(|_| "データベースが使えない状態です".to_string())?;
+    let store = state.store.lock().map_err(|_| tr(M::DbBusy).to_string())?;
     f(&store)
 }
 
@@ -110,7 +112,7 @@ fn sync_work(state: State<AppState>, work_id: i64) -> Cmd<store::SyncResult> {
         return with_store(&state, |s| s.refresh_files(work_id, |p| Path::new(p).exists(), now_ms()));
     };
     if !Path::new(&path).exists() {
-        return Err(format!("漫画ファイルが見つかりません（前の場所：{path}）"));
+        return Err(trf(M::CmcMissing, &[("path", &path)]));
     }
     let comic = cmc::read_comic(Path::new(&path))?;
     with_store(&state, |s| {
@@ -140,7 +142,7 @@ async fn load_thumbnail(state: State<'_, AppState>, path: String) -> Cmd<String>
     let path = PathBuf::from(path);
     let modified = std::fs::metadata(&path)
         .and_then(|m| m.modified())
-        .map_err(|e| format!("ページファイルが見つかりませんでした: {e}"))?;
+        .map_err(|e| trf(M::PageFileNotFound, &[("e", &e)]))?;
     if let Some((time, url)) = state.thumbnails.lock().unwrap().get(&path)
         && *time == modified
     {
@@ -413,7 +415,15 @@ fn set_check_updates(state: State<AppState>, on: bool) -> Cmd<()> {
 
 #[tauri::command]
 fn set_display_prefs(state: State<AppState>, prefs: store::DisplayPrefs) -> Cmd<()> {
-    with_store(&state, |s| s.set_display_prefs(&prefs))
+    with_store(&state, |s| s.set_display_prefs(&prefs))?;
+    i18n::set(i18n::Lang::from_pref(&prefs.language));
+    Ok(())
+}
+
+/// OS の言語（設定が「自動」のときに使う）
+#[tauri::command]
+fn get_system_language() -> String {
+    i18n::Lang::system().code().into()
 }
 
 /// Windows では同期コマンドの中で窓を作るとデッドロックするため、窓の操作は async にする
@@ -466,7 +476,7 @@ fn backup_data(state: State<AppState>, dest: String) -> Cmd<()> {
 fn reveal_data(app: AppHandle, state: State<AppState>) -> Cmd<()> {
     app.opener()
         .reveal_item_in_dir(&state.db_path)
-        .map_err(|e| format!("保存場所を開けませんでした: {e}"))
+        .map_err(|e| trf(M::OpenDataDirFailed, &[("e", &e)]))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -483,7 +493,12 @@ pub fn run() {
                 Some(p) => PathBuf::from(p),
                 None => app.path().app_data_dir()?.join("otosazu.db"),
             };
+            // 初回起動ならデータベースの初期の工程・タグを OS の言語で作るので、先に OS の言語にしておく
+            i18n::set(i18n::Lang::system());
             let store = Store::open(&path)?;
+            if let Ok(prefs) = store.display_prefs() {
+                i18n::set(i18n::Lang::from_pref(&prefs.language));
+            }
             // ショートカットが他のアプリと重なっていても、起動は続ける（設定画面で変えられる）
             if let Ok(prefs) = store.timer_prefs()
                 && let Err(e) = desktop::register_shortcut(app.handle(), &prefs.shortcut)
@@ -551,6 +566,7 @@ pub fn run() {
             relink_work,
             get_display_prefs,
             set_display_prefs,
+            get_system_language,
             get_check_updates,
             set_check_updates,
             add_files_work,

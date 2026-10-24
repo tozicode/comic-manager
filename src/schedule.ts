@@ -1,6 +1,8 @@
 // スケジュールの計算：残り時間から完成日を出す（A）／締切から今日のノルマと進め方の案を出す（B）
 // 日付はすべてローカル時刻の「その日の 0 時」の Date で扱う。
+import type { WorkKind } from "./api";
 import { dayKey } from "./format";
+import { t } from "./i18n/schedule";
 
 export const HOUR = 3_600_000;
 const DAY_LIMIT = 3 * 365; // これより先は「完成しない」とみなす
@@ -168,12 +170,22 @@ export function ordered(cands: Candidate[], workOrder: string): Candidate[] {
  * 今日のノルマを満たす案を並べる：おすすめ / 工程ごとの日 / 混ぜる。
  * どの案もノルマの時間は同じで、選んだ案で完成日は変わらない
  */
-export function buildPlans(cands: Candidate[], stages: StageInfo[], quotaMs: number, workOrder: string): Plan[] {
+export function buildPlans(
+  cands: Candidate[],
+  stages: StageInfo[],
+  quotaMs: number,
+  workOrder: string,
+  kind: WorkKind = "comic",
+): Plan[] {
+  const files = kind === "files";
   const plans: Plan[] = [];
   plans.push({
     key: "recommended",
-    name: "おすすめ",
-    sub: workOrder === "page" ? "ページごとに仕上げる方針どおり" : "工程ごとに進める方針どおり",
+    name: t("plan.recommended"),
+    sub:
+      workOrder === "page"
+        ? t(files ? "plan.recommendedSubFiles" : "plan.recommendedSubComic")
+        : t("plan.recommendedSubStage"),
     steps: fill(ordered(cands, workOrder), quotaMs),
   });
 
@@ -182,14 +194,16 @@ export function buildPlans(cands: Candidate[], stages: StageInfo[], quotaMs: num
     const prev = stages[i - 1];
     plans.push({
       key: `stage-${stage.id}`,
-      name: `${stage.name}の日`,
+      name: t("plan.stageDay", { stage: stage.name }),
       steps: fill(mine, quotaMs),
       disabled:
         mine.length > 0
           ? undefined
           : stage.openMs <= 0
-            ? `${stage.name}はすべて終わっています`
-            : `${prev ? `${prev.name}が済んだ` : ""}着手できるページがまだ無いため、今日は選べません`,
+            ? t("plan.stageDone", { stage: stage.name })
+            : prev
+              ? t(files ? "plan.noReadyAfterFiles" : "plan.noReadyAfterComic", { prev: prev.name })
+              : t(files ? "plan.noReadyFiles" : "plan.noReadyComic"),
     });
   });
 
@@ -211,7 +225,7 @@ export function buildPlans(cands: Candidate[], stages: StageInfo[], quotaMs: num
       })
       .filter((c) => c.remainingMs > 0);
     steps = merge(steps, fill(rest, quotaMs - used));
-    plans.push({ key: "mix", name: "混ぜる", sub: "残りの多い工程を多めに", steps });
+    plans.push({ key: "mix", name: t("plan.mix"), sub: t("plan.mixSub"), steps });
   }
   return plans;
 }
@@ -233,12 +247,33 @@ function merge(a: PlanStep[], b: PlanStep[]): PlanStep[] {
  * 工程の進み具合の差が大きいときの一言。
  * ある工程の「着手できるページ」が残り少なく、前の工程がまだ終わっていないとき
  */
-export function catchUpNotice(cands: Candidate[], stages: StageInfo[], openCounts: number[]): string | null {
+export function catchUpNotice(
+  cands: Candidate[],
+  stages: StageInfo[],
+  openCounts: number[],
+  kind: WorkKind = "comic",
+): string | null {
   for (let i = 1; i < stages.length; i++) {
     const ready = cands.filter((c) => c.stageId === stages[i].id).length;
     if (openCounts[i - 1] > 0 && openCounts[i] > ready && ready <= 2) {
-      return `${stages[i].name}が${stages[i - 1].name}に追いついてきました（${stages[i - 1].name}済みで未${stages[i].name}は残り ${ready} ページ）。そろそろ${stages[i - 1].name}も進めると、後半の選択肢が広がります。`;
+      return t(kind === "files" ? "plan.catchUpFiles" : "plan.catchUpComic", {
+        stage: stages[i].name,
+        prev: stages[i - 1].name,
+        n: ready,
+      });
     }
   }
   return null;
+}
+
+/**
+ * 選んだ案の名前を、今の言語で出し直す（保存した名前は選んだときの言語なので、案の種類から作り直す）。
+ * 種類が分からなければ保存した名前を使う
+ */
+export function planName(plan: { key: string; name: string }, stages: { id: number; name: string }[]): string {
+  if (plan.key === "recommended") return t("plan.recommended");
+  if (plan.key === "mix") return t("plan.mix");
+  if (plan.key === "custom") return t("customTitle");
+  const stage = plan.key.startsWith("stage-") ? stages.find((s) => `stage-${s.id}` === plan.key) : undefined;
+  return stage ? t("plan.stageDay", { stage: stage.name }) : plan.name;
 }

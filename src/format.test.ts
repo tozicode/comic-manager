@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { dailyTotals, dayKey, dayStartMs, estimate, fromInputs, hours, setDayStartHour, startOfDay, timeInDay } from "./format";
+import { dailyTotals, dayKey, dayLabel, dayStartMs, estimate, fromInputs, hours, monthLabel, setDayStartHour, startOfDay, timeInDay } from "./format";
+import { Lang, setLang } from "./i18n";
 
 const MIN = 60_000;
 const H = 60 * MIN;
@@ -81,5 +82,32 @@ describe("1日の区切り", () => {
     setDayStartHour(5);
     // 12/1 の 4 時はまだ 11/30（締切日）のうち
     expect(dayKey(startOfDay(new Date(2026, 11, 1, 4).getTime()))).toBe("2026-11-30");
+  });
+});
+
+describe("言語ごとの表記", () => {
+  afterEach(() => setLang("ja"));
+  const day = new Date(2026, 9, 23); // 金曜日
+  const cases: [Lang, string, string, string, string][] = [
+    // 言語, 1時間30分, 3分（予測）, 日付, 月
+    ["ja", "1時間30分", "5分未満", "10/23（金）", "10月"],
+    ["en", "1h 30m", "< 5m", "Fri 10/23", "Oct"],
+    ["ko", "1시간 30분", "5분 미만", "10/23 (금)", "10월"],
+    ["zh-Hans", "1小时30分钟", "不到5分钟", "10/23（周五）", "10月"],
+    ["zh-Hant", "1小時30分鐘", "不到5分鐘", "10/23（週五）", "10月"],
+  ];
+  it.each(cases)("%s", (lang, hm, under, date, month) => {
+    setLang(lang);
+    expect(hours(90 * MIN, "hm")).toBe(hm);
+    expect(estimate(2 * MIN, "hm")).toBe(under);
+    expect(dayLabel(day)).toBe(date);
+    expect(monthLabel(9)).toBe(month);
+  });
+
+  it("翌日の時刻", () => {
+    const late = new Date(2026, 9, 24, 1, 40).getTime();
+    expect(timeInDay(late, day)).toBe("翌01:40");
+    setLang("en");
+    expect(timeInDay(late, day)).toBe("01:40 (+1)");
   });
 });

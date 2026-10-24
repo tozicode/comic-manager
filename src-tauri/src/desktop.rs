@@ -3,6 +3,8 @@
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
+use crate::i18n::{M, tr, trf};
+
 pub const MINI_LABEL: &str = "mini";
 /// ショートカットが押されたときに画面へ送るイベント
 pub const TOGGLE_EVENT: &str = "otosazu://toggle-timer";
@@ -17,7 +19,7 @@ pub fn open_mini(app: &AppHandle) -> Result<(), String> {
         return w.set_focus().map_err(err);
     }
     WebviewWindowBuilder::new(app, MINI_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Otosazu ミニタイマー")
+        .title(tr(M::MiniTitle))
         .inner_size(MINI_SIZE.0, MINI_SIZE.1)
         .resizable(false)
         .decorations(false)
@@ -28,13 +30,13 @@ pub fn open_mini(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn set_mini_compact(app: &AppHandle, compact: bool) -> Result<(), String> {
-    let w = app.get_webview_window(MINI_LABEL).ok_or("ミニタイマー窓が開いていません")?;
+    let w = app.get_webview_window(MINI_LABEL).ok_or(tr(M::MiniNotOpen))?;
     let (width, height) = if compact { MINI_COMPACT_SIZE } else { MINI_SIZE };
     w.set_size(LogicalSize::new(width, height)).map_err(err)
 }
 
 pub fn set_mini_on_top(app: &AppHandle, on_top: bool) -> Result<(), String> {
-    let w = app.get_webview_window(MINI_LABEL).ok_or("ミニタイマー窓が開いていません")?;
+    let w = app.get_webview_window(MINI_LABEL).ok_or(tr(M::MiniNotOpen))?;
     w.set_always_on_top(on_top).map_err(err)
 }
 
@@ -46,7 +48,7 @@ pub fn close_mini(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn focus_main(app: &AppHandle) -> Result<(), String> {
-    let w = app.get_webview_window("main").ok_or("メインの窓が見つかりません")?;
+    let w = app.get_webview_window("main").ok_or(tr(M::MainWindowNotFound))?;
     w.unminimize().map_err(err)?;
     w.show().map_err(err)?;
     w.set_focus().map_err(err)
@@ -61,13 +63,13 @@ pub fn register_shortcut(app: &AppHandle, shortcut: &str) -> Result<(), String> 
     }
     let parsed: Shortcut = shortcut
         .parse()
-        .map_err(|_| format!("「{shortcut}」はショートカットとして使えません"))?;
+        .map_err(|_| trf(M::ShortcutInvalid, &[("shortcut", &shortcut)]))?;
     gs.on_shortcut(parsed, |app, _, event| {
         if event.state == ShortcutState::Pressed {
             let _ = app.emit_to("main", TOGGLE_EVENT, ());
         }
     })
-    .map_err(|e| format!("ショートカットを登録できませんでした（他のアプリが使っているかもしれません）: {e}"))
+    .map_err(|e| trf(M::ShortcutRegisterFailed, &[("e", &e)]))
 }
 
 /// 最後にキーボードかマウスを操作してからの経過時間（ミリ秒）
@@ -107,7 +109,7 @@ pub fn idle_ms() -> u64 {
 }
 
 fn err(e: impl std::fmt::Display) -> String {
-    format!("窓の操作に失敗しました: {e}")
+    trf(M::WindowOpFailed, &[("e", &e)])
 }
 
 #[cfg(test)]

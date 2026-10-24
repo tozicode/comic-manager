@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { api, UNIT } from "../api";
+import { api } from "../api";
 import { useApp } from "../app-context";
 import { ChosenPlan, Forecast, loadChosenPlan, saveChosenPlan, useForecast } from "../forecast";
-import { dayKey, dayLabel, estimate, hours } from "../format";
+import { dayKey, dayLabel, estimate, hours, weekdayName } from "../format";
+import { t, tn } from "../i18n/schedule";
 import { addDays, HOUR, Plan, PlanStep } from "../schedule";
 
 type Tab = "finish" | "deadline";
-const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
 const TAB_KEY = "otosazu.scheduleTab";
 
 export function ScheduleScreen({ workId }: { workId: number }) {
@@ -30,21 +30,21 @@ export function ScheduleScreen({ workId }: { workId: number }) {
   const [draftHours, setDraftHours] = useState<number[] | null>(null);
   const forecast = useForecast(workId, draftHours);
 
-  if (!forecast) return <p className="muted">読み込み中…</p>;
+  if (!forecast) return <p className="muted">{t("loading")}</p>;
 
   return (
     <>
       <div className="row" style={{ marginBottom: 16 }}>
         <span className="seg">
           <button className={tab === "finish" ? "on" : ""} onClick={() => setTab("finish")}>
-            完成日を見る
+            {t("tabFinish")}
           </button>
           <button className={tab === "deadline" ? "on" : ""} onClick={() => setTab("deadline")}>
-            目標から逆算する
+            {t("tabDeadline")}
           </button>
         </span>
         <span className="muted small-text">
-          {tab === "finish" ? "毎日どれだけ作業したら、いつ完成するか" : "締切に間に合わせるには、今日なにをどれだけやるか"}
+          {tab === "finish" ? t("tabFinishHint") : t("tabDeadlineHint")}
         </span>
       </div>
       {tab === "finish" ? (
@@ -109,10 +109,10 @@ function FinishTab({
   return (
     <div className="sched">
       <div className="card">
-        <div className="section-title">1日に作業する時間</div>
-        {WEEKDAYS.map((d, i) => (
-          <div key={d} className={`wd${hoursNow[i] === 0 ? " off" : ""}`}>
-            <b>{d}</b>
+        <div className="section-title">{t("hoursPerDay")}</div>
+        {hoursNow.map((_, i) => (
+          <div key={i} className={`wd${hoursNow[i] === 0 ? " off" : ""}`}>
+            <b>{weekdayName((i + 1) % 7)}</b>
             <input
               type="range"
               min={0}
@@ -125,25 +125,25 @@ function FinishTab({
           </div>
         ))}
         <div className="row small-text" style={{ margin: "10px 0 16px" }}>
-          <span className="muted">1週間で</span>
+          <span className="muted">{t("perWeek")}</span>
           <b className="num">{hours(weekTotal * HOUR)}</b>
           <span className="grow" />
           {schedule.customHours ? (
             <button className="btn small ghost" onClick={() => run(() => api.setWorkHours(board.work.id, null))}>
-              全作品の既定に戻す
+              {t("resetHours")}
             </button>
           ) : (
-            <span className="muted">全作品の既定値</span>
+            <span className="muted">{t("defaultHours")}</span>
           )}
         </div>
-        <div className="section-title">休みの日（全作品共通）</div>
+        <div className="section-title">{t("daysOffTitle")}</div>
         <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
           {schedule.daysOff
             .filter((d) => d >= dayKey(forecast.today))
             .map((d) => (
               <span key={d} className="tag">
                 {dayLabel(new Date(`${d}T00:00`))}
-                <button className="tag-x" title="休みをやめる" onClick={() => run(() => api.setDayOff(d, false))}>
+                <button className="tag-x" title={t("removeDayOff")} onClick={() => run(() => api.setDayOff(d, false))}>
                   ×
                 </button>
               </span>
@@ -159,42 +159,42 @@ function FinishTab({
               setNewDayOff("");
             }}
           >
-            ＋ 休みにする
+            {t("addDayOff")}
           </button>
         </div>
       </div>
 
       <div className="card">
-        <div className="section-title">完成見込み</div>
+        <div className="section-title">{t("finishTitle")}</div>
         {prediction.remainingMs === 0 ? (
-          <div className="big">完成しました 🎉</div>
+          <div className="big">{t("completed")}</div>
         ) : (
           <>
             <div className="result3">
               <div>
-                <div className="lbl">早ければ</div>
+                <div className="lbl">{t("earliest")}</div>
                 <div className="d num">{finish.low ? dayLabel(finish.low) : "—"}</div>
-                <div className="lbl">残り {estimate(prediction.lowMs)}</div>
+                <div className="lbl">{t("remaining", { time: estimate(prediction.lowMs) })}</div>
               </div>
               <div className="main-r">
-                <div className="lbl">おそらく</div>
+                <div className="lbl">{t("likely")}</div>
                 <div className="d num">{finish.mid ? dayLabel(finish.mid) : "—"}</div>
-                <div className="lbl">残り {estimate(prediction.remainingMs)}</div>
+                <div className="lbl">{t("remaining", { time: estimate(prediction.remainingMs) })}</div>
               </div>
               <div>
-                <div className="lbl">遅ければ</div>
+                <div className="lbl">{t("latest")}</div>
                 <div className="d num">{finish.high ? dayLabel(finish.high) : "—"}</div>
-                <div className="lbl">残り {estimate(prediction.highMs)}</div>
+                <div className="lbl">{t("remaining", { time: estimate(prediction.highMs) })}</div>
               </div>
             </div>
-            {!finish.mid && <p className="range">作業する時間が 0 のため、完成日を計算できません。</p>}
+            {!finish.mid && <p className="range">{t("noHours")}</p>}
             <ProgressChart forecast={forecast} />
             <div className="compare">
               <span className="grow">
-                最近 4 週間の実際のペース（<b className="num">1日 {hours(forecast.paceMs)}</b>）で続けた場合
+                {tn("paceCompare", { pace: <b className="num">{t("perDay", { time: hours(forecast.paceMs) })}</b> })}
               </span>
               <b className="num">{finish.pace ? dayLabel(finish.pace) : "—"}</b>
-              <span className="muted">ごろ</span>
+              <span className="muted">{t("around")}</span>
             </div>
             <StageBases forecast={forecast} />
           </>
@@ -270,13 +270,13 @@ function ProgressChart({ forecast }: { forecast: Forecast }) {
         <>
           <line x1={fx(deadline.date)} y1={T - 6} x2={fx(deadline.date)} y2={B} style={{ stroke: "var(--ok)" }} strokeWidth="1.5" />
           <text x={fx(deadline.date) - 4} y={B - 10} fontSize="11" style={{ fill: "var(--ok)" }} textAnchor="end">
-            締切 {deadline.date.getMonth() + 1}/{deadline.date.getDate()}
+            {t("deadlineMark", { date: `${deadline.date.getMonth() + 1}/${deadline.date.getDate()}` })}
           </text>
         </>
       )}
       <line x1={nowX} y1={T - 6} x2={nowX} y2={B} style={{ stroke: "var(--faint)" }} strokeDasharray="2 3" />
       <text x={nowX} y={B + 18} fontSize="11" style={{ fill: "var(--muted)" }} textAnchor="middle">
-        今日
+        {t("today")}
       </text>
     </svg>
   );
@@ -284,10 +284,10 @@ function ProgressChart({ forecast }: { forecast: Forecast }) {
 
 function StageBases({ forecast }: { forecast: Forecast }) {
   const { board, prediction } = forecast;
-  const unit = UNIT[board.work.kind];
+  const files = board.work.kind === "files";
   return (
     <details className="bases">
-      <summary className="small-text muted">予測の内訳（1{unit.count}あたりの基準時間）</summary>
+      <summary className="small-text muted">{t(files ? "basesSummaryFiles" : "basesSummaryComic")}</summary>
       <table>
         <tbody>
           {prediction.stages.map((b) => {
@@ -296,14 +296,14 @@ function StageBases({ forecast }: { forecast: Forecast }) {
               <tr key={b.stageId}>
                 <td>{stage?.name}</td>
                 <td className="num">{estimate(b.baseMs)}</td>
-                <td className="muted">{b.fromHint ? "実績がまだ無いので、設定の目安の時間" : `完了した ${b.samples} ${unit.count}の実績から`}</td>
+                <td className="muted">{b.fromHint ? t("fromHint") : t(files ? "fromSamplesFiles" : "fromSamplesComic", { n: b.samples })}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
       <p className="muted small-text">
-        各{unit.row}の予測 = 基準時間 × その{unit.row}のタグの倍率{board.work.kind === "comic" ? "（見開き ×2.0 など）" : ""}
+        {t(files ? "formulaFiles" : "formulaComic")}
       </p>
     </details>
   );
@@ -342,7 +342,7 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
     app.refresh();
   };
 
-  if (prediction.remainingMs === 0) return <div className="card pad big">完成しました 🎉</div>;
+  if (prediction.remainingMs === 0) return <div className="card pad big">{t("completed")}</div>;
 
   const daysOffLeft = deadline
     ? schedule.daysOff.filter((d) => d >= dayKey(forecast.today) && d <= dayKey(deadline.date)).length
@@ -353,7 +353,7 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
     <>
       <div className="quota">
         <div className="card">
-          <div className="section-title">完成目標日</div>
+          <div className="section-title">{t("targetDate")}</div>
           <div className="row">
             <input
               type="date"
@@ -363,39 +363,39 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
             />
             {deadline && (
               <span className="muted small-text" style={{ lineHeight: 1.4 }}>
-                あと {deadline.plan.days} 日
+                {t("daysLeft", { n: deadline.plan.days })}
                 <br />
-                うち休み {daysOffLeft} 日
+                {t("daysOffLeft", { n: daysOffLeft })}
               </span>
             )}
           </div>
         </div>
         <div className="card">
-          <div className="section-title">1日に必要な作業時間</div>
+          <div className="section-title">{t("perDayNeeded")}</div>
           {deadline ? (
             <div className="big num">
               {estimate(deadline.plan.perDayMs)}
               <span className="small-text muted" style={{ fontWeight: 400 }}>
                 {" "}
-                余裕を見るなら {estimate(deadline.plan.safePerDayMs)}
+                {t("safePerDay", { time: estimate(deadline.plan.safePerDayMs) })}
               </span>
             </div>
           ) : (
-            <p className="range">締切を決めると表示します</p>
+            <p className="range">{t("needDeadline")}</p>
           )}
         </div>
         <div className="card">
-          <div className="section-title">今日のノルマ{deadline ? "（締切から逆算）" : "（今日の作業時間）"}</div>
+          <div className="section-title">{deadline ? t("quotaTitleDeadline") : t("quotaTitleNoDeadline")}</div>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span className="big num">
               {hours(forecast.workedTodayMs)} <span className="small-text">/ {estimate(forecast.quotaMs)}</span>
             </span>
             <span className="muted small-text">
               {forecast.quotaMet
-                ? "達成しました 🎉"
+                ? t("quotaMet")
                 : forecast.workedTodayMs === 0
-                  ? "まだ始めていません"
-                  : `あと ${estimate(forecast.quotaMs - forecast.workedTodayMs)}`}
+                  ? t("notStarted")
+                  : t("quotaLeft", { time: estimate(forecast.quotaMs - forecast.workedTodayMs) })}
             </span>
           </div>
           <div className="bar">
@@ -406,8 +406,7 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
 
       {deadline && !deadline.plan.feasible && (
         <div className="notice warn">
-          ⚠ このままでは締切に間に合いません。今の作業時間だと完成は {finish.mid ? dayLabel(finish.mid) : "—"} ごろの見込みです。
-          作業時間を増やすか、締切を見直してください。
+          {t("lateWarning", { date: finish.mid ? dayLabel(finish.mid) : "—" })} {t("lateWarning2")}
         </div>
       )}
       {forecast.notice && <div className="notice info">💡 {forecast.notice}</div>}
@@ -415,22 +414,22 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
       <div className="row" style={{ marginBottom: 10 }}>
         <div className="section-title" style={{ margin: 0 }}>
           {forecast.quotaMet
-            ? "今日のノルマは達成しています。もう少し進めるなら"
+            ? t("moreAfterQuota")
             : forecast.workedTodayMs > 0
-              ? `今日の残り ${estimate(forecast.planQuotaMs)} の進め方を選ぶ`
-              : "今日の進め方を選ぶ"}
+              ? t("chooseRest", { time: estimate(forecast.planQuotaMs) })
+              : t("chooseToday")}
         </div>
-        <span className="muted small-text">どれを選んでも完成日は変わりません</span>
+        <span className="muted small-text">{t("sameFinish")}</span>
         <span className="grow" />
         <label className="small-text muted row tight">
-          おすすめの順番
+          {t("recommendedOrder")}
           <select
             className="field"
             value={schedule.workOrder}
             onChange={(e) => run(() => api.setWorkOrder(workId, e.target.value))}
           >
-            <option value="stage">工程ごとに進める</option>
-            <option value="page">{UNIT[board.work.kind].row}ごとに仕上げる</option>
+            <option value="stage">{t("orderStage")}</option>
+            <option value="page">{t(board.work.kind === "files" ? "orderPageFiles" : "orderPageComic")}</option>
           </select>
         </label>
       </div>
@@ -445,11 +444,11 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
           />
         ))}
         <button className={`card plan custom${chosen?.key === "custom" ? " on" : ""}`} onClick={() => setCustom(chosen?.key === "custom" ? chosen.steps : [])}>
-          <b>自分で選ぶ</b>
+          <b>{t("customTitle")}</b>
           <span className="muted small-text">
-            着手できるタスクの一覧から選ぶ
+            {t("customHint1")}
             <br />
-            選ぶたびにノルマのゲージが埋まる
+            {t("customHint2")}
           </span>
         </button>
       </div>
@@ -460,7 +459,7 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
           initial={custom}
           onCancel={() => setCustom(null)}
           onDone={(steps) => {
-            choose({ key: "custom", name: "自分で選んだ進め方", steps });
+            choose({ key: "custom", name: t("customName"), steps });
             setCustom(null);
           }}
         />
@@ -474,8 +473,8 @@ function stepRows(forecast: Forecast, steps: PlanStep[]) {
   return steps.map((s) => {
     const page = board.pages.find((p) => p.id === s.pageId);
     const stage = board.stages.find((st) => st.id === s.stageId);
-    const t = forecast.task(s.pageId, s.stageId);
-    const note = s.partial ? "途中まで" : t && t.spentMs > 0 ? "続き" : "";
+    const task = forecast.task(s.pageId, s.stageId);
+    const note = s.partial ? t("partial") : task && task.spentMs > 0 ? t("continued") : "";
     return { key: `${s.pageId}-${s.stageId}`, page, stage, note, ms: s.ms };
   });
 }
@@ -493,7 +492,7 @@ function PlanCard({ plan, forecast, selected, onChoose }: { plan: Plan; forecast
           {plan.name}
           {plan.sub && <span className="muted plan-sub"> {plan.sub}</span>}
         </span>
-        {selected && <span className="tag sys">選択中</span>}
+        {selected && <span className="tag sys">{t("selected")}</span>}
       </h4>
       {plan.disabled ? (
         <div className="muted small-text">{plan.disabled}</div>
@@ -513,7 +512,7 @@ function PlanCard({ plan, forecast, selected, onChoose }: { plan: Plan; forecast
           </div>
           {total < forecast.planQuotaMs - 0.05 * HOUR && (
             <div className="muted small-text" style={{ marginTop: 6 }}>
-              着手できるタスクが少ないため、{estimate(forecast.planQuotaMs - total)} 少なめです
+              {t("fewTasks", { time: estimate(forecast.planQuotaMs - total) })}
             </div>
           )}
           <div className="mixbar">
@@ -547,10 +546,10 @@ function CustomPicker({
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="dialog wide">
-        <h3>今日やるタスクを選ぶ</h3>
+        <h3>{t("pickTitle")}</h3>
         <div className="row small-text" style={{ justifyContent: "space-between" }}>
           <span className="num">
-            <b>{estimate(total)}</b> / {forecast.quotaMet ? "目安" : "残りのノルマ"} {estimate(forecast.planQuotaMs)}
+            <b>{estimate(total)}</b> / {forecast.quotaMet ? t("guide") : t("remainingQuota")} {estimate(forecast.planQuotaMs)}
           </span>
           <span className="muted">{Math.round(pct)}%</span>
         </div>
@@ -583,9 +582,9 @@ function CustomPicker({
                         }
                       />
                       <b>{page?.label}</b>
-                      <span className="muted">{c.inProgress ? "続き" : ""}</span>
+                      <span className="muted">{c.inProgress ? t("continued") : ""}</span>
                       <span className="grow" />
-                      <span className="num">残り {estimate(c.remainingMs)}</span>
+                      <span className="num">{t("remaining", { time: estimate(c.remainingMs) })}</span>
                     </label>
                   );
                 })}
@@ -595,10 +594,10 @@ function CustomPicker({
         </div>
         <div className="actions">
           <button className="btn" onClick={onCancel}>
-            やめる
+            {t("cancel")}
           </button>
           <button className="btn primary" disabled={picked.length === 0} onClick={() => onDone(picked)}>
-            この内容で決める
+            {t("confirm")}
           </button>
         </div>
       </div>

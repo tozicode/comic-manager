@@ -3,19 +3,13 @@ import { api, DisplayPrefs, StageDef, StageSet, Tag, TagApplies, TagGroup, Timer
 import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { dayKey, dayLabel, estimate, hours, startOfDay, TimeFormat } from "../format";
+import { dayKey, dayLabel, estimate, hours, startOfDay, TimeFormat, weekdayName } from "../format";
 import type { ThemePref } from "../theme";
+import { LANG_NAMES, LANGS, LangPref } from "../i18n";
+import { t } from "../i18n/settings";
 
 type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data" | "about";
-const SECTIONS: { key: Section; label: string }[] = [
-  { key: "stages", label: "工程" },
-  { key: "tags", label: "タグ" },
-  { key: "hours", label: "作業時間・休み" },
-  { key: "timer", label: "タイマー" },
-  { key: "display", label: "表示" },
-  { key: "data", label: "データ" },
-  { key: "about", label: "このソフトについて" },
-];
+const SECTIONS: Section[] = ["stages", "tags", "hours", "timer", "display", "data", "about"];
 
 const BOOTH_URL = "https://tozicode.booth.pm/items/8867379";
 const X_ACCOUNT = "tozicode";
@@ -44,8 +38,8 @@ export function SettingsScreen() {
     <div className="settings">
       <nav className="snav">
         {SECTIONS.map((s) => (
-          <button key={s.key} className={section === s.key ? "on" : ""} onClick={() => setSection(s.key)}>
-            {s.label}
+          <button key={s} className={section === s ? "on" : ""} onClick={() => setSection(s)}>
+            {t(`nav.${s}`)}
           </button>
         ))}
       </nav>
@@ -98,7 +92,8 @@ function StagesSection() {
 
   // 工程はセット（漫画・イラスト）ごとに並べ替え・追加する
   const stages = allStages.filter((st) => st.setId === setId);
-  const unit = sets.find((st) => st.id === setId)?.unit ?? "ページ";
+  const kind = sets.find((st) => st.id === setId)?.kind ?? "comic";
+  const unit = t(kind === "files" ? "stage.minPerFile" : "stage.minPerPage");
   const list = dragOrder ?? stages;
   const onDragOver = (e: DragEvent, overId: number) => {
     const id = dragging.current;
@@ -129,16 +124,14 @@ function StagesSection() {
     <>
       <div className="row" style={{ marginBottom: 8 }}>
         <div className="section-title" style={{ margin: 0 }}>
-          工程
+          {t("stages.title")}
         </div>
-        <span className="muted small-text">
-          追加した工程は、これから登録する作品で使われます。並べ替えと隠すは、登録済みの作品にも反映されます
-        </span>
+        <span className="muted small-text">{t("stages.note")}</span>
       </div>
       <div className="seg" style={{ marginBottom: 10 }}>
         {sets.map((st) => (
           <button key={st.id} className={st.id === setId ? "on" : ""} onClick={() => setSetId(st.id)}>
-            {st.name}
+            {t(st.kind === "files" ? "set.files" : "set.comic")}
           </button>
         ))}
       </div>
@@ -162,27 +155,25 @@ function StagesSection() {
         <div className="row">
           <input
             className="field"
-            placeholder={`新しい工程の名前（例：${sets.find((st) => st.id === setId)?.kind === "files" ? "下塗り、背景、エフェクト" : "ネーム、ベタ、仕上げ"}）`}
+            placeholder={t(kind === "files" ? "stages.placeholderFiles" : "stages.placeholderComic")}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && add()}
             style={{ width: 320 }}
           />
           <button className="btn" onClick={add} disabled={!newName.trim()}>
-            ＋ 工程を追加
+            {t("stages.add")}
           </button>
         </div>
       </div>
-      <p className="muted small-text">
-        「隠す」と一覧やボードに出なくなりますが、過去の記録は残ります。目安の時間は、実績がまだ無い工程の予測に使います。
-      </p>
+      <p className="muted small-text">{t("stages.footer")}</p>
     </>
   );
 }
 
 type RowProps = {
   stage: StageDef;
-  /** 1 単位の呼び方（ページ・枚） */
+  /** 目安の単位の表示（分 / ページ・分 / 枚） */
   unit: string;
   first: boolean;
   last: boolean;
@@ -216,7 +207,7 @@ function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver,
       <span
         className="handle"
         draggable
-        title="ドラッグで並べ替え"
+        title={t("stage.drag")}
         onDragStart={(e) => {
           if (card.current) e.dataTransfer.setDragImage(card.current, 20, 20);
           e.dataTransfer.effectAllowed = "move";
@@ -227,10 +218,10 @@ function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver,
         ⋮⋮
       </span>
       <div className="move">
-        <button className="mini" title="上へ" disabled={first} onClick={() => onMove(-1)}>
+        <button className="mini" title={t("stage.up")} disabled={first} onClick={() => onMove(-1)}>
           ▲
         </button>
-        <button className="mini" title="下へ" disabled={last} onClick={() => onMove(1)}>
+        <button className="mini" title={t("stage.down")} disabled={last} onClick={() => onMove(1)}>
           ▼
         </button>
       </div>
@@ -238,7 +229,7 @@ function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver,
         type="color"
         className="swatch"
         value={stage.color}
-        title="色を変える"
+        title={t("stage.color")}
         onChange={(e) => save(e.target.value)}
       />
       <input
@@ -249,7 +240,7 @@ function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver,
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
       />
       <label className="muted small-text row tight">
-        目安
+        {t("stage.hint")}
         <input
           className="field num"
           type="number"
@@ -260,10 +251,10 @@ function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver,
           onBlur={() => save()}
           style={{ width: 70 }}
         />
-        分 / {unit}
+        {unit}
       </label>
       <button className="btn small" onClick={() => onHidden(!stage.hidden)}>
-        {stage.hidden ? "表示する" : "隠す"}
+        {stage.hidden ? t("show") : t("hide")}
       </button>
     </div>
   );
@@ -293,9 +284,9 @@ function TagsSection() {
     <>
       <div className="row" style={{ marginBottom: 8 }}>
         <div className="section-title" style={{ margin: 0 }}>
-          タグ
+          {t("tags.title")}
         </div>
-        <span className="muted small-text">倍率は予測に使う目安です（×1.3 なら 3 割長くかかる）</span>
+        <span className="muted small-text">{t("tags.note")}</span>
       </div>
       {groups.map((g) => (
         <GroupCard key={`${g.id}-${g.name}-${g.exclusive}-${g.applies}`} group={g} run={run} />
@@ -303,19 +294,17 @@ function TagsSection() {
       <div className="row">
         <input
           className="field"
-          placeholder="新しいグループの名前（例：背景の種類）"
+          placeholder={t("tags.groupPlaceholder")}
           value={newGroup}
           onChange={(e) => setNewGroup(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addGroup()}
           style={{ width: 320 }}
         />
         <button className="btn" disabled={!newGroup.trim()} onClick={addGroup}>
-          ＋ グループを追加
+          {t("tags.addGroup")}
         </button>
       </div>
-      <p className="muted small-text">
-        「どれか1つだけ」にしたグループは、ページに 1 つだけ付けられます（選び直すと入れ替わる）。「漫画だけ」「イラストだけ」にしたグループは、その種類の作品でだけ出ます。隠したタグはボードに出ず、予測にも使いません。
-      </p>
+      <p className="muted small-text">{t("tags.footer")}</p>
     </>
   );
 }
@@ -333,7 +322,7 @@ function GroupCard({ group, run }: { group: TagGroup; run: Run }) {
       <div className="thead">
         {group.system ? (
           <b>
-            {group.name} <span className="tag sys">CLIP STUDIO に連動</span>
+            {group.name} <span className="tag sys">{t("tags.clipLinked")}</span>
           </b>
         ) : (
           <div className="row">
@@ -351,17 +340,17 @@ function GroupCard({ group, run }: { group: TagGroup; run: Run }) {
                 checked={group.exclusive}
                 onChange={(e) => run(() => api.updateTagGroup(group.id, group.name, e.target.checked, group.applies))}
               />
-              どれか1つだけ
+              {t("tags.exclusive")}
             </label>
             <select
               className="field small-text"
-              title="このグループを使う作品の種類"
+              title={t("tags.appliesTitle")}
               value={group.applies}
               onChange={(e) => run(() => api.updateTagGroup(group.id, group.name, group.exclusive, e.target.value as TagApplies))}
             >
-              <option value="both">漫画とイラスト</option>
-              <option value="comic">漫画だけ</option>
-              <option value="files">イラストだけ</option>
+              <option value="both">{t("tags.appliesBoth")}</option>
+              <option value="comic">{t("tags.appliesComic")}</option>
+              <option value="files">{t("tags.appliesFiles")}</option>
             </select>
           </div>
         )}
@@ -375,13 +364,13 @@ function GroupCard({ group, run }: { group: TagGroup; run: Run }) {
         <div className="row tight" style={{ marginTop: 8 }}>
           <input
             className="field"
-            placeholder="タグの名前"
+            placeholder={t("tags.tagPlaceholder")}
             value={newTag}
             onChange={(e) => setNewTag(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addTag()}
           />
           <button className="btn small" disabled={!newTag.trim()} onClick={addTag}>
-            ＋ タグを追加
+            {t("tags.addTag")}
           </button>
         </div>
       )}
@@ -405,7 +394,7 @@ function TagRow({ tag, run }: { tag: Tag; run: Run }) {
         <input className="field tname" value={name} onChange={(e) => setName(e.target.value)} onBlur={save} />
       )}
       <label className="muted small-text row tight">
-        倍率 ×
+        {t("tags.factor")}
         <input
           className="field num"
           type="number"
@@ -419,7 +408,7 @@ function TagRow({ tag, run }: { tag: Tag; run: Run }) {
         />
       </label>
       <button className="btn small ghost" onClick={() => run(() => api.setTagHidden(tag.id, !tag.hidden))}>
-        {tag.hidden ? "表示する" : "隠す"}
+        {tag.hidden ? t("show") : t("hide")}
       </button>
     </div>
   );
@@ -428,8 +417,6 @@ function TagRow({ tag, run }: { tag: Tag; run: Run }) {
 // ---------------------------------------------------------------------------
 // 作業時間・休み
 // ---------------------------------------------------------------------------
-
-const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
 
 function HoursSection() {
   const app = useApp();
@@ -450,18 +437,19 @@ function HoursSection() {
       .catch(app.showError);
   }, [app.version, app.showError]);
 
-  if (!hours) return <p className="muted">読み込み中…</p>;
+  if (!hours) return <p className="muted">{t("loading")}</p>;
   const today = dayKey(startOfDay(Date.now()));
   const upcoming = daysOff.filter((d) => d >= today);
 
   return (
     <>
-      <div className="section-title">1日に作業する時間（全作品の既定値）</div>
+      <div className="section-title">{t("hours.title")}</div>
       <div className="card pad">
         <div className="hours-grid">
-          {WEEKDAYS.map((d, i) => (
-            <label key={d}>
-              <b>{d}</b>
+          {/* 月曜始まりで並べる（hours[0] が月曜） */}
+          {hours.map((_, i) => (
+            <label key={i}>
+              <b>{weekdayName((i + 1) % 7)}</b>
               <input
                 className="field num"
                 type="number"
@@ -472,21 +460,21 @@ function HoursSection() {
                 onChange={(e) => setHours(hours.map((h, k) => (k === i ? Number(e.target.value) : h)))}
                 onBlur={() => run(() => api.setDefaultHours(hours))}
               />
-              <span className="muted small-text">時間</span>
+              <span className="muted small-text">{t("hours.unit")}</span>
             </label>
           ))}
         </div>
         <p className="muted small-text" style={{ margin: "8px 0 0" }}>
-          作品ごとに変えたいときは、スケジュール画面の「完成日を見る」で調整できます。
+          {t("hours.perWork")}
         </p>
       </div>
 
       <div className="section-title" style={{ marginTop: 22 }}>
-        1日の区切り
+        {t("dayStart.title")}
       </div>
       <div className="card pad form">
         <label className="row">
-          <span className="grow">この時刻から次の日のこの時刻までを「1日」として数えます</span>
+          <span className="grow">{t("dayStart.label")}</span>
           <select
             className="field num"
             value={dayStart ?? 0}
@@ -494,27 +482,24 @@ function HoursSection() {
           >
             {Array.from({ length: 13 }, (_, h) => (
               <option key={h} value={h}>
-                {h === 0 ? "0時（午前0時）" : `朝${h}時`}
+                {h === 0 ? t("dayStart.midnight") : t("dayStart.morning", { h })}
               </option>
             ))}
           </select>
         </label>
-        <p className="muted small-text">
-          夜型で深夜まで作業する場合に変えてください。たとえば朝5時にすると、深夜2時の作業は前の日の作業として数え、
-          「今日のノルマ」も朝5時に切り替わります。記録はそのままで、過去の分も新しい区切りで数え直します。
-        </p>
+        <p className="muted small-text">{t("dayStart.note")}</p>
       </div>
 
       <div className="section-title" style={{ marginTop: 22 }}>
-        休みの日（全作品共通）
+        {t("daysOff.title")}
       </div>
       <div className="card pad">
         <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-          {upcoming.length === 0 && <span className="muted small-text">まだありません</span>}
+          {upcoming.length === 0 && <span className="muted small-text">{t("daysOff.none")}</span>}
           {upcoming.map((d) => (
             <span key={d} className="tag">
               {dayLabel(new Date(`${d}T00:00`))}
-              <button className="tag-x" title="休みをやめる" onClick={() => run(() => api.setDayOff(d, false))}>
+              <button className="tag-x" title={t("daysOff.remove")} onClick={() => run(() => api.setDayOff(d, false))}>
                 ×
               </button>
             </span>
@@ -530,7 +515,7 @@ function HoursSection() {
               setNewDay("");
             }}
           >
-            ＋ 休みにする
+            {t("daysOff.add")}
           </button>
         </div>
       </div>
@@ -573,13 +558,13 @@ function TimerSection() {
     api.getTimerPrefs().then(setPrefs).catch(app.showError);
   }, [app.version, app.showError]);
 
-  if (!prefs) return <p className="muted">読み込み中…</p>;
+  if (!prefs) return <p className="muted">{t("loading")}</p>;
 
   const save = async (next: TimerPrefs) => {
     setPrefs(next);
     try {
       await api.setTimerPrefs(next);
-      setSaved("保存しました");
+      setSaved(t("saved"));
       app.refresh();
     } catch (e) {
       app.showError(e);
@@ -589,10 +574,10 @@ function TimerSection() {
 
   return (
     <>
-      <div className="section-title">止め忘れの確認</div>
+      <div className="section-title">{t("idle.title")}</div>
       <div className="card pad form">
         <label className="row">
-          <span className="grow">PC の操作がこの時間なかったら、計測を一時停止して「休憩していましたか？」と聞く</span>
+          <span className="grow">{t("idle.label")}</span>
           <input
             className="field num"
             type="number"
@@ -603,26 +588,26 @@ function TimerSection() {
             onBlur={() => save(prefs)}
             style={{ width: 70 }}
           />
-          <span>分</span>
+          <span>{t("minutes")}</span>
         </label>
-        <p className="muted small-text">0 にすると確認しません。</p>
+        <p className="muted small-text">{t("idle.zero")}</p>
         <label className="row">
           <input type="checkbox" checked={prefs.watchSaves} onChange={(e) => save({ ...prefs, watchSaves: e.target.checked })} />
-          <span>計測中に別のページが CLIP STUDIO で保存されたら知らせる</span>
+          <span>{t("idle.watchSaves")}</span>
         </label>
       </div>
 
       <div className="section-title" style={{ marginTop: 22 }}>
-        ショートカット
+        {t("shortcut.title")}
       </div>
       <div className="card pad form">
         <label className="row">
-          <span className="grow">どのアプリを使っていても、このキーで一時停止 / 再開する</span>
+          <span className="grow">{t("shortcut.label")}</span>
           <input
             className="field shortcut"
             readOnly
-            value={prefs.shortcut ? shortcutLabel(prefs.shortcut) : "（使わない）"}
-            placeholder="キーを押してください"
+            value={prefs.shortcut ? shortcutLabel(prefs.shortcut) : t("shortcut.none")}
+            placeholder={t("shortcut.placeholder")}
             onKeyDown={(e) => {
               e.preventDefault();
               if (e.key === "Backspace" || e.key === "Delete") return save({ ...prefs, shortcut: "" });
@@ -632,9 +617,7 @@ function TimerSection() {
           />
         </label>
         <p className="muted small-text">
-          {IS_MAC
-            ? "欄をクリックしてから、control・option・shift・command のどれかと一緒にキーを押すと変わります。delete で使わない設定にできます。"
-            : "欄をクリックしてから、Ctrl・Alt・Shift のどれかと一緒にキーを押すと変わります。Backspace で使わない設定にできます。"}
+          {IS_MAC ? t("shortcut.helpMac") : t("shortcut.helpWin")}
           {saved && <span className="ok-text"> {saved}</span>}
         </p>
       </div>
@@ -670,14 +653,14 @@ function DataSection() {
     const d = new Date();
     const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
     const dest = await saveDialog({
-      title: "バックアップの保存先",
+      title: t("data.backupDialog"),
       defaultPath: `otosazu-backup-${stamp}.db`,
-      filters: [{ name: "Otosazu のデータ", extensions: ["db"] }],
+      filters: [{ name: t("data.filterName"), extensions: ["db"] }],
     });
     if (!dest) return;
     try {
       await api.backupData(dest);
-      setNote(`バックアップを作りました：${dest}`);
+      setNote(t("data.backupDone", { path: dest }));
     } catch (e) {
       app.showError(e);
     }
@@ -685,34 +668,30 @@ function DataSection() {
 
   return (
     <>
-      <div className="section-title">データ</div>
+      <div className="section-title">{t("data.title")}</div>
       <div className="card pad form">
         <div className="row">
           <span className="grow">
-            作業記録・工程・タグなどは、すべてこのファイルに保存されています。
+            {t("data.fileNote")}
             <br />
             <span className="muted small-text path-text">{info?.dbPath}</span>
           </span>
           <button className="btn small" onClick={() => api.revealData().catch(app.showError)}>
-            保存場所を開く
+            {t("data.reveal")}
           </button>
         </div>
         <div className="row">
-          <span className="grow">
-            今のデータを 1 つのファイルに書き出します。PC を買い替えるときや、不具合を相談するときに使えます。
-          </span>
+          <span className="grow">{t("data.exportNote")}</span>
           <button className="btn small primary" onClick={backup}>
-            バックアップを作る…
+            {t("data.backup")}
           </button>
         </div>
         {note && <p className="ok-text small-text">{note}</p>}
-        <p className="muted small-text">
-          バックアップから戻すときは、Otosazu を閉じてから、上の保存場所にある otosazu.db をバックアップのファイルで置き換えてください。
-        </p>
+        <p className="muted small-text">{t("data.restoreNote")}</p>
       </div>
 
       <div className="section-title" style={{ marginTop: 22 }}>
-        更新
+        {t("update.title")}
       </div>
       <div className="card pad form">
         <label className="row">
@@ -722,11 +701,9 @@ function DataSection() {
             disabled={checkUpdates === null}
             onChange={(e) => changeCheckUpdates(e.target.checked)}
           />
-          <span>起動時に新しい版を確認する</span>
+          <span>{t("update.check")}</span>
         </label>
-        <p className="muted small-text">
-          起動時に、配布元（GitHub）から最新の版の情報だけを読み込みます。作業記録などのデータを送ることはありません。
-        </p>
+        <p className="muted small-text">{t("update.note")}</p>
       </div>
     </>
   );
@@ -748,32 +725,32 @@ function AboutSection() {
 
   return (
     <>
-      <div className="section-title">このソフトについて</div>
+      <div className="section-title">{t("about.title")}</div>
       <div className="card pad about">
         <div className="about-name">Otosazu</div>
-        <div className="muted">原稿を落とさず描き上げる ── 漫画・イラスト制作のスケジュール管理ソフト</div>
+        <div className="muted">{t("about.tagline")}</div>
         <div className="about-version num">ver {version ?? "…"}</div>
         <dl className="about-links">
-          <dt>配布ページ</dt>
+          <dt>{t("about.download")}</dt>
           <dd>
             <button className="link" onClick={() => open(BOOTH_URL)}>
               BOOTH
             </button>
-            <span className="muted small-text">　最新版の入手・説明書はこちら</span>
+            <span className="muted small-text">{t("about.boothNote")}</span>
           </dd>
-          <dt>作者</dt>
+          <dt>{t("about.author")}</dt>
           <dd>
             <button className="link" onClick={() => open(`https://x.com/${X_ACCOUNT}`)}>
-              X（@{X_ACCOUNT}）
+              {t("about.xLink", { account: X_ACCOUNT })}
             </button>
-            <span className="muted small-text">　不具合のご報告やご意見はこちらへ</span>
+            <span className="muted small-text">{t("about.reportNote")}</span>
           </dd>
         </dl>
       </div>
       <p className="muted small-text">
         © 2026 tozicode.com
         <br />
-        CLIP STUDIO PAINT は株式会社セルシスの商標です。Otosazu はセルシスとは関係のない個人制作のソフトです。
+        {t("about.trademark")}
       </p>
     </>
   );
@@ -783,17 +760,12 @@ function AboutSection() {
 // 表示
 // ---------------------------------------------------------------------------
 
-const TIME_FORMATS: { key: TimeFormat; label: string }[] = [
-  { key: "hm", label: "時間と分" },
-  { key: "clock", label: "時計の形" },
-  { key: "decimal", label: "小数" },
-];
+const TIME_FORMATS: TimeFormat[] = ["hm", "clock", "decimal"];
 
-const THEMES: { key: ThemePref; label: string; note: string }[] = [
-  { key: "system", label: "自動", note: "パソコンの設定（ライト／ダーク）に合わせます" },
-  { key: "light", label: "ライト", note: "明るい色" },
-  { key: "dark", label: "ダーク", note: "暗い色。夜の作業でまぶしくありません" },
-];
+const THEMES: ThemePref[] = ["system", "light", "dark"];
+
+/** 言語の選択肢。自動のあとに各言語（その言語自身の名前で出す） */
+const LANGUAGE_CHOICES: LangPref[] = ["system", ...LANGS];
 
 const MIN = 60_000;
 const EXAMPLES = [30 * MIN, 90 * MIN, 155 * 60 * MIN + 50 * MIN];
@@ -806,7 +778,7 @@ function DisplaySection() {
     api.getDisplayPrefs().then(setPrefs).catch(app.showError);
   }, [app.version, app.showError]);
 
-  if (!prefs) return <p className="muted">読み込み中…</p>;
+  if (!prefs) return <p className="muted">{t("loading")}</p>;
 
   const save = async (next: DisplayPrefs) => {
     try {
@@ -821,36 +793,59 @@ function DisplaySection() {
 
   return (
     <>
-      <div className="section-title">時間の表記</div>
+      <div className="section-title">{t("display.timeFormat")}</div>
       <div className="card pad form">
         {TIME_FORMATS.map((f) => (
-          <button key={f.key} className={`choice${prefs.timeFormat === f.key ? " on" : ""}`} onClick={() => choose(f.key)}>
+          <button key={f} className={`choice${prefs.timeFormat === f ? " on" : ""}`} onClick={() => choose(f)}>
             <span className="radio" />
             <span className="grow">
-              <b>{f.label}</b>
-              {f.key === "hm" && <span className="muted">（おすすめ）</span>}
+              <b>{t(`tf.${f}`)}</b>
+              {f === "hm" && <span className="muted">{t("tf.recommended")}</span>}
               <br />
-              <span className="muted num">{EXAMPLES.map((ms) => hours(ms, f.key)).join(" ／ ")}</span>
+              <span className="muted num">{EXAMPLES.map((ms) => hours(ms, f)).join(" ／ ")}</span>
             </span>
           </button>
         ))}
-        <p className="muted small-text">
-          記録した時間は 1 分単位、予測した時間は 5 分単位で表示します（例：予測 {estimate(68 * MIN)}）。
-          タイマーの経過時間（00:42:13）は、どの表記でも変わりません。
-        </p>
+        <p className="muted small-text">{t("display.timeNote", { example: estimate(68 * MIN) })}</p>
       </div>
 
       <div className="section-title" style={{ marginTop: 22 }}>
-        色
+        {t("display.language")}
       </div>
       <div className="card pad form">
-        {THEMES.map((t) => (
-          <button key={t.key} className={`choice${prefs.theme === t.key ? " on" : ""}`} onClick={() => save({ ...prefs, theme: t.key })}>
+        {LANGUAGE_CHOICES.map((l) => (
+          <button
+            key={l}
+            className={`choice${prefs.language === l ? " on" : ""}`}
+            onClick={() => save({ ...prefs, language: l })}
+          >
             <span className="radio" />
             <span className="grow">
-              <b>{t.label}</b>
+              {l === "system" ? (
+                <>
+                  <b>{t("lang.system")}</b>
+                  <br />
+                  <span className="muted">{t("lang.systemNote")}</span>
+                </>
+              ) : (
+                <b lang={l}>{LANG_NAMES[l]}</b>
+              )}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="section-title" style={{ marginTop: 22 }}>
+        {t("display.color")}
+      </div>
+      <div className="card pad form">
+        {THEMES.map((th) => (
+          <button key={th} className={`choice${prefs.theme === th ? " on" : ""}`} onClick={() => save({ ...prefs, theme: th })}>
+            <span className="radio" />
+            <span className="grow">
+              <b>{t(`theme.${th}`)}</b>
               <br />
-              <span className="muted">{t.note}</span>
+              <span className="muted">{t(`theme.${th}Note`)}</span>
             </span>
           </button>
         ))}

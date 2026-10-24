@@ -14,6 +14,8 @@ import { ScheduleScreen } from "./screens/ScheduleScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { StatsScreen } from "./screens/StatsScreen";
 import { WorksScreen } from "./screens/WorksScreen";
+import { useLang } from "./i18n";
+import { t, tn } from "./i18n/shell";
 import "./App.css";
 
 export type Screen = "works" | "board" | "schedule" | "records" | "stats" | "settings";
@@ -76,10 +78,10 @@ function Shell() {
       />
       <div className="main">
         <header className="topbar">
-          <h1>{TITLES[screen]}</h1>
+          <h1>{t(`screen.${screen}`)}</h1>
           <div className="row">
-            <button className="btn small ghost" title="CLIP STUDIO の上に小さなタイマーを出す" onClick={() => api.openMini().catch(app.showError)}>
-              ⧉ ミニタイマー
+            <button className="btn small ghost" title={t("miniTimerHint")} onClick={() => api.openMini().catch(app.showError)}>
+              {t("miniTimer")}
             </button>
             <TimerChip onOpenWork={(id) => openWork(id)} />
           </div>
@@ -89,7 +91,7 @@ function Shell() {
             <div className="error" role="alert">
               <span className="grow">{app.error}</span>
               <button className="btn small ghost" onClick={app.clearError}>
-                閉じる
+                {t("close")}
               </button>
             </div>
           )}
@@ -114,23 +116,25 @@ function Shell() {
       <UpdateNotice />
       {app.stopped && (
         <Dialog
-          label="タイマーを止めました"
-          title={`${app.stopped.pageLabel} の${app.stopped.stageName}は完了しましたか？`}
+          label={t("stoppedLabel")}
+          title={t("stoppedTitle", { page: app.stopped.pageLabel, stage: app.stopped.stageName })}
           onClose={() => app.answerStopped(false)}
           actions={
             <>
               <button className="btn" onClick={() => app.answerStopped(false)}>
-                まだ途中
+                {t("notYet")}
               </button>
               <button className="btn primary" autoFocus onClick={() => app.answerStopped(true)}>
-                完了にする
+                {t("markDone")}
               </button>
             </>
           }
         >
           <p>
-            今回 <b className="num">{hours(app.stopped.durationMs)}</b> ・ このタスクの合計{" "}
-            <b className="num">{hours(app.stopped.totalMs)}</b>
+            {tn("stoppedBody", {
+              now: <b className="num">{hours(app.stopped.durationMs)}</b>,
+              total: <b className="num">{hours(app.stopped.totalMs)}</b>,
+            })}
           </p>
         </Dialog>
       )}
@@ -138,15 +142,8 @@ function Shell() {
   );
 }
 
-const TITLES: Record<Screen, string> = {
-  works: "作品一覧",
-  board: "進捗ボード",
-  schedule: "スケジュール",
-  records: "作業記録",
-  stats: "統計",
-  settings: "設定",
-};
-
 export default function App() {
-  return <AppProvider>{isMini ? <MiniApp /> : <Shell />}</AppProvider>;
+  // 言語を切り替えたら、画面を作り直してすべての文言を入れ替える
+  const lang = useLang();
+  return <AppProvider>{isMini ? <MiniApp key={lang} /> : <Shell key={lang} />}</AppProvider>;
 }

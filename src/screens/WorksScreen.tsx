@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, StageSet, UNIT, WorkKind, WorkSummary } from "../api";
+import { api, StageSet, WorkKind, WorkSummary } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { useRelink } from "../components/Relink";
 import { useForecast } from "../forecast";
 import { dayLabel, hours } from "../format";
+import { setName } from "../i18n/common";
+import { t } from "../i18n/works";
 
 type Props = { works: WorkSummary[]; onOpen: (workId: number) => void };
 
@@ -29,9 +31,9 @@ export function WorksScreen({ works, onOpen }: Props) {
     <>
       {works.length === 0 && (
         <p className="lead">
-          はじめに、CLIP STUDIO PAINT で描いている作品を登録しましょう。
+          {t("leadIntro")}
           <br />
-          漫画（.cmc）ならページ × 工程、イラスト（.clip・.psd）ならファイル × 工程ごとに作業時間を記録できます。
+          {t("leadDetail")}
         </p>
       )}
       <div className="works">
@@ -42,31 +44,29 @@ export function WorksScreen({ works, onOpen }: Props) {
                 <h3 className="grow">{w.title}</h3>
                 <button
                   className="btn small ghost"
-                  title="この作品を Otosazu から外す"
+                  title={t("removeHint")}
                   onClick={(e) => {
                     e.stopPropagation();
                     setRemoving(w);
                   }}
                 >
-                  外す
+                  {t("remove")}
                 </button>
               </div>
               <div className="muted small-text">
-                {w.kind === "files" ? "イラスト · " : ""}
-                {w.pageCount}
-                {UNIT[w.kind].count} · {w.stageCount}工程
+                {t(w.kind === "files" ? "metaFiles" : "metaComic", { n: w.pageCount, stages: w.stageCount })}
               </div>
               <div className="bar" style={{ marginTop: 10 }}>
                 <span style={{ width: `${w.progress * 100}%`, background: "var(--accent)" }} />
               </div>
               <dl className="kv">
-                <dt>進捗</dt>
+                <dt>{t("progress")}</dt>
                 <dd className="num">{Math.round(w.progress * 100)}%</dd>
-                <dt>作業時間</dt>
+                <dt>{t("workingTime")}</dt>
                 <dd className="num">{hours(w.totalMs)}</dd>
                 <WorkOutlook workId={w.id} />
-                <dt>最後の作業</dt>
-                <dd>{w.lastWorkedAt ? dayLabel(new Date(w.lastWorkedAt)) : "まだありません"}</dd>
+                <dt>{t("lastWork")}</dt>
+                <dd>{w.lastWorkedAt ? dayLabel(new Date(w.lastWorkedAt)) : t("noneYet")}</dd>
               </dl>
               {w.cmcPath && (
                 <div className="path" title={w.cmcPath}>
@@ -77,16 +77,16 @@ export function WorksScreen({ works, onOpen }: Props) {
                 <div className="file-missing" onClick={(e) => e.stopPropagation()}>
                   {w.kind === "files" ? (
                     <>
-                      <span className="grow">⚠ 見つからないファイルがあります</span>
+                      <span className="grow">{t("missingFiles")}</span>
                       <button className="btn small primary" onClick={() => onOpen(w.id)}>
-                        作品を開く
+                        {t("openWork")}
                       </button>
                     </>
                   ) : (
                     <>
-                      <span className="grow">⚠ この場所に漫画ファイルが見つかりません</span>
+                      <span className="grow">{t("missingComic")}</span>
                       <button className="btn small primary" onClick={() => relink.start(w.id, w.title)}>
-                        場所を指定し直す
+                        {t("relink")}
                       </button>
                     </>
                   )}
@@ -97,8 +97,8 @@ export function WorksScreen({ works, onOpen }: Props) {
         ))}
         <button className="work-add" onClick={() => setAdding(true)}>
           <span className="plus">＋</span>
-          <b>作品を追加</b>
-          <span className="small-text">漫画（.cmc）／イラスト（.clip・.psd）</span>
+          <b>{t("addWork")}</b>
+          <span className="small-text">{t("addWorkKinds")}</span>
         </button>
       </div>
 
@@ -115,23 +115,23 @@ export function WorksScreen({ works, onOpen }: Props) {
       )}
       {removing && (
         <Dialog
-          title={`「${removing.title}」を外しますか？`}
+          title={t("removeTitle", { title: removing.title })}
           onClose={() => setRemoving(null)}
           actions={
             <>
               <button className="btn" onClick={() => setRemoving(null)}>
-                やめる
+                {t("cancel")}
               </button>
               <button className="btn danger" onClick={() => removeWork(removing)}>
-                外す
+                {t("remove")}
               </button>
             </>
           }
         >
           <p>
-            この作品の作業記録（{hours(removing.totalMs)}）も Otosazu から消えます。
+            {t("removeLog", { time: hours(removing.totalMs) })}
             <br />
-            {removing.kind === "files" ? "イラストのファイル" : "CLIP STUDIO の漫画ファイル"}そのものは消えません。
+            {t(removing.kind === "files" ? "removeKeepFiles" : "removeKeepComic")}
           </p>
         </Dialog>
       )}
@@ -139,11 +139,12 @@ export function WorksScreen({ works, onOpen }: Props) {
   );
 }
 
+// 締切の状況ごとの見た目のクラス（ラベルは描画時に status.<キー> を訳す）
 const STATUS = {
-  ok: { label: "余裕あり", cls: "ok" },
-  tight: { label: "ギリギリ", cls: "warn" },
-  late: { label: "遅れぎみ", cls: "late" },
-};
+  ok: "ok",
+  tight: "warn",
+  late: "late",
+} as const;
 
 /** 完成見込みと締切の状況（作品カードの中に出す） */
 function WorkOutlook({ workId }: { workId: number }) {
@@ -152,28 +153,28 @@ function WorkOutlook({ workId }: { workId: number }) {
   if (f.prediction.remainingMs === 0) {
     return (
       <>
-        <dt>状態</dt>
-        <dd>完成済み（実績は次の作品の予測に使われます）</dd>
+        <dt>{t("state")}</dt>
+        <dd>{t("completed")}</dd>
       </>
     );
   }
   return (
     <>
-      <dt>完成見込み</dt>
+      <dt>{t("finish")}</dt>
       <dd>
         {f.finish.mid ? <b>{dayLabel(f.finish.mid)}</b> : "—"}
         {f.finish.low && f.finish.high && (
           <span className="muted">
             {" "}
-            （{dayLabel(f.finish.low)}〜{dayLabel(f.finish.high)}）
+            {t("finishRange", { low: dayLabel(f.finish.low), high: dayLabel(f.finish.high) })}
           </span>
         )}
       </dd>
       {f.deadline && (
         <>
-          <dt>締切</dt>
+          <dt>{t("deadline")}</dt>
           <dd>
-            {dayLabel(f.deadline.date)} <span className={`tag status ${STATUS[f.deadline.status].cls}`}>{STATUS[f.deadline.status].label}</span>
+            {dayLabel(f.deadline.date)} <span className={`tag status ${STATUS[f.deadline.status]}`}>{t(`status.${f.deadline.status}`)}</span>
           </dd>
         </>
       )}
@@ -204,12 +205,12 @@ function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (wo
     if (setId === null) return;
     const picked = await open(
       kind === "comic"
-        ? { title: "漫画ファイルを選ぶ", multiple: false, directory: false, filters: [{ name: "CLIP STUDIO 漫画ファイル", extensions: ["cmc"] }] }
+        ? { title: t("pickComicTitle"), multiple: false, directory: false, filters: [{ name: t("comicFilter"), extensions: ["cmc"] }] }
         : {
-            title: "イラストのファイルを選ぶ（複数選べます）",
+            title: t("pickFilesTitle"),
             multiple: true,
             directory: false,
-            filters: [{ name: "イラスト（.clip / .psd）", extensions: ["clip", "psd", "psb"] }],
+            filters: [{ name: t("filesFilter"), extensions: ["clip", "psd", "psb"] }],
           },
     );
     const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
@@ -232,15 +233,15 @@ function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (wo
 
   return (
     <Dialog
-      title="作品を追加"
+      title={t("addWork")}
       onClose={onClose}
       actions={
         <>
           <button className="btn" onClick={onClose}>
-            やめる
+            {t("cancel")}
           </button>
           <button className="btn primary" onClick={pick} disabled={busy || setId === null}>
-            {busy ? "読み込み中…" : kind === "comic" ? "漫画ファイルを選ぶ…" : "ファイルを選ぶ…"}
+            {busy ? t("loading") : kind === "comic" ? t("pickComic") : t("pickFiles")}
           </button>
         </>
       }
@@ -248,37 +249,37 @@ function AddWorkDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (wo
       <button className={`choice${kind === "comic" ? " on" : ""}`} onClick={() => setKind("comic")}>
         <span className="radio" />
         <span>
-          <b>漫画</b>
+          <b>{t("comic")}</b>
           <br />
-          <span className="muted">CLIP STUDIO の漫画ファイル（.cmc）。ページの一覧を自動で読み込みます</span>
+          <span className="muted">{t("comicDesc")}</span>
         </span>
       </button>
       <button className={`choice${kind === "files" ? " on" : ""}`} onClick={() => setKind("files")}>
         <span className="radio" />
         <span>
-          <b>イラスト</b>
+          <b>{t("illustration")}</b>
           <br />
-          <span className="muted">.clip / .psd を 1 つ以上。連作や表紙と挿絵などをまとめて 1 つの作品にできます</span>
+          <span className="muted">{t("filesDesc")}</span>
         </span>
       </button>
       <div className="form" style={{ marginTop: 8 }}>
         {kind === "files" && (
           <label className="row">
-            <span style={{ width: 90 }}>作品名</span>
+            <span style={{ width: 90 }}>{t("workName")}</span>
             <input
               className="field grow"
-              placeholder="空欄なら最初のファイル名"
+              placeholder={t("workNamePlaceholder")}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
         )}
         <label className="row">
-          <span style={{ width: 90 }}>工程</span>
+          <span style={{ width: 90 }}>{t("stages")}</span>
           <select className="field grow" value={setId ?? ""} onChange={(e) => setSetId(Number(e.target.value))}>
             {sets.map((st) => (
               <option key={st.id} value={st.id}>
-                {st.name}のセット
+                {t("stageSet", { name: setName(st.kind) })}
               </option>
             ))}
           </select>

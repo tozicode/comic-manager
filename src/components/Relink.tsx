@@ -5,6 +5,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, RelinkCheck, SyncResult } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "./Dialog";
+import { t, tn } from "../i18n/relink";
 
 /** これより一致が少なければ「別の作品のようです」と確認する */
 const MATCH_RATIO = 0.5;
@@ -27,10 +28,10 @@ export function useRelink(onDone?: (result: SyncResult) => void): { start: (work
 
   const start = async (workId: number, title: string) => {
     const selected = await open({
-      title: `「${title}」の漫画ファイルを選ぶ`,
+      title: t("chooseFile", { title }),
       multiple: false,
       directory: false,
-      filters: [{ name: "CLIP STUDIO 漫画ファイル", extensions: ["cmc"] }],
+      filters: [{ name: t("filterName"), extensions: ["cmc"] }],
     });
     if (typeof selected !== "string") return;
     try {
@@ -45,13 +46,13 @@ export function useRelink(onDone?: (result: SyncResult) => void): { start: (work
 
   const dialog = pending && (
     <Dialog
-      label="漫画ファイルの場所を指定し直す"
-      title="別の作品のようです"
+      label={t("label")}
+      title={t("title")}
       onClose={() => setPending(null)}
       actions={
         <>
           <button className="btn" onClick={() => setPending(null)}>
-            やめる
+            {t("cancel")}
           </button>
           <button
             className="btn primary"
@@ -61,17 +62,22 @@ export function useRelink(onDone?: (result: SyncResult) => void): { start: (work
               apply(p.workId, p.path);
             }}
           >
-            この漫画ファイルにする
+            {t("confirm")}
           </button>
         </>
       }
     >
       <p>
-        選んだ漫画ファイル（{pending.check.title}・{pending.check.newPages} ページ）は、「{pending.title}」のページと{" "}
-        {pending.check.oldPages} ページ中 <b>{pending.check.matched} ページ</b>しか一致しませんでした。
+        {tn("body", {
+          file: pending.check.title,
+          newPages: pending.check.newPages,
+          work: pending.title,
+          oldPages: pending.check.oldPages,
+          matched: <b>{t("matchedPages", { n: pending.check.matched })}</b>,
+        })}
       </p>
       <p className="muted small-text">
-        このまま進めると、一致しないページの作業記録は「CLIP STUDIO から消えたページ」として残ります（別のページへ移すこともできます）。
+        {t("note")}
       </p>
     </Dialog>
   );

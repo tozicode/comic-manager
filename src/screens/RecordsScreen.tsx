@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
-import { api, Board, SessionRow, UNIT } from "../api";
+import { api, Board, SessionRow } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { Heatmap } from "../components/Heatmap";
 import { dayKey, dayLabel, dayStartMs, fromInputs, hours, startOfDay, time, timeInDay } from "../format";
+import { t } from "../i18n/records";
 
 const DAY = 86_400_000;
+// 期間の選択肢（名前は描画時に訳す）
 const PERIODS = [
-  { label: "直近 2 週間", days: 14 },
-  { label: "直近 1 か月", days: 31 },
-  { label: "直近 3 か月", days: 92 },
-  { label: "すべて", days: 0 },
-];
+  { key: "period.2w", days: 14 },
+  { key: "period.1m", days: 31 },
+  { key: "period.3m", days: 92 },
+  { key: "period.all", days: 0 },
+] as const;
 
 /** 編集中・追加中の記録の入力値 */
 type Draft = { id: number | null; pageId: number; stageId: number; date: string; start: string; end: string; running: boolean };
@@ -31,10 +33,10 @@ function toDraft(row: SessionRow): Draft {
 /** 入力値を時刻にする。終了が開始より前なら日付をまたいだとみなす */
 function draftRange(d: Draft): { start: number; end: number | null } | string {
   const start = fromInputs(d.date, d.start);
-  if (start === null) return "開始時刻を入力してください";
+  if (start === null) return t("needStart");
   if (d.running) return { start, end: null };
   let end = fromInputs(d.date, d.end);
-  if (end === null) return "終了時刻を入力してください";
+  if (end === null) return t("needEnd");
   if (end <= start) end += DAY; // 区切りをまたいで翌日まで作業した場合
   return { start, end };
 }
@@ -117,7 +119,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
           )}
           <input type="time" className="field" value={d.start} onChange={(e) => setDraft({ ...d, start: e.target.value })} />–
           {d.running ? (
-            <span className="tag sys">計測中</span>
+            <span className="tag sys">{t("tracking")}</span>
           ) : (
             <input type="time" className="field" value={d.end} onChange={(e) => setDraft({ ...d, end: e.target.value })} />
           )}
@@ -127,7 +129,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
         <select className="field" value={d.pageId} onChange={(e) => setDraft({ ...d, pageId: Number(e.target.value) })}>
           {board?.pages.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.missing ? `${p.fileName}（消えたページ）` : p.label}
+              {p.missing ? t("missingPage", { name: p.fileName }) : p.label}
             </option>
           ))}
         </select>
@@ -151,10 +153,10 @@ export function RecordsScreen({ workId }: { workId: number }) {
       <td className="right">
         <div className="row tight" style={{ justifyContent: "flex-end" }}>
           <button className="btn small ghost" onClick={() => setDraft(null)}>
-            やめる
+            {t("cancel")}
           </button>
           <button className="btn small primary" onClick={save}>
-            保存
+            {t("save")}
           </button>
         </div>
       </td>
@@ -163,10 +165,10 @@ export function RecordsScreen({ workId }: { workId: number }) {
 
   const header = (
     <tr>
-      <th style={{ width: 230 }}>時間</th>
-      <th style={{ width: 110 }}>{board ? UNIT[board.work.kind].row : "ページ"}</th>
-      <th style={{ width: 130 }}>工程</th>
-      <th style={{ width: 110 }}>長さ</th>
+      <th style={{ width: 230 }}>{t("col.time")}</th>
+      <th style={{ width: 110 }}>{t(board?.work.kind === "files" ? "col.rowFiles" : "col.rowComic")}</th>
+      <th style={{ width: 130 }}>{t("col.stage")}</th>
+      <th style={{ width: 110 }}>{t("col.length")}</th>
       <th />
       <th style={{ width: 140 }} />
     </tr>
@@ -179,20 +181,20 @@ export function RecordsScreen({ workId }: { workId: number }) {
       <div className="toolbar">
         <select className="field" value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
           {PERIODS.map((p, i) => (
-            <option key={p.label} value={i}>
-              {p.label}
+            <option key={p.key} value={i}>
+              {t(p.key)}
             </option>
           ))}
         </select>
         <span className="grow" />
         <button className="btn" onClick={() => setDraft(newDraft())} disabled={!board || draft?.id === null}>
-          ＋ 記録を手で追加
+          {t("addManual")}
         </button>
       </div>
 
       {draft?.id === null && (
         <div className="rec-day">
-          <h3>新しい記録</h3>
+          <h3>{t("newRecord")}</h3>
           <table className="rec">
             <thead>{header}</thead>
             <tbody>
@@ -202,7 +204,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
         </div>
       )}
 
-      {groups.size === 0 && <p className="muted center">この期間の作業記録はありません</p>}
+      {groups.size === 0 && <p className="muted center">{t("empty")}</p>}
       {[...groups.entries()].map(([key, list]) => {
         const groupDay = new Date(`${key}T00:00`);
         const total = list.reduce((n, r) => n + (r.endedAt ?? app.now) - r.startedAt, 0);
@@ -211,9 +213,9 @@ export function RecordsScreen({ workId }: { workId: number }) {
             <h3>
               <span>
                 {dayLabel(new Date(`${key}T00:00`))}
-                {key === todayKey && " 今日"}
+                {key === todayKey && ` ${t("today")}`}
               </span>
-              <span className="muted num">合計 {hours(total)}</span>
+              <span className="muted num">{t("total", { time: hours(total) })}</span>
             </h3>
             <table className="rec">
               <thead>{header}</thead>
@@ -227,7 +229,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
                     <tr key={row.id}>
                       <td className="num">
                         {timeInDay(row.startedAt, groupDay)} –{" "}
-                        {row.endedAt ? timeInDay(row.endedAt, groupDay) : <span className="tag sys">計測中</span>}
+                        {row.endedAt ? timeInDay(row.endedAt, groupDay) : <span className="tag sys">{t("tracking")}</span>}
                       </td>
                       <td>{row.pageLabel}</td>
                       <td>
@@ -237,13 +239,13 @@ export function RecordsScreen({ workId }: { workId: number }) {
                         </span>
                       </td>
                       <td className="num">{hours((row.endedAt ?? app.now) - row.startedAt)}</td>
-                      <td>{row.edited && <span className="edited">✎ 手修正</span>}</td>
+                      <td>{row.edited && <span className="edited">{t("edited")}</span>}</td>
                       <td className="right">
                         <button className="btn small ghost" onClick={() => setDraft(toDraft(row))}>
-                          直す
+                          {t("edit")}
                         </button>
                         <button className="btn small ghost" onClick={() => setDeleting(row)} disabled={!row.endedAt}>
-                          消す
+                          {t("delete")}
                         </button>
                       </td>
                     </tr>
@@ -257,15 +259,15 @@ export function RecordsScreen({ workId }: { workId: number }) {
 
       {deleting && (
         <Dialog
-          title="この作業記録を消しますか？"
+          title={t("deleteTitle")}
           onClose={() => setDeleting(null)}
           actions={
             <>
               <button className="btn" onClick={() => setDeleting(null)}>
-                やめる
+                {t("cancel")}
               </button>
               <button className="btn danger" onClick={() => remove(deleting)}>
-                消す
+                {t("delete")}
               </button>
             </>
           }
@@ -273,7 +275,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
           <p>
             {dayLabel(startOfDay(deleting.startedAt))} {timeInDay(deleting.startedAt, startOfDay(deleting.startedAt))} –{" "}
             {deleting.endedAt && timeInDay(deleting.endedAt, startOfDay(deleting.startedAt))}{" "}
-            {deleting.pageLabel} {deleting.stageName}（{hours((deleting.endedAt ?? 0) - deleting.startedAt)}）
+            {t("deleteSummary", { page: deleting.pageLabel, stage: deleting.stageName, time: hours((deleting.endedAt ?? 0) - deleting.startedAt) })}
           </p>
         </Dialog>
       )}

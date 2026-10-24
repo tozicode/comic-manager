@@ -7,6 +7,8 @@ use std::path::Path;
 
 use rusqlite::params;
 
+use crate::i18n::{M, tr, trf};
+
 use super::{KIND_FILES, Result, Store, SyncResult, db_err, valid_name};
 
 /// 登録できるファイルの拡張子
@@ -27,7 +29,7 @@ fn check_extension(path: &str) -> Result<()> {
     if ILLUST_EXTENSIONS.contains(&ext.as_str()) {
         Ok(())
     } else {
-        Err(format!("{} は登録できない種類のファイルです（.clip / .psd を選んでください）", file_title(path)))
+        Err(trf(M::UnsupportedFile, &[("name", &file_title(path))]))
     }
 }
 
@@ -36,7 +38,7 @@ impl Store {
     pub fn add_files_work(&self, title: &str, paths: &[String], set_id: i64, now: i64) -> Result<i64> {
         let title = valid_name(title)?;
         if paths.is_empty() {
-            return Err("ファイルを 1 つ以上選んでください".into());
+            return Err(tr(M::NoFilesSelected).into());
         }
         for p in paths {
             check_extension(p)?;
@@ -88,7 +90,7 @@ impl Store {
             .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1 AND id != ?2", params![work_id, page_id], |r| r.get(0))
             .map_err(db_err)?;
         if rest == 0 {
-            return Err("最後のファイルは外せません（作品ごと外すときは作品一覧から）".into());
+            return Err(tr(M::LastFile).into());
         }
         self.conn.execute("DELETE FROM page WHERE id = ?1", [page_id]).map_err(db_err)?;
         self.renumber(work_id)
@@ -102,7 +104,7 @@ impl Store {
         all.sort();
         sorted.sort();
         if all != sorted {
-            return Err("ファイルの並びが正しくありません".into());
+            return Err(tr(M::FileOrderInvalid).into());
         }
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         for (i, id) in page_ids.iter().enumerate() {
@@ -127,7 +129,7 @@ impl Store {
             )
             .map_err(db_err)?;
         if dup {
-            return Err("このファイルは同じ作品にすでに登録されています".into());
+            return Err(tr(M::FileAlreadyAdded).into());
         }
         self.conn
             .execute(
@@ -182,14 +184,14 @@ impl Store {
     fn page_work(&self, page_id: i64) -> Result<i64> {
         self.conn
             .query_row("SELECT work_id FROM page WHERE id = ?1", [page_id], |r| r.get(0))
-            .map_err(|_| "ファイルが見つかりませんでした".to_string())
+            .map_err(|_| tr(M::FileNotFound).to_string())
     }
 
     fn ensure_files_work(&self, work_id: i64) -> Result<()> {
         if self.work_kind(work_id)? == KIND_FILES {
             Ok(())
         } else {
-            Err("この操作はイラストの作品でだけ使えます".into())
+            Err(tr(M::IllustOnly).into())
         }
     }
 }

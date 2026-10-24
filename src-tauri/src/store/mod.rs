@@ -9,8 +9,10 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
 use crate::cmc::Comic;
+use crate::i18n::{M, tr, trf};
 
 mod files;
+mod localize;
 mod pages;
 mod predict;
 mod prefs;
@@ -26,7 +28,7 @@ pub use tags::TagGroup;
 pub type Result<T> = std::result::Result<T, String>;
 
 fn db_err(e: rusqlite::Error) -> String {
-    format!("データベースの操作に失敗しました: {e}")
+    trf(M::DbError, &[("e", &e)])
 }
 
 // ---------------------------------------------------------------------------
@@ -266,7 +268,7 @@ const LATEST: i64 = 3;
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("データの保存先を作れませんでした: {e}"))?;
+            std::fs::create_dir_all(dir).map_err(|e| trf(M::DataDirCreateFailed, &[("e", &e)]))?;
         }
         Self::init(Connection::open(path).map_err(db_err)?)
     }
@@ -280,7 +282,12 @@ impl Store {
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
             .map_err(db_err)?;
         let store = Self { conn };
+        let fresh: i64 = store.conn.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(db_err)?;
         store.migrate(LATEST)?;
+        // 初めて作ったデータベースなら、初期の工程・タグの名前を今の言語にする
+        if fresh == 0 {
+            store.localize_defaults(crate::i18n::current())?;
+        }
         Ok(store)
     }
 
@@ -446,7 +453,7 @@ impl Store {
             .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0))
             .map_err(db_err)?;
         if broken > 0 {
-            return Err("データの更新で不整合が見つかりました。バックアップから戻してください".into());
+            return Err(tr(M::MigrationBroken).into());
         }
         let base: i64 = self
             .conn
@@ -522,7 +529,7 @@ impl Store {
             .query_row("SELECT set_id FROM stage_def WHERE id = ?1", [stage_id], |r| r.get(0))
             .optional()
             .map_err(db_err)?
-            .ok_or_else(|| "工程が見つかりませんでした".into())
+            .ok_or_else(|| tr(M::StageNotFound).into())
     }
 
     /// 漫画のセットに工程を追加する
@@ -551,7 +558,7 @@ impl Store {
     pub fn update_stage(&self, id: i64, name: &str, color: &str, hint_minutes: i64) -> Result<StageDef> {
         let name = valid_name(name)?;
         if hint_minutes < 1 {
-            return Err("目安の時間は 1 分以上にしてください".into());
+            return Err(tr(M::HintTooShort).into());
         }
         self.conn
             .execute(
@@ -574,7 +581,7 @@ impl Store {
                 )
                 .map_err(db_err)?;
             if visible == 0 {
-                return Err("工程は 1 つ以上表示しておく必要があります".into());
+                return Err(tr(M::KeepOneStage).into());
             }
         }
         self.conn
@@ -587,7 +594,7 @@ impl Store {
     pub fn move_stage(&self, id: i64, delta: i64) -> Result<()> {
         let mut ids = self.set_stage_ids(self.stage_set_of(id)?)?;
         let Some(pos) = ids.iter().position(|&x| x == id) else {
-            return Err("工程が見つかりませんでした".into());
+            return Err(tr(M::StageNotFound).into());
         };
         let to = pos as i64 + delta;
         if to < 0 || to >= ids.len() as i64 {
@@ -600,14 +607,14 @@ impl Store {
     /// 同じセットの工程をこの順番に並べる（ドラッグでの並べ替え用）。全作品の並び順にも反映する
     pub fn set_stage_order(&self, ids: &[i64]) -> Result<()> {
         let Some(&first) = ids.first() else {
-            return Err("工程の並びが正しくありません".into());
+            return Err(tr(M::StageOrderInvalid).into());
         };
         let mut all = self.set_stage_ids(self.stage_set_of(first)?)?;
         let mut sorted = ids.to_vec();
         sorted.sort();
         all.sort();
         if sorted != all {
-            return Err("工程の並びが正しくありません".into());
+            return Err(tr(M::StageOrderInvalid).into());
         }
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         for (i, id) in ids.iter().enumerate() {
@@ -624,7 +631,7 @@ impl Store {
         self.list_stages()?
             .into_iter()
             .find(|s| s.id == id)
-            .ok_or_else(|| "工程が見つかりませんでした".into())
+            .ok_or_else(|| tr(M::StageNotFound).into())
     }
 
     // ----- 作品 -----
@@ -641,7 +648,7 @@ impl Store {
             .query_row("SELECT COUNT(*) > 0 FROM work WHERE cmc_path = ?1", [cmc_path], |r| r.get(0))
             .map_err(db_err)?;
         if exists {
-            return Err("この漫画ファイルはすでに登録されています".into());
+            return Err(tr(M::CmcAlreadyAdded).into());
         }
         self.conn
             .execute(
@@ -666,7 +673,7 @@ impl Store {
             )
             .map_err(db_err)?;
         if n == 0 {
-            return Err("選んだ工程のセットに、表示している工程がありません".into());
+            return Err(tr(M::SetHasNoVisibleStage).into());
         }
         Ok(())
     }
@@ -690,7 +697,7 @@ impl Store {
     /// 作品の cmc の場所を変えて読み直す。記録はページのファイル名で引き継がれる
     pub fn relink_work(&self, work_id: i64, cmc_path: &str, comic: &Comic, now: i64) -> Result<SyncResult> {
         if self.work_kind(work_id)? != KIND_COMIC {
-            return Err("イラストの作品は、ファイルごとに場所を指定してください".into());
+            return Err(tr(M::IllustNeedsFiles).into());
         }
         let other: Option<String> = self
             .conn
@@ -698,9 +705,7 @@ impl Store {
             .optional()
             .map_err(db_err)?;
         if let Some(title) = other {
-            return Err(format!(
-                "この漫画ファイルは「{title}」として登録されています。そちらを作品一覧から外してから、もう一度選んでください"
-            ));
+            return Err(trf(M::CmcRegisteredAs, &[("title", &title)]));
         }
         self.conn
             .execute("UPDATE work SET cmc_path = ?2 WHERE id = ?1", params![work_id, cmc_path])
@@ -732,7 +737,7 @@ impl Store {
             )
             .optional()
             .map_err(db_err)?
-            .ok_or_else(|| "作品が見つかりませんでした".into())
+            .ok_or_else(|| tr(M::WorkNotFound).into())
     }
 
     pub fn list_works(&self) -> Result<Vec<WorkSummary>> {
@@ -942,7 +947,7 @@ impl Store {
             )
             .map_err(db_err)?;
         self.active_session()?
-            .ok_or_else(|| "計測を開始できませんでした".into())
+            .ok_or_else(|| tr(M::TrackingStartFailed).into())
     }
 
     /// 計測を止める。計測していなければ None
@@ -1030,7 +1035,7 @@ impl Store {
                 |r| r.get(0),
             )
             .map_err(db_err)?;
-        if ok { Ok(()) } else { Err("ページか工程が見つかりませんでした".into()) }
+        if ok { Ok(()) } else { Err(tr(M::PageOrStageNotFound).into()) }
     }
 
     // ----- 作業記録 -----
@@ -1112,9 +1117,9 @@ impl Store {
             .query_row("SELECT ended_at IS NULL FROM work_session WHERE id = ?1", [id], |r| r.get(0))
             .optional()
             .map_err(db_err)?
-            .ok_or_else(|| "作業記録が見つかりませんでした".to_string())?;
+            .ok_or_else(|| tr(M::SessionNotFound).to_string())?;
         if running != ended_at.is_none() {
-            return Err("計測中の記録の終了時刻は変えられません".into());
+            return Err(tr(M::RunningSessionEnd).into());
         }
         check_range(started_at, ended_at, now)?;
         self.conn
@@ -1134,7 +1139,7 @@ impl Store {
             .query_row("SELECT started_at FROM work_session WHERE id = ?1 AND ended_at IS NOT NULL", [id], |r| r.get(0))
             .optional()
             .map_err(db_err)?
-            .ok_or_else(|| "作業記録が見つかりませんでした".to_string())?;
+            .ok_or_else(|| tr(M::SessionNotFound).to_string())?;
         let end = ended_at.clamp(started, now);
         self.conn
             .execute("UPDATE work_session SET ended_at = ?2 WHERE id = ?1", params![id, end])
@@ -1145,11 +1150,11 @@ impl Store {
     /// データベースをまるごと 1 つのファイルに書き出す（使用中でも一貫した内容になる）
     pub fn backup_to(&self, dest: &Path) -> Result<()> {
         if dest.exists() {
-            std::fs::remove_file(dest).map_err(|e| format!("同じ名前のファイルを置き換えられませんでした: {e}"))?;
+            std::fs::remove_file(dest).map_err(|e| trf(M::ReplaceFileFailed, &[("e", &e)]))?;
         }
         self.conn
             .execute("VACUUM INTO ?1", [dest.to_string_lossy()])
-            .map_err(|e| format!("バックアップを作れませんでした: {e}"))?;
+            .map_err(|e| trf(M::BackupFailed, &[("e", &e)]))?;
         Ok(())
     }
 
@@ -1161,19 +1166,19 @@ impl Store {
 
 fn valid_name(name: &str) -> Result<&str> {
     let name = name.trim();
-    if name.is_empty() { Err("名前を入力してください".into()) } else { Ok(name) }
+    if name.is_empty() { Err(tr(M::NameRequired).into()) } else { Ok(name) }
 }
 
 fn check_range(started_at: i64, ended_at: Option<i64>, now: i64) -> Result<()> {
     if started_at > now {
-        return Err("開始時刻が未来になっています".into());
+        return Err(tr(M::StartInFuture).into());
     }
     if let Some(end) = ended_at {
         if end <= started_at {
-            return Err("終了時刻は開始時刻より後にしてください".into());
+            return Err(tr(M::EndBeforeStart).into());
         }
         if end > now {
-            return Err("終了時刻が未来になっています".into());
+            return Err(tr(M::EndInFuture).into());
         }
     }
     Ok(())

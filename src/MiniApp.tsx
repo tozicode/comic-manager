@@ -6,6 +6,7 @@ import { SaveToast } from "./components/Watchers";
 import { Thumb } from "./components/Thumb";
 import { loadChosenPlan, useForecast } from "./forecast";
 import { clock, estimate, hours } from "./format";
+import { t } from "./i18n/timer";
 
 const COMPACT_KEY = "otosazu.miniCompact";
 const PIN_KEY = "otosazu.miniPinned";
@@ -100,22 +101,22 @@ export function MiniApp() {
 
   if (compact) {
     return (
-      <div className="miniwin compact" data-tauri-drag-region onDoubleClick={toggleCompact} title="ダブルクリックで大きく表示">
+      <div className="miniwin compact" data-tauri-drag-region onDoubleClick={toggleCompact} title={t("expandHint")}>
         {active ? <span className="dot" /> : <span className="dot off" />}
         <div className="grow" data-tauri-drag-region>
           <div className="small-text" data-tauri-drag-region>
-            {active ? `${active.pageLabel} ${active.stageName}` : paused ? `一時停止中 ${paused.pageLabel}` : "計測していません"}
+            {active ? `${active.pageLabel} ${active.stageName}` : paused ? t("pausedWith", { page: paused.pageLabel }) : t("notTracking")}
           </div>
           <div className="num mtime-s" data-tauri-drag-region>
             {active ? clock(now - active.startedAt) : "--:--:--"}
           </div>
         </div>
         {active ? (
-          <button className="icon-btn accent" title="一時停止" onClick={app.pause}>
+          <button className="icon-btn accent" title={t("pause")} onClick={app.pause}>
             <PauseIcon />
           </button>
         ) : paused ? (
-          <button className="icon-btn accent" title="再開" onClick={app.resume}>
+          <button className="icon-btn accent" title={t("resume")} onClick={app.resume}>
             <PlayIcon />
           </button>
         ) : null}
@@ -126,17 +127,17 @@ export function MiniApp() {
   return (
     <div className="miniwin">
       <div className="mtitle" data-tauri-drag-region onDoubleClick={() => api.focusMain()}>
-        <span data-tauri-drag-region title="ダブルクリックでメインの窓を開く">
+        <span data-tauri-drag-region title={t("openMainHint")}>
           Otosazu{f ? ` · ${f.board.work.title}` : ""}
         </span>
         <span className="mtools">
-          <button className={pinned ? "on" : ""} title={pinned ? "常に手前に表示中" : "常に手前に表示する"} onClick={togglePin}>
+          <button className={pinned ? "on" : ""} title={pinned ? t("pinnedOn") : t("pinnedOff")} onClick={togglePin}>
             📌
           </button>
-          <button title="小さく表示" onClick={toggleCompact}>
+          <button title={t("compact")} onClick={toggleCompact}>
             ⤡
           </button>
-          <button title="閉じる" onClick={() => api.closeMini()}>
+          <button title={t("close")} onClick={() => api.closeMini()}>
             ✕
           </button>
         </span>
@@ -145,17 +146,17 @@ export function MiniApp() {
       {app.stopped ? (
         <div className="mbody column">
           <b>
-            {app.stopped.pageLabel} の{app.stopped.stageName}は完了しましたか？
+            {t("stoppedTitle", { page: app.stopped.pageLabel, stage: app.stopped.stageName })}
           </b>
           <span className="muted small-text">
-            今回 {hours(app.stopped.durationMs)} ・ 合計 {hours(app.stopped.totalMs)}
+            {t("stoppedBody", { now: hours(app.stopped.durationMs), total: hours(app.stopped.totalMs) })}
           </span>
           <div className="row tight" style={{ justifyContent: "flex-end" }}>
             <button className="btn small" onClick={() => app.answerStopped(false)}>
-              まだ途中
+              {t("notYet")}
             </button>
             <button className="btn small primary" onClick={() => app.answerStopped(true)}>
-              完了にする
+              {t("markDone")}
             </button>
           </div>
         </div>
@@ -169,18 +170,17 @@ export function MiniApp() {
             <div className="mtime num">{clock(now - active.startedAt)}</div>
             {task && (
               <div className="muted tiny">
-                予測 {estimate(task.predictedMs)} ・{" "}
                 {task.predictedMs - task.spentMs > 0
-                  ? `残り約 ${estimate(task.predictedMs - task.spentMs)}`
-                  : "超過"}
+                  ? t("predictedLeft", { time: estimate(task.predictedMs), left: estimate(task.predictedMs - task.spentMs) })
+                  : t("predictedOver", { time: estimate(task.predictedMs) })}
               </div>
             )}
           </div>
           <div className="mctrl">
-            <button className="icon-btn accent" title="一時停止" onClick={app.pause}>
+            <button className="icon-btn accent" title={t("pause")} onClick={app.pause}>
               <PauseIcon />
             </button>
-            <button className="icon-btn sec" title="止める" onClick={app.stop}>
+            <button className="icon-btn sec" title={t("stop")} onClick={app.stop}>
               <StopIcon />
             </button>
           </div>
@@ -190,16 +190,16 @@ export function MiniApp() {
           {paused ? (
             <>
               <div className="grow">
-                <div className="small-text muted">一時停止中</div>
+                <div className="small-text muted">{t("paused")}</div>
                 <div className="mnext">
                   {paused.pageLabel} {paused.stageName}
                 </div>
               </div>
               <div className="mctrl">
-                <button className="icon-btn accent big" title="再開" onClick={app.resume}>
+                <button className="icon-btn accent big" title={t("resume")} onClick={app.resume}>
                   <PlayIcon />
                 </button>
-                <button className="icon-btn sec" title="計測をやめる" onClick={app.stop}>
+                <button className="icon-btn sec" title={t("stopTracking")} onClick={app.stop}>
                   <StopIcon />
                 </button>
               </div>
@@ -207,20 +207,22 @@ export function MiniApp() {
           ) : next ? (
             <>
               <div className="grow">
-                <div className="small-text muted">次にやること</div>
+                <div className="small-text muted">{t("next")}</div>
                 <div className="mnext">
                   {next.page.label} {next.stage.name}
                 </div>
                 <div className="muted tiny">
-                  {next.task.spentMs > 0 ? "続きから ・ " : ""}残り約 {estimate(next.task.remainingMs)}
+                  {next.task.spentMs > 0
+                    ? t("continuedLeft", { time: estimate(next.task.remainingMs) })
+                    : t("remaining", { time: estimate(next.task.remainingMs) })}
                 </div>
               </div>
-              <button className="icon-btn accent big" title="開始" onClick={() => app.start(next.page.id, next.stage.id)}>
+              <button className="icon-btn accent big" title={t("start")} onClick={() => app.start(next.page.id, next.stage.id)}>
                 <PlayIcon />
               </button>
             </>
           ) : (
-            <div className="muted small-text">{workId ? "着手できるタスクはありません" : "メインの窓で作品を選んでください"}</div>
+            <div className="muted small-text">{workId ? t("noTasks") : t("chooseWorkInMain")}</div>
           )}
         </div>
       )}
@@ -239,13 +241,13 @@ export function MiniApp() {
               }}
               defaultValue=""
             >
-              <option value="">タスクを選ぶ…</option>
+              <option value="">{t("pickTask")}</option>
               {f.candidates.map((c) => {
                 const p = f.board.pages.find((x) => x.id === c.pageId);
                 const st = f.board.stages.find((x) => x.id === c.stageId);
                 return (
                   <option key={`${c.pageId}-${c.stageId}`} value={`${c.pageId}-${c.stageId}`}>
-                    {p?.label} {st?.name}（残り {estimate(c.remainingMs)}）
+                    {t("taskOption", { page: p?.label ?? "", stage: st?.name ?? "", time: estimate(c.remainingMs) })}
                   </option>
                 );
               })}
@@ -253,7 +255,7 @@ export function MiniApp() {
           ) : (
             <>
               <div className="row small-text" style={{ justifyContent: "space-between" }}>
-                <span>今日のノルマ</span>
+                <span>{t("quota")}</span>
                 <span className="num">
                   <b>{hours(f.workedTodayMs)}</b> / {estimate(plan?.quotaMs ?? f.quotaMs)}
                 </span>
@@ -267,7 +269,7 @@ export function MiniApp() {
                 />
               </div>
               <button className="link small-text" onClick={() => setPicking(true)}>
-                別のタスクを選ぶ ▾
+                {t("pickOther")}
               </button>
             </>
           )}

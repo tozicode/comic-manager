@@ -29,4 +29,8 @@ export default defineConfig(() => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  // テストは日本語の表記で書いているので、言語を日本語にしてから走らせる
+  test: {
+    setupFiles: ["src/test-setup.ts"],
+  },
 }));
