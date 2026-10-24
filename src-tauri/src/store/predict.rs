@@ -1,9 +1,10 @@
-//! 完成予測（v1）。
+//! 完成予測（v2）。
 //!
 //! タスク（ページ × 工程）の予測時間 = 工程の基準時間 × ページのタグの倍率の積。
 //! - 工程の基準時間：全作品の完了したタスクの実績を、タグの倍率で割って揃えたものの中央値。
 //!   実績がまだ無い工程は、設定の「目安の時間」を使う
-//! - タグの倍率：v1 では設定の初期倍率をそのまま使う（実績からの学習は v2 で行う）
+//! - タグの倍率：初期倍率を事前分布とした縮小推定で、実績が増えるほど実績に寄せる。
+//!   基準時間と交互に推定し、log 倍率 = (Σ ずれ + K × log 初期倍率) / (実績数 + K)
 //! - 作業途中のタスクの残り = max(予測 − 経過, 予測 × 0.1)
 //!
 //! ばらつき：実績と予測のずれ（対数）の標準偏差 σ から、残り合計の幅を出す。
@@ -24,6 +25,13 @@ const DEFAULT_SIGMA: f64 = 0.3;
 const HINT_SIGMA: f64 = 0.35;
 /// 標準正規分布の 90% 点
 const Z90: f64 = 1.2816;
+/// 初期倍率を実績何件分として扱うか（縮小の強さ）
+const PRIOR_WEIGHT: f64 = 5.0;
+/// 基準時間とタグの倍率を交互に推定する回数
+const LEARN_ROUNDS: usize = 10;
+
+/// ページごとの (タグ, 初期倍率)
+type PageTags = HashMap<i64, Vec<(i64, f64)>>;
 
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -65,8 +73,7 @@ pub struct Prediction {
 
 impl Store {
     pub fn prediction(&self, work_id: i64, now: i64) -> Result<Prediction> {
-        let factors = self.page_factors()?;
-        let factor = |page: i64| factors.get(&page).copied().unwrap_or(1.0);
+        let page_tags = self.tag_priors()?;
 
         // 全作品の完了タスクの実績（計測中の記録は含めない）
         let mut stmt = self
@@ -81,11 +88,13 @@ impl Store {
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .and_then(|rows| rows.collect())
             .map_err(db_err)?;
-        let samples: Vec<(i64, f64, f64)> = samples
-            .into_iter()
-            .filter(|s| s.2 > 0)
-            .map(|(page, stage, spent)| (stage, spent as f64, factor(page)))
-            .collect();
+        let samples: Vec<(i64, i64, f64)> =
+            samples.into_iter().filter(|s| s.2 > 0).map(|(page, stage, spent)| (page, stage, spent as f64)).collect();
+
+        let tag_factors = learn_factors(&samples, &page_tags);
+        let factor = |page: i64| page_factor(&page_tags, &tag_factors, page);
+        // (工程, 実績, ページの倍率)
+        let samples: Vec<(i64, f64, f64)> = samples.iter().map(|&(page, stage, spent)| (stage, spent, factor(page))).collect();
 
         // 工程ごとの基準時間
         let hints: HashMap<i64, i64> = self.list_stages()?.into_iter().map(|s| (s.id, s.hint_minutes * 60_000)).collect();
@@ -165,28 +174,83 @@ impl Store {
         })
     }
 
-    /// 全ページのタグの倍率の積（隠したタグは除く。見開きは span = 2 から）
-    fn page_factors(&self) -> Result<HashMap<i64, f64>> {
+    /// 全ページのタグと初期倍率（隠したタグは除く。見開きは span = 2 から）
+    fn tag_priors(&self) -> Result<PageTags> {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT pt.page_id, t.initial_factor FROM page_tag pt JOIN tag_def t ON t.id = pt.tag_id
+                "SELECT pt.page_id, t.id, t.initial_factor FROM page_tag pt JOIN tag_def t ON t.id = pt.tag_id
                  WHERE t.hidden = 0
                  UNION ALL
-                 SELECT p.id, t.initial_factor FROM page p JOIN tag_def t ON t.system = ?1
+                 SELECT p.id, t.id, t.initial_factor FROM page p JOIN tag_def t ON t.system = ?1
                  WHERE p.span = 2 AND t.hidden = 0",
             )
             .map_err(db_err)?;
-        let rows: Vec<(i64, f64)> = stmt
-            .query_map(params![SYSTEM_SPREAD], |r| Ok((r.get(0)?, r.get(1)?)))
+        let rows: Vec<(i64, i64, f64)> = stmt
+            .query_map(params![SYSTEM_SPREAD], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .and_then(|rows| rows.collect())
             .map_err(db_err)?;
-        let mut factors = HashMap::new();
-        for (page, f) in rows {
-            *factors.entry(page).or_insert(1.0) *= f;
+        let mut tags: PageTags = HashMap::new();
+        for (page, tag, f) in rows {
+            tags.entry(page).or_default().push((tag, f));
         }
-        Ok(factors)
+        Ok(tags)
     }
+}
+
+/// ページのタグの倍率の積。学習していないタグは初期倍率を使う
+fn page_factor(page_tags: &PageTags, learned: &HashMap<i64, f64>, page: i64) -> f64 {
+    page_tags
+        .get(&page)
+        .map(|tags| tags.iter().map(|(tag, f0)| learned.get(tag).copied().unwrap_or(*f0)).product())
+        .unwrap_or(1.0)
+}
+
+/// 完了タスクの実績 (ページ, 工程, 実績) から、タグの倍率を縮小推定で学習する。
+/// 実績のあるタグだけを返す
+fn learn_factors(samples: &[(i64, i64, f64)], page_tags: &PageTags) -> HashMap<i64, f64> {
+    let mut prior: HashMap<i64, f64> = HashMap::new();
+    for &(page, _, _) in samples {
+        for &(tag, f0) in page_tags.get(&page).into_iter().flatten() {
+            prior.insert(tag, f0);
+        }
+    }
+    let mut tags: Vec<i64> = prior.keys().copied().collect();
+    tags.sort(); // 更新の順番を毎回同じにする
+    let mut learned = prior.clone();
+
+    for _ in 0..LEARN_ROUNDS {
+        // 今の倍率で揃えた、工程ごとの基準時間（log）。
+        // ここは中央値ではなく log の平均にする（タグのずれも平均で測るので、揃えないとずれが毎回たまっていく）
+        let mut normalized: HashMap<i64, (f64, f64)> = HashMap::new();
+        for &(page, stage, spent) in samples {
+            let e = normalized.entry(stage).or_default();
+            e.0 += (spent / page_factor(page_tags, &learned, page)).ln();
+            e.1 += 1.0;
+        }
+        let log_base: HashMap<i64, f64> = normalized.into_iter().map(|(stage, (sum, n))| (stage, sum / n)).collect();
+
+        for &tag in &tags {
+            let mut sum = 0.0;
+            let mut n = 0.0;
+            for &(page, stage, spent) in samples {
+                let Some(page_tag) = page_tags.get(&page) else { continue };
+                if !page_tag.iter().any(|t| t.0 == tag) {
+                    continue;
+                }
+                let others: f64 = page_tag
+                    .iter()
+                    .filter(|t| t.0 != tag)
+                    .map(|(t, f0)| learned.get(t).copied().unwrap_or(*f0).ln())
+                    .sum();
+                sum += spent.ln() - log_base[&stage] - others;
+                n += 1.0;
+            }
+            let f = ((sum + PRIOR_WEIGHT * prior[&tag].ln()) / (n + PRIOR_WEIGHT)).exp();
+            learned.insert(tag, f.clamp(0.1, 10.0));
+        }
+    }
+    learned
 }
 
 fn median(v: &mut [f64]) -> f64 {
@@ -232,17 +296,20 @@ mod tests {
         store.set_page_tag(&[pages[2]], tag(&store, "コマ多"), true).unwrap(); // p4 は ×1.3
         let mut at = 0;
         finish(&store, pages[0], st[0], 50, &mut at); // 50
-        finish(&store, pages[1], st[0], 120, &mut at); // 見開き 120 / 2.0 = 60
-        finish(&store, pages[2], st[0], 91, &mut at); // 91 / 1.3 = 70
+        finish(&store, pages[1], st[0], 120, &mut at); // 見開き 120 / 2.0 = 60（1 件だけなので 2.0 から少し動く）
+        finish(&store, pages[2], st[0], 91, &mut at); // 91 / 1.3 = 70（同上）
 
         let p = store.prediction(id, at).unwrap();
-        assert_eq!(p.stages[0].base_ms, 60 * MIN);
+        // 倍率は学習で少し動くが、中央値は見開きのページのまま（基準時間 × 倍率 = その実績）
+        let spread = p.tasks.iter().find(|t| t.page_id == pages[1] && t.stage_id == st[0]).unwrap();
+        assert!((spread.predicted_ms - 120 * MIN).abs() < 1000);
+        assert!((55 * MIN..65 * MIN).contains(&p.stages[0].base_ms), "{}", p.stages[0].base_ms / MIN);
         assert_eq!(p.stages[0].samples, 3);
         assert!(!p.stages[0].from_hint);
 
-        // p4 のペン入れ：目安 90 分 × コマ多 1.3
+        // p4 のペン入れ：目安 90 分 × コマ多（下書きの実績から 1.3 より少し大きく学習している）
         let t = p.tasks.iter().find(|t| t.page_id == pages[2] && t.stage_id == st[1]).unwrap();
-        assert_eq!(t.predicted_ms, 117 * MIN);
+        assert!((117 * MIN..137 * MIN).contains(&t.predicted_ms), "{}", t.predicted_ms / MIN);
         // 下書きは全部完了しているので残りに入らない
         assert!(p.tasks.iter().filter(|t| t.stage_id == st[0]).all(|t| t.done && t.remaining_ms == 0));
     }
@@ -301,6 +368,77 @@ mod tests {
         let many = store.prediction(id, at).unwrap();
         assert!(many.stages.iter().all(|s| s.samples == 5));
         assert!(many.sigma < few.sigma);
+    }
+
+    /// 工程 1 に、タグなしのページを 60 分、タグ 7（初期 ×1.3）のページを `minutes` 分で n 件ずつ入れる
+    fn tagged_samples(n: i64, minutes: f64) -> (Vec<(i64, i64, f64)>, PageTags) {
+        let mut samples = Vec::new();
+        let mut tags: PageTags = HashMap::new();
+        for i in 0..n {
+            samples.push((i, 1, 60.0));
+            samples.push((1000 + i, 1, minutes));
+            tags.insert(1000 + i, vec![(7, 1.3)]);
+        }
+        (samples, tags)
+    }
+
+    #[test]
+    fn 実績が初期倍率どおりなら倍率は変わらない() {
+        let (samples, tags) = tagged_samples(10, 78.0);
+        assert!((learn_factors(&samples, &tags)[&7] - 1.3).abs() < 1e-6);
+    }
+
+    #[test]
+    fn 実績が増えるほど倍率は実績に寄る() {
+        // 実際には ×2.0 かかっている
+        let few = learn_factors(&tagged_samples(1, 120.0).0, &tagged_samples(1, 120.0).1)[&7];
+        let some = learn_factors(&tagged_samples(5, 120.0).0, &tagged_samples(5, 120.0).1)[&7];
+        let many = learn_factors(&tagged_samples(100, 120.0).0, &tagged_samples(100, 120.0).1)[&7];
+        assert!(1.3 < few && few < some && some < many && many < 2.0, "{few} {some} {many}");
+        assert!(few < 1.5); // 1 件ではまだ初期倍率に近い
+        assert!(many > 1.9);
+    }
+
+    #[test]
+    fn 実績の無いタグは学習しない() {
+        let (samples, mut tags) = tagged_samples(3, 78.0);
+        tags.insert(5000, vec![(8, 2.0)]); // 実績の無いページのタグ
+        let learned = learn_factors(&samples, &tags);
+        assert!(!learned.contains_key(&8));
+        assert!((page_factor(&tags, &learned, 5000) - 2.0).abs() < 1e-9);
+        assert!((page_factor(&tags, &learned, 1) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn 全部のページに付いたタグは基準時間と区別できないので初期倍率のまま() {
+        let samples: Vec<(i64, i64, f64)> = (0..10).map(|i| (i, 1, 100.0 + i as f64)).collect();
+        let tags: PageTags = (0..10).map(|i| (i, vec![(7, 1.3)])).collect();
+        assert!((learn_factors(&samples, &tags)[&7] - 1.3).abs() < 1e-6);
+    }
+
+    #[test]
+    fn 学習した倍率が予測に使われる() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let pages: Vec<i64> = store.board(id, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        let many = tag(&store, "コマ多");
+        // 別の作品で、コマ多のページが実際には ×2 かかっている
+        let other = store
+            .add_work("C:/b.cmc", &super::super::tests::comic(&[("a.clip", 1), ("b.clip", 1), ("c.clip", 1), ("d.clip", 1), ("e.clip", 1)]), 0)
+            .unwrap();
+        let op: Vec<i64> = store.board(other, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        store.set_page_tag(&op[3..], many, true).unwrap();
+        let mut at = 0;
+        for (i, &page) in op.iter().enumerate() {
+            finish(&store, page, st[0], if i < 3 { 60 } else { 120 }, &mut at);
+        }
+        store.set_page_tag(&[pages[2]], many, true).unwrap();
+
+        let p = store.prediction(id, at).unwrap();
+        assert_eq!(p.stages[0].base_ms, 60 * MIN);
+        let t = p.tasks.iter().find(|t| t.page_id == pages[2] && t.stage_id == st[0]).unwrap();
+        // 初期倍率どおりなら 78 分、実績どおりなら 120 分。2 件ではその間
+        assert!(78 * MIN < t.predicted_ms && t.predicted_ms < 120 * MIN, "{}", t.predicted_ms / MIN);
     }
 
     #[test]
