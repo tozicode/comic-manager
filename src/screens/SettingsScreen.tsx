@@ -642,10 +642,21 @@ function DataSection() {
   const app = useApp();
   const [info, setInfo] = useState<{ dbPath: string; version: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [checkUpdates, setCheckUpdates] = useState<boolean | null>(null);
 
   useEffect(() => {
     api.dataInfo().then(setInfo).catch(app.showError);
+    api.getCheckUpdates().then(setCheckUpdates).catch(app.showError);
   }, [app.showError]);
+
+  const changeCheckUpdates = async (on: boolean) => {
+    try {
+      await api.setCheckUpdates(on);
+      setCheckUpdates(on);
+    } catch (e) {
+      app.showError(e);
+    }
+  };
 
   const backup = async () => {
     const d = new Date();
@@ -689,6 +700,24 @@ function DataSection() {
         {note && <p className="ok-text small-text">{note}</p>}
         <p className="muted small-text">
           バックアップから戻すときは、Otosazu を閉じてから、上の保存場所にある otosazu.db をバックアップのファイルで置き換えてください。
+        </p>
+      </div>
+
+      <div className="section-title" style={{ marginTop: 22 }}>
+        更新
+      </div>
+      <div className="card pad form">
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={checkUpdates ?? true}
+            disabled={checkUpdates === null}
+            onChange={(e) => changeCheckUpdates(e.target.checked)}
+          />
+          <span>起動時に新しい版を確認する</span>
+        </label>
+        <p className="muted small-text">
+          起動時に、配布元（GitHub）から最新の版の情報だけを読み込みます。作業記録などのデータを送ることはありません。
         </p>
       </div>
       <p className="muted small-text">Otosazu {info?.version}</p>

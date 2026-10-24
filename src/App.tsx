@@ -4,6 +4,7 @@ import { AppProvider, isMini, useApp } from "./app-context";
 import { Dialog } from "./components/Dialog";
 import { Sidebar } from "./components/Sidebar";
 import { TimerChip } from "./components/TimerChip";
+import { UpdateNotice } from "./components/UpdateNotice";
 import { SaveToast, Watchers } from "./components/Watchers";
 import { MiniApp } from "./MiniApp";
 import { hours } from "./format";
@@ -110,6 +111,7 @@ function Shell() {
 
       <Watchers />
       <SaveToast />
+      <UpdateNotice />
       {app.stopped && (
         <Dialog
           label="タイマーを止めました"

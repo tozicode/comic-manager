@@ -402,6 +402,16 @@ fn get_display_prefs(state: State<AppState>) -> Cmd<store::DisplayPrefs> {
 }
 
 #[tauri::command]
+fn get_check_updates(state: State<AppState>) -> Cmd<bool> {
+    with_store(&state, |s| s.check_updates())
+}
+
+#[tauri::command]
+fn set_check_updates(state: State<AppState>, on: bool) -> Cmd<()> {
+    with_store(&state, |s| s.set_check_updates(on))
+}
+
+#[tauri::command]
 fn set_display_prefs(state: State<AppState>, prefs: store::DisplayPrefs) -> Cmd<()> {
     with_store(&state, |s| s.set_display_prefs(&prefs))
 }
@@ -465,6 +475,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // 開発・確認用に、環境変数 OTOSAZU_DB で保存先を差し替えられる
             let path = match std::env::var_os("OTOSAZU_DB") {
@@ -539,6 +551,8 @@ pub fn run() {
             relink_work,
             get_display_prefs,
             set_display_prefs,
+            get_check_updates,
+            set_check_updates,
             add_files_work,
             add_files,
             remove_file,

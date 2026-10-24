@@ -1,4 +1,4 @@
-//! 設定：タイマーまわり（止め忘れを検知するまでの時間、グローバルショートカット、保存の検知）と表示
+//! 設定：タイマーまわり（止め忘れを検知するまでの時間、グローバルショートカット、保存の検知）と表示、更新の確認
 
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -7,6 +7,7 @@ use super::{Result, Store, db_err};
 
 const KEY: &str = "timer_prefs";
 const DISPLAY_KEY: &str = "display_prefs";
+const CHECK_UPDATES_KEY: &str = "check_updates";
 
 /// 表示の設定
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -89,6 +90,29 @@ impl Store {
     }
 }
 
+impl Store {
+    /// 起動時に新しい版を確認するか（既定はする）
+    pub fn check_updates(&self) -> Result<bool> {
+        let raw: Option<String> = self
+            .conn
+            .query_row("SELECT value FROM setting WHERE key = ?1", [CHECK_UPDATES_KEY], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?;
+        Ok(raw.as_deref() != Some("0"))
+    }
+
+    pub fn set_check_updates(&self, on: bool) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO setting (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![CHECK_UPDATES_KEY, if on { "1" } else { "0" }],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,5 +134,15 @@ mod tests {
         store.set_display_prefs(&DisplayPrefs { time_format: "clock".into() }).unwrap();
         assert_eq!(store.display_prefs().unwrap().time_format, "clock");
         assert!(store.set_display_prefs(&DisplayPrefs { time_format: "x".into() }).is_err());
+    }
+
+    #[test]
+    fn 更新の確認は既定でする() {
+        let store = Store::open_in_memory().unwrap();
+        assert!(store.check_updates().unwrap());
+        store.set_check_updates(false).unwrap();
+        assert!(!store.check_updates().unwrap());
+        store.set_check_updates(true).unwrap();
+        assert!(store.check_updates().unwrap());
     }
 }

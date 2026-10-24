@@ -235,6 +235,9 @@ export const api = {
   checkRelink: (workId: number, cmcPath: string) => invoke<RelinkCheck>("check_relink", { workId, cmcPath }),
   relinkWork: (workId: number, cmcPath: string) => invoke<SyncResult>("relink_work", { workId, cmcPath }),
   getDisplayPrefs: () => invoke<DisplayPrefs>("get_display_prefs"),
+  /** 起動時に新しい版を確認するか */
+  getCheckUpdates: () => invoke<boolean>("get_check_updates"),
+  setCheckUpdates: (on: boolean) => invoke<void>("set_check_updates", { on }),
   setDisplayPrefs: (prefs: DisplayPrefs) => invoke<void>("set_display_prefs", { prefs }),
 };
 

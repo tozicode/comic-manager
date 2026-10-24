@@ -18,6 +18,8 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
 Node.js は LTS 版を入れておく（公式のインストーラーか Homebrew）。
 
+自動更新のファイルに付ける署名鍵を、Windows と同じ `~/.tauri/otosazu.key` に置く（[release.md](release.md) の 0. を参照）。
+
 ```sh
 git clone git@github.com:tozicode/comic-manager.git
 cd comic-manager
@@ -34,6 +36,8 @@ npm test
 ## 3. ビルド
 
 ```sh
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/otosazu.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 npm run tauri build -- --target universal-apple-darwin
 ```
 
@@ -41,6 +45,7 @@ npm run tauri build -- --target universal-apple-darwin
 
 - `src-tauri/target/universal-apple-darwin/release/bundle/dmg/Otosazu_<版>_universal.dmg` … 配布用
 - `src-tauri/target/universal-apple-darwin/release/bundle/macos/Otosazu.app`
+- `src-tauri/target/universal-apple-darwin/release/bundle/macos/Otosazu.app.tar.gz` と `.sig` … 自動更新用（[release.md](release.md) の 4.）
 
 説明書の PDF は Windows で `npm run guide` で作ったもの（Windows・Mac 共通）を添える。
 
@@ -52,6 +57,8 @@ Mac 版で特に見ておくところ:
 - 止め忘れの確認：設定の「止め忘れの確認」を 1 分にして、計測中に 1 分以上操作しないと確認が出るか
 - ショートカット：設定欄に ⌃⌥Space のように記号で出るか、他のアプリを使っている最中に効くか
 - ミニタイマーの窓、ファイル選択・保存のダイアログ、バックアップ
+- 自動更新：前の版を入れた状態で新しい版をリリースし、「更新する」で入れ替わって開き直すか。
+  入れ替わった後に「このまま開く」の手順がもう一度要るかどうか（要るなら説明書に書く）
 - 利用者側の初回の開き方：自分でビルドした .app はそのまま開けてしまうので、
   .dmg を一度クラウドストレージなどに上げてダウンロードし直し、説明書どおり
   「プライバシーとセキュリティ → このまま開く」で開けるかを確かめる
