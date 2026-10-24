@@ -770,7 +770,7 @@ function AboutSection() {
         </dl>
       </div>
       <p className="muted small-text">
-        © 2026 tozicode
+        © 2026 tozicode.com
         <br />
         CLIP STUDIO PAINT は株式会社セルシスの商標です。Otosazu はセルシスとは関係のない個人制作のソフトです。
       </p>
