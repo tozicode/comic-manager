@@ -34,6 +34,7 @@ export function kindKey<K extends string>(kind: WorkKind, base: K): `${K}Comic` 
  */
 export function unitText(row: RowKind, n = 2): string {
   const unit = row.unit.trim();
-  if (getLang() !== "en" || n === 1 || unit === "" || unit.endsWith("s")) return unit;
+  // 英字の言葉だけ s を付ける（「パーツ」のような日本語の単位に s が付かないように）
+  if (getLang() !== "en" || n === 1 || !/^[A-Za-z]+$/.test(unit) || unit.endsWith("s")) return unit;
   return `${unit}s`;
 }
