@@ -2,9 +2,10 @@ import { DragEvent, useEffect, useRef, useState } from "react";
 import { api, DisplayPrefs, StageDef, StageSet, Tag, TagApplies, TagGroup, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { dayKey, dayLabel, estimate, hours, startOfDay, TimeFormat } from "../format";
 
-type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data";
+type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data" | "about";
 const SECTIONS: { key: Section; label: string }[] = [
   { key: "stages", label: "工程" },
   { key: "tags", label: "タグ" },
@@ -12,7 +13,11 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: "timer", label: "タイマー" },
   { key: "display", label: "表示" },
   { key: "data", label: "データ" },
+  { key: "about", label: "このソフトについて" },
 ];
+
+const BOOTH_URL = "https://tozicode.booth.pm/items/8867379";
+const X_ACCOUNT = "tozicode";
 
 /** 新しい工程に順番に割り当てる色 */
 const PALETTE = ["#9a7fb8", "#d0913a", "#3f8f8f", "#b85b8a", "#6b6b6b"];
@@ -54,8 +59,10 @@ export function SettingsScreen() {
           <TimerSection />
         ) : section === "display" ? (
           <DisplaySection />
-        ) : (
+        ) : section === "data" ? (
           <DataSection />
+        ) : (
+          <AboutSection />
         )}
       </div>
     </div>
@@ -720,7 +727,53 @@ function DataSection() {
           起動時に、配布元（GitHub）から最新の版の情報だけを読み込みます。作業記録などのデータを送ることはありません。
         </p>
       </div>
-      <p className="muted small-text">Otosazu {info?.version}</p>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// このソフトについて
+// ---------------------------------------------------------------------------
+
+function AboutSection() {
+  const app = useApp();
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.dataInfo().then((info) => setVersion(info.version)).catch(app.showError);
+  }, [app.showError]);
+
+  const open = (url: string) => openUrl(url).catch(app.showError);
+
+  return (
+    <>
+      <div className="section-title">このソフトについて</div>
+      <div className="card pad about">
+        <div className="about-name">Otosazu</div>
+        <div className="muted">原稿を落とさず描き上げる ── 漫画・イラスト制作のスケジュール管理ソフト</div>
+        <div className="about-version num">ver {version ?? "…"}</div>
+        <dl className="about-links">
+          <dt>配布ページ</dt>
+          <dd>
+            <button className="link" onClick={() => open(BOOTH_URL)}>
+              BOOTH
+            </button>
+            <span className="muted small-text">　最新版の入手・説明書はこちら</span>
+          </dd>
+          <dt>作者</dt>
+          <dd>
+            <button className="link" onClick={() => open(`https://x.com/${X_ACCOUNT}`)}>
+              X（@{X_ACCOUNT}）
+            </button>
+            <span className="muted small-text">　不具合のご報告やご意見はこちらへ</span>
+          </dd>
+        </dl>
+      </div>
+      <p className="muted small-text">
+        © 2026 tozicode
+        <br />
+        CLIP STUDIO PAINT は株式会社セルシスの商標です。Otosazu はセルシスとは関係のない個人制作のソフトです。
+      </p>
     </>
   );
 }
