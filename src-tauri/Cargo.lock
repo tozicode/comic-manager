@@ -2648,6 +2648,10 @@ version = "2.1.0"
 dependencies = [
  "base64 0.22.1",
  "image",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "objc2-web-kit",
  "rusqlite",
  "serde",
  "serde_json",

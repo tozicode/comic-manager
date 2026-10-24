@@ -480,7 +480,11 @@ fn save_calendar(dest: String, text: String) -> Cmd<()> {
 /// 今の画面を印刷する（印刷の画面で PDF にも保存できる）。Mac の WKWebView は window.print() が効かないため Tauri 経由で呼ぶ
 #[tauri::command]
 fn print_page(webview: tauri::Webview) -> Cmd<()> {
-    webview.print().map_err(|e| trf(M::PrintFailed, &[("e", &e)]))
+    #[cfg(target_os = "macos")]
+    let r = desktop::print_landscape(&webview);
+    #[cfg(not(target_os = "macos"))]
+    let r = webview.print();
+    r.map_err(|e| trf(M::PrintFailed, &[("e", &e)]))
 }
 
 /// データの保存場所をエクスプローラーで開く

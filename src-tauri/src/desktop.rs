@@ -72,6 +72,36 @@ pub fn register_shortcut(app: &AppHandle, shortcut: &str) -> Result<(), String> 
     .map_err(|e| trf(M::ShortcutRegisterFailed, &[("e", &e)]))
 }
 
+/// 印刷の画面を A4 横・余白なしで開く（Mac）。WKWebView の印刷は CSS の @page（用紙と向き）を見ず、
+/// wry の print() も向きを決めないので、ここで決める。余白は印刷用の CSS で取る
+#[cfg(target_os = "macos")]
+pub fn print_landscape(webview: &tauri::Webview) -> tauri::Result<()> {
+    use objc2_app_kit::{NSPaperOrientation, NSPrintInfo};
+    use objc2_foundation::NSSize;
+    use objc2_web_kit::WKWebView;
+
+    webview.with_webview(|wv| {
+        // SAFETY: with_webview はメインスレッドで呼ばれ、inner() はこの窓の WKWebView を指す
+        unsafe {
+            let view = &*wv.inner().cast::<WKWebView>();
+            let Some(window) = view.window() else { return };
+            // 共有の設定を使い、前回選んだプリンターなどは引き継ぐ。用紙と向きは毎回 A4 横に戻す
+            // （横のまま縦の大きさを入れると縦になるので、いったん縦にしてから大きさを入れる）
+            let info = NSPrintInfo::sharedPrintInfo();
+            info.setOrientation(NSPaperOrientation::Portrait);
+            info.setPaperSize(NSSize::new(595.276, 841.89));
+            info.setOrientation(NSPaperOrientation::Landscape);
+            info.setTopMargin(0.0);
+            info.setRightMargin(0.0);
+            info.setBottomMargin(0.0);
+            info.setLeftMargin(0.0);
+            let op = view.printOperationWithPrintInfo(&info);
+            op.setCanSpawnSeparateThread(true);
+            op.runOperationModalForWindow_delegate_didRunSelector_contextInfo(&window, None, None, std::ptr::null_mut());
+        }
+    })
+}
+
 /// 最後にキーボードかマウスを操作してからの経過時間（ミリ秒）
 #[cfg(windows)]
 pub fn idle_ms() -> u64 {

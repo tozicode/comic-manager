@@ -10,6 +10,9 @@ import { dayKey, dayLabel, estimate, monthLabel, weekdayName } from "../format";
 import { t } from "../i18n/month";
 import { addDays } from "../schedule";
 
+/** Mac の印刷は中身が 1 割ほど大きく出るので、印刷用の CSS で高さを変える（App.css の .print-root.mac） */
+const IS_MAC = navigator.userAgent.includes("Mac");
+
 const words = (): DayWords => ({
   sep: t("sep"),
   groupSep: t("groupSep"),
@@ -126,7 +129,7 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
       <p className="muted small-text">{t("basis")}</p>
       {/* 印刷するときだけ出す（画面のほかの部分は印刷しない）。月ごとに 1 枚、A4 横 */}
       {createPortal(
-        <div className="print-root">
+        <div className={`print-root${IS_MAC ? " mac" : ""}`}>
           {months.map((m) => (
             <div key={m.getTime()} className="print-page">
               <div className="print-head">

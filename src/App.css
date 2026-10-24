@@ -2116,6 +2116,10 @@ button.lost:hover {
     box-shadow: none;
     opacity: 1;
   }
+  /* Mac（WKWebView）の印刷は全体が約 1.1 倍で出るので、そのぶん低くして 1 枚に収める（150mm でぎりぎり） */
+  .print-root.mac .month-day {
+    height: calc(144mm / var(--weeks));
+  }
   .print-root .month-day.out {
     border-color: #b3aaa1;
     background: none;
