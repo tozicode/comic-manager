@@ -139,6 +139,11 @@ fn remove_work(state: State<AppState>, work_id: i64) -> Cmd<()> {
     with_store(&state, |s| s.remove_work(work_id))
 }
 
+#[tauri::command]
+fn rename_work(state: State<AppState>, work_id: i64, title: String) -> Cmd<()> {
+    with_store(&state, |s| s.rename_work(work_id, &title))
+}
+
 /// cmc を読み直してページ一覧に反映する（イラストはファイルがあるかを調べ直す。ファイルを持たない作品は何もしない）
 #[tauri::command]
 fn sync_work(state: State<AppState>, work_id: i64) -> Cmd<store::SyncResult> {
@@ -644,6 +649,7 @@ pub fn run() {
             add_manual_work,
             add_rows,
             rename_row,
+            rename_work,
             add_stage_set,
             update_stage_set,
             remove_stage_set,

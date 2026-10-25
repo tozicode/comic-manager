@@ -197,6 +197,7 @@ export const api = {
   addRows: (workId: number, names: string[]) => invoke<number>("add_rows", { workId, names }),
   renameRow: (pageId: number, title: string) => invoke<void>("rename_row", { pageId, title }),
   removeWork: (workId: number) => invoke<void>("remove_work", { workId }),
+  renameWork: (workId: number, title: string) => invoke<void>("rename_work", { workId, title }),
   syncWork: (workId: number) => invoke<SyncResult>("sync_work", { workId }),
   getBoard: (workId: number) => invoke<Board>("get_board", { workId }),
   setTaskDone: (pageId: number, stageId: number, done: boolean) =>

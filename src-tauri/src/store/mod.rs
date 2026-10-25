@@ -823,6 +823,16 @@ impl Store {
         Ok(())
     }
 
+    /// 作品名を変える（漫画は登録時に cmc から取った名前だが、読み直しでは上書きしないので、変えた名前が残る）
+    pub fn rename_work(&self, work_id: i64, title: &str) -> Result<()> {
+        let title = valid_name(title)?;
+        let n = self
+            .conn
+            .execute("UPDATE work SET title = ?2 WHERE id = ?1", params![work_id, title])
+            .map_err(db_err)?;
+        if n == 0 { Err(tr(M::WorkNotFound).into()) } else { Ok(()) }
+    }
+
     pub fn work_info(&self, work_id: i64) -> Result<WorkInfo> {
         self.conn
             .query_row(
@@ -1741,6 +1751,17 @@ mod tests {
         assert!(store.list_works().unwrap().is_empty());
         assert!(store.active_session().unwrap().is_none());
         assert!(store.spans(0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn 作品名を変えられ_読み直しても戻らない() {
+        let (store, id) = setup();
+        store.rename_work(id, " 本番のタイトル ").unwrap();
+        assert!(store.rename_work(id, " ").is_err());
+        assert!(store.rename_work(999, "x").is_err());
+        store.sync_pages(id, &comic(&[("page0001.clip", 1)]), 0).unwrap();
+        assert_eq!(store.list_works().unwrap()[0].title, "本番のタイトル");
+        assert_eq!(store.board(id, 0).unwrap().work.title, "本番のタイトル");
     }
 
     #[test]

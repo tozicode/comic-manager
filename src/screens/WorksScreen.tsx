@@ -20,7 +20,22 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
   const app = useApp();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<WorkSummary | null>(null);
+  /** 作品名を変えている作品と、入力中の名前 */
+  const [renaming, setRenaming] = useState<{ work: WorkSummary; title: string } | null>(null);
   const relink = useRelink();
+
+  const renameWork = async () => {
+    if (!renaming || !renaming.title.trim()) return;
+    const { work, title } = renaming;
+    setRenaming(null);
+    if (title.trim() === work.title) return;
+    try {
+      await api.renameWork(work.id, title);
+      app.refresh();
+    } catch (e) {
+      app.showError(e);
+    }
+  };
 
   const removeWork = async (work: WorkSummary) => {
     setRemoving(null);
@@ -47,6 +62,16 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
             <div className="grow">
               <div className="row">
                 <h3 className="grow">{w.title}</h3>
+                <button
+                  className="btn small ghost"
+                  title={t("renameHint")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenaming({ work: w, title: w.title });
+                  }}
+                >
+                  {t("rename")}
+                </button>
                 <button
                   className="btn small ghost"
                   title={t("removeHint")}
@@ -108,6 +133,31 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
       </div>
 
       {relink.dialog}
+      {renaming && (
+        <Dialog
+          title={t("renameTitle")}
+          onClose={() => setRenaming(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setRenaming(null)}>
+                {t("cancel")}
+              </button>
+              <button className="btn primary" disabled={!renaming.title.trim()} onClick={renameWork}>
+                {t("renameSave")}
+              </button>
+            </>
+          }
+        >
+          <input
+            className="field"
+            autoFocus
+            value={renaming.title}
+            onChange={(e) => setRenaming({ ...renaming, title: e.target.value })}
+            onKeyDown={(e) => e.key === "Enter" && renameWork()}
+            style={{ width: "100%" }}
+          />
+        </Dialog>
+      )}
       {adding && (
         <AddWorkDialog
           onClose={() => setAdding(false)}
