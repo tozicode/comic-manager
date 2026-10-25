@@ -5,6 +5,7 @@
 // 別端末のブラウザなら POST /cmd/<名前>。画面側はどちらでも同じように呼べる。
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Lang, LangPref } from "./i18n";
+import { t as tr } from "./i18n/remote";
 import type { ThemePref } from "./theme";
 
 /** 別端末のブラウザで開いているか（アプリの中なら false） */
@@ -35,10 +36,13 @@ const token = (() => {
 
 async function call<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   if (!isRemote) return invoke<T>(name, args);
+  // つながらないとき（PC が寝た、VPN の外に出た）は、ブラウザの素の文言より分かる言葉にする
   const res = await fetch(`/cmd/${name}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", [TOKEN_HEADER]: token },
     body: JSON.stringify(args ?? {}),
+  }).catch(() => {
+    throw new Error(tr("offline"));
   });
   const text = await res.text();
   const body = text ? (JSON.parse(text) as unknown) : null;

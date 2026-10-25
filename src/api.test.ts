@@ -83,6 +83,12 @@ describe("別端末のブラウザからの呼び出し", () => {
     await expect(api.getBoard(5)).rejects.toThrow("ページのファイルが見つかりません");
   });
 
+  it("つながらないときは分かる言葉にする", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const { api } = await loadApi("?t=abc123");
+    await expect(api.listWorks()).rejects.toThrow("PC でアプリが動いているか");
+  });
+
   it("中身の無い失敗は状態の番号で知らせる", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => "" }));
     const { api } = await loadApi("");
