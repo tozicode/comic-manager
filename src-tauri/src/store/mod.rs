@@ -88,6 +88,8 @@ pub struct WorkSummary {
     pub last_worked_at: Option<i64>,
     /// 登録した場所にファイルが見つからない（移動・名前の変更など）。画面に返す直前に調べる
     pub file_missing: bool,
+    /// 作品一覧に出す代表のサムネイル（最初のページ・ファイル）の場所。ファイルを持たない作品は None
+    pub thumb_path: Option<String>,
 }
 
 /// 別の場所の cmc につなぎ直す前の照らし合わせ
@@ -873,7 +875,8 @@ impl Store {
                         FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
                     (SELECT MAX(COALESCE(ss.ended_at, ss.started_at))
                         FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
-                    w.set_id, COALESCE(s.unit, '')
+                    w.set_id, COALESCE(s.unit, ''),
+                    (SELECT file_name FROM page WHERE work_id = w.id AND missing = 0 ORDER BY order_index, id LIMIT 1)
                  FROM work w LEFT JOIN stage_set s ON s.id = w.set_id ORDER BY w.created_at DESC",
             )
             .map_err(db_err)?;
@@ -883,13 +886,22 @@ impl Store {
             let stages: i64 = r.get(5)?;
             let done: i64 = r.get(6)?;
             let total = pages * stages;
+            let cmc_path: Option<String> = r.get(2)?;
+            let kind: String = r.get(3)?;
+            let first: Option<String> = r.get(11)?;
+            let thumb_path = if kind == KIND_MANUAL {
+                None
+            } else {
+                first.map(|f| page_path(cmc_path.as_deref(), &f).display().to_string())
+            };
             Ok(WorkSummary {
                 id: r.get(0)?,
                 title: r.get(1)?,
-                cmc_path: r.get(2)?,
-                kind: r.get(3)?,
+                cmc_path,
+                kind,
                 set_id: r.get(9)?,
                 unit: r.get(10)?,
+                thumb_path,
                 page_count: pages,
                 stage_count: stages,
                 progress: if total > 0 { done as f64 / total as f64 } else { 0.0 },

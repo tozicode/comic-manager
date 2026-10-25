@@ -4,6 +4,7 @@ import { api, StageSet, WorkKind, WorkSummary } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { useRelink } from "../components/Relink";
+import { Thumb } from "../components/Thumb";
 import { useForecast } from "../forecast";
 import { dayLabel, hours } from "../format";
 import { kindKey, setName, unitText } from "../i18n/common";
@@ -59,6 +60,10 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
       <div className="works">
         {works.map((w) => (
           <div key={w.id} className="card work-card" role="button" tabIndex={0} onClick={() => onOpen(w.id)}>
+            {/* 代表のサムネイル（最初のページ・ファイル）。ファイルを持たない作品は枠だけ */}
+            <div className="work-thumb">
+              {w.thumbPath ? <Thumb path={w.thumbPath} free={w.kind === "files"} width={56} /> : <div className="thumb none" />}
+            </div>
             <div className="grow">
               <div className="row">
                 <h3 className="grow">{w.title}</h3>

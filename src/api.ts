@@ -39,6 +39,8 @@ export type WorkSummary = {
   lastWorkedAt: number | null;
   /** 登録した場所にファイルが見つからない（イラストはどれか 1 つでも） */
   fileMissing: boolean;
+  /** 代表のサムネイル（最初のページ・ファイル）の場所。ファイルを持たない作品は null */
+  thumbPath: string | null;
 };
 
 export type DisplayPrefs = { timeFormat: "hm" | "clock" | "decimal"; theme: ThemePref; language: LangPref };

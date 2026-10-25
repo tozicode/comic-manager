@@ -602,6 +602,15 @@ select {
 .work-card > .grow {
   min-width: 0;
 }
+/* 作品一覧の代表サムネイル。ファイルを持たない作品は薄い枠だけ */
+.work-thumb {
+  flex: none;
+}
+.work-thumb .thumb.none {
+  width: 56px;
+  background: var(--surface-2);
+  border-style: dashed;
+}
 .work-card h3 {
   margin: 0;
   font-size: 16px;
