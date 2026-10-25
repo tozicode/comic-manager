@@ -9,7 +9,7 @@ import { TagPopover } from "../components/TagPopover";
 import { Thumb } from "../components/Thumb";
 import { Forecast, loadChosenPlan, useForecast } from "../forecast";
 import { planName } from "../schedule";
-import { clock, dayLabel, estimate, hours, time } from "../format";
+import { clock, dayKey, dayLabel, estimate, fromInputs, hours, startOfDay, time } from "../format";
 import { t, tn } from "../i18n/board";
 import { kindKey, unitText } from "../i18n/common";
 
@@ -46,6 +46,10 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [removing, setRemoving] = useState<BoardPage | null>(null);
   /** ファイルを持たない作品：行を足す入力（null なら閉じている）、名前を変えている行 */
   const [addingRows, setAddingRows] = useState<string | null>(null);
+  /** 計測し忘れた記録を後から足す入力（マスの「＋」から） */
+  const [logging, setLogging] = useState<{ page: BoardPage; stage: StageRef; date: string; minutes: string; done: boolean } | null>(
+    null,
+  );
   const [renaming, setRenaming] = useState<{ page: BoardPage; title: string } | null>(null);
   /** イラストのファイル（または行）のドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
@@ -123,6 +127,22 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     } catch (e) {
       app.showError(e);
     }
+  };
+
+  // 後から足す記録：今日なら「今から N 分前〜今」、ほかの日は 12:00 から N 分（時刻は作業記録の画面で直せる）
+  const saveLog = async () => {
+    if (!logging) return;
+    const minutes = Math.round(Number(logging.minutes));
+    if (!Number.isFinite(minutes) || minutes < 1) return app.showError(t("logMinutesInvalid"));
+    const { page, stage, date, done } = logging;
+    const ms = minutes * 60_000;
+    const now = Date.now();
+    const [start, end] = date === dayKey(startOfDay(now)) ? [now - ms, now] : [fromInputs(date, "12:00") ?? now - ms, 0];
+    setLogging(null);
+    await run(async () => {
+      await api.addSession(page.id, stage.id, start, end || start + ms);
+      if (done) await api.setTaskDone(page.id, stage.id, true);
+    });
   };
 
   if (!forecast) return <p className="muted">{t("loading")}</p>;
@@ -452,6 +472,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                     onPause={app.pause}
                     onDone={() => run(() => api.setTaskDone(page.id, stage.id, true))}
                     onUndo={() => setUndo({ page, stage })}
+                    onLog={() => setLogging({ page, stage, date: dayKey(startOfDay(Date.now())), minutes: "30", done: false })}
                   />
                 </td>
               ))}
@@ -642,6 +663,56 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             onChange={(e) => setAddingRows(e.target.value)}
             style={{ width: "100%", resize: "vertical" }}
           />
+        </Dialog>
+      )}
+      {logging && (
+        <Dialog
+          title={t("logTitle", { page: logging.page.label, stage: logging.stage.name })}
+          onClose={() => setLogging(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setLogging(null)}>
+                {t("cancel")}
+              </button>
+              <button className="btn primary" onClick={saveLog}>
+                {t("logSave")}
+              </button>
+            </>
+          }
+        >
+          <div className="form">
+            <label className="row">
+              <span style={{ width: 150 }}>{t("logDate")}</span>
+              <input
+                type="date"
+                className="field"
+                value={logging.date}
+                max={dayKey(startOfDay(Date.now()))}
+                onChange={(e) => setLogging({ ...logging, date: e.target.value })}
+              />
+            </label>
+            <label className="row">
+              <span style={{ width: 150 }}>{t("logMinutes")}</span>
+              <input
+                type="number"
+                className="field num"
+                min={1}
+                step={5}
+                autoFocus
+                value={logging.minutes}
+                onChange={(e) => setLogging({ ...logging, minutes: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && saveLog()}
+                style={{ width: 90 }}
+              />
+            </label>
+            <label className="row tight small-text">
+              <input type="checkbox" checked={logging.done} onChange={(e) => setLogging({ ...logging, done: e.target.checked })} />
+              {t("logDone")}
+            </label>
+            <p className="muted small-text" style={{ margin: 0 }}>
+              {t("logNote", { min: logging.minutes || "0" })}
+            </p>
+          </div>
         </Dialog>
       )}
       {renaming && (
@@ -862,9 +933,11 @@ type CellProps = {
   onPause: () => void;
   onDone: () => void;
   onUndo: () => void;
+  /** 計測し忘れた記録を後から足す */
+  onLog: () => void;
 };
 
-function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onPause, onDone, onUndo }: CellProps) {
+function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onPause, onDone, onUndo, onLog }: CellProps) {
   if (state === "done") {
     return (
       <div className="cell done" style={{ background: stage.color }}>
@@ -936,6 +1009,16 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
         </>
       )}
       <div className="cell-actions">
+        <button
+          className="mini"
+          title={t("logHint")}
+          onClick={(e) => {
+            e.stopPropagation();
+            onLog();
+          }}
+        >
+          ＋
+        </button>
         {state !== "locked" && (
           <button
             className="mini"
