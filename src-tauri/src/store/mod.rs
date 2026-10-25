@@ -22,7 +22,7 @@ mod tags;
 
 pub use pages::{PageMerge, PageSplit};
 pub use predict::{ModelStats, Prediction};
-pub use prefs::{DisplayPrefs, TimerPrefs};
+pub use prefs::{DisplayPrefs, RemotePrefs, TimerPrefs};
 pub use schedule::WorkSchedule;
 pub use tags::TagGroup;
 

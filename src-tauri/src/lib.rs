@@ -1,11 +1,13 @@
 mod cmc;
 mod desktop;
 mod i18n;
+mod server;
 mod store;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use base64::Engine;
@@ -24,6 +26,35 @@ struct AppState {
     db_path: PathBuf,
     /// ページファイルのパス → (更新日時, data URL)。ファイルが保存し直されたら作り直す
     thumbnails: Mutex<HashMap<PathBuf, (SystemTime, String)>>,
+    /// 動いている遠隔の画面の受け付け（5.17）。設定を変えたら止めて立て直す
+    remote: Mutex<Option<Arc<tiny_http::Server>>>,
+    /// 遠隔の画面から最後に要求が来た時刻（UNIX 時間のミリ秒）。0 なら一度も来ていない
+    last_remote: AtomicU64,
+}
+
+impl AppState {
+    fn new(store: Store, db_path: PathBuf) -> Self {
+        Self {
+            store: Mutex::new(store),
+            db_path,
+            thumbnails: Mutex::new(HashMap::new()),
+            remote: Mutex::new(None),
+            last_remote: AtomicU64::new(0),
+        }
+    }
+
+    /// 遠隔の画面から要求が来たことを控える（操作しているとみなす。5.17）
+    fn mark_remote(&self) {
+        self.last_remote.store(now_ms() as u64, Ordering::Relaxed);
+    }
+
+    /// 遠隔の画面から最後に要求が来てからの時間。一度も来ていなければ、無いものとして扱う
+    fn remote_idle_ms(&self) -> u64 {
+        match self.last_remote.load(Ordering::Relaxed) {
+            0 => u64::MAX,
+            at => (now_ms() as u64).saturating_sub(at),
+        }
+    }
 }
 
 type Cmd<T> = Result<T, String>;
@@ -183,9 +214,13 @@ fn set_task_done(state: State<AppState>, page_id: i64, stage_id: i64, done: bool
     with_store(&state, |s| s.set_task_done(page_id, stage_id, done, now_ms()))
 }
 
-/// ページのサムネイルを data URL で返す
+/// ページのサムネイルを data URL で返す（重いので、Tauri からは別のスレッドで呼ばせる）
 #[tauri::command]
 async fn load_thumbnail(state: State<'_, AppState>, path: String) -> Cmd<String> {
+    thumbnail(&state, path)
+}
+
+fn thumbnail(state: &AppState, path: String) -> Cmd<String> {
     let path = PathBuf::from(path);
     let modified = std::fs::metadata(&path)
         .and_then(|m| m.modified())
@@ -394,10 +429,11 @@ fn set_session_end(state: State<AppState>, id: i64, ended_at: i64) -> Cmd<()> {
     with_store(&state, |s| s.set_session_end(id, ended_at, now_ms()))
 }
 
-/// 最後にキーボードかマウスを操作してからの経過時間（ミリ秒）
+/// 最後に操作してからの経過時間（ミリ秒）。PC のキーボード・マウスの操作と、
+/// 遠隔の画面から要求が来たことのうち、新しい方を見る（5.17）
 #[tauri::command]
-fn idle_ms() -> u64 {
-    desktop::idle_ms()
+fn idle_ms(state: State<AppState>) -> u64 {
+    desktop::idle_ms().min(state.remote_idle_ms())
 }
 
 /// 作品のページファイルの更新日時（ページ ID, ミリ秒）。保存の検知に使う
@@ -545,6 +581,64 @@ fn reveal_data(app: AppHandle, state: State<AppState>) -> Cmd<()> {
         .map_err(|e| trf(M::OpenDataDirFailed, &[("e", &e)]))
 }
 
+// ----- 遠隔の画面（別端末のブラウザ。5.17） -----
+
+#[tauri::command]
+fn get_remote_prefs(state: State<AppState>) -> Cmd<store::RemotePrefs> {
+    with_store(&state, |s| s.remote_prefs())
+}
+
+/// 設定を保存して受け付けを立て直す。戻り値は保存した設定（合言葉が作られることがある）
+#[tauri::command]
+fn set_remote_prefs(app: AppHandle, state: State<AppState>, prefs: store::RemotePrefs) -> Cmd<store::RemotePrefs> {
+    let saved = with_store(&state, |s| s.set_remote_prefs(&prefs))?;
+    server::apply(&app, &saved)?;
+    Ok(saved)
+}
+
+/// 合言葉を作り直す。別端末はもう一度 URL から読み込み直すことになる
+#[tauri::command]
+fn new_remote_token(app: AppHandle, state: State<AppState>) -> Cmd<store::RemotePrefs> {
+    let saved = with_store(&state, |s| s.new_remote_token())?;
+    server::apply(&app, &saved)?;
+    Ok(saved)
+}
+
+/// PC が持っているアドレス（設定画面で待ち受ける先を選ぶのに使う）
+#[tauri::command]
+fn local_addresses() -> Vec<String> {
+    server::local_addresses()
+}
+
+/// 遠隔の画面（server.rs）からコマンドを呼ぶ。呼べる名前は server.rs の `ALLOWED` で絞ってある
+fn dispatch(app: &AppHandle, name: &str, args: &serde_json::Value) -> Result<serde_json::Value, String> {
+    /// 引数を 1 つ取り出す。名前は Tauri と同じ camelCase
+    fn arg<T: serde::de::DeserializeOwned>(args: &serde_json::Value, key: &str) -> Result<T, String> {
+        serde_json::from_value(args.get(key).cloned().unwrap_or(serde_json::Value::Null))
+            .map_err(|e| format!("{key}: {e}"))
+    }
+    fn out<T: serde::Serialize>(result: Cmd<T>) -> Result<serde_json::Value, String> {
+        result.and_then(|v| serde_json::to_value(v).map_err(|e| e.to_string()))
+    }
+
+    let state = app.state::<AppState>();
+    match name {
+        "list_works" => out(list_works(state)),
+        "list_stage_sets" => out(list_stage_sets(state)),
+        "get_board" => out(get_board(state, arg(args, "workId")?)),
+        "set_task_done" => out(set_task_done(state, arg(args, "pageId")?, arg(args, "stageId")?, arg(args, "done")?)),
+        "get_active_session" => out(get_active_session(state)),
+        "start_timer" => out(start_timer(state, arg(args, "pageId")?, arg(args, "stageId")?)),
+        "stop_timer" => out(stop_timer(state)),
+        "get_prediction" => out(get_prediction(state, arg(args, "workId")?)),
+        "get_schedule" => out(get_schedule(state, arg(args, "workId")?)),
+        "get_day_start_hour" => out(get_day_start_hour(state)),
+        "get_display_prefs" => out(get_display_prefs(state)),
+        "load_thumbnail" => out(thumbnail(&state, arg(args, "path")?)),
+        _ => Err(format!("unknown command: {name}")),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -572,7 +666,14 @@ pub fn run() {
             {
                 eprintln!("{e}");
             }
-            app.manage(AppState { store: Mutex::new(store), db_path: path, thumbnails: Mutex::new(HashMap::new()) });
+            app.manage(AppState::new(store, path));
+            // 遠隔の画面の受け付け（既定はオフ）。ポートが使えなくても起動は続ける（設定画面で変えられる）
+            let remote = app.state::<AppState>().store.lock().ok().and_then(|s| s.remote_prefs().ok());
+            if let Some(prefs) = remote
+                && let Err(e) = server::apply(app.handle(), &prefs)
+            {
+                eprintln!("{e}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -653,6 +754,10 @@ pub fn run() {
             add_stage_set,
             update_stage_set,
             remove_stage_set,
+            get_remote_prefs,
+            set_remote_prefs,
+            new_remote_token,
+            local_addresses,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

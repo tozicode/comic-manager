@@ -1,4 +1,4 @@
-//! 設定：タイマーまわり（止め忘れを検知するまでの時間、グローバルショートカット、保存の検知）と表示、更新の確認
+//! 設定：タイマーまわり（止め忘れを検知するまでの時間、グローバルショートカット、保存の検知）と表示、更新の確認、遠隔の画面
 
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,26 @@ use super::{Result, Store, db_err};
 const KEY: &str = "timer_prefs";
 const DISPLAY_KEY: &str = "display_prefs";
 const CHECK_UPDATES_KEY: &str = "check_updates";
+const REMOTE_KEY: &str = "remote_prefs";
+
+/// 遠隔の画面（別端末のブラウザ）の設定（5.17）
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RemotePrefs {
+    /// 別端末から見られるようにする。オフの間はポートを開かない
+    pub enabled: bool,
+    /// 待ち受けるアドレス。既定の 127.0.0.1 は他の端末からは見えない
+    pub bind: String,
+    pub port: u16,
+    /// 合言葉。空なら使うときに作る
+    pub token: String,
+}
+
+impl Default for RemotePrefs {
+    fn default() -> Self {
+        Self { enabled: false, bind: "127.0.0.1".into(), port: 8787, token: String::new() }
+    }
+}
 
 /// 表示の設定
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -153,6 +173,65 @@ impl Store {
     }
 }
 
+impl Store {
+    /// 遠隔の画面の設定。合言葉が無ければここで作って保存する
+    pub fn remote_prefs(&self) -> Result<RemotePrefs> {
+        let raw: Option<String> = self
+            .conn
+            .query_row("SELECT value FROM setting WHERE key = ?1", [REMOTE_KEY], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?;
+        let mut prefs: RemotePrefs = raw.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        if prefs.token.is_empty() {
+            prefs.token = self.new_token()?;
+            self.save_remote(&prefs)?;
+        }
+        Ok(prefs)
+    }
+
+    pub fn set_remote_prefs(&self, prefs: &RemotePrefs) -> Result<RemotePrefs> {
+        if prefs.bind.parse::<std::net::IpAddr>().is_err() {
+            return Err(tr(M::RemoteBindInvalid).into());
+        }
+        // 1023 までは特別な用途で、OS が許さないことも多い
+        if prefs.port < 1024 {
+            return Err(tr(M::RemotePortRange).into());
+        }
+        let mut prefs = prefs.clone();
+        if prefs.token.is_empty() {
+            prefs.token = self.new_token()?;
+        }
+        self.save_remote(&prefs)?;
+        Ok(prefs)
+    }
+
+    /// 合言葉を作り直す（別端末を使わなくなったとき用）
+    pub fn new_remote_token(&self) -> Result<RemotePrefs> {
+        let mut prefs = self.remote_prefs()?;
+        prefs.token = self.new_token()?;
+        self.save_remote(&prefs)?;
+        Ok(prefs)
+    }
+
+    fn save_remote(&self, prefs: &RemotePrefs) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO setting (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![REMOTE_KEY, serde_json::to_string(prefs).unwrap_or_default()],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// 合言葉（16 バイトを 16 進で）。SQLite の乱数を使う
+    fn new_token(&self) -> Result<String> {
+        self.conn
+            .query_row("SELECT lower(hex(randomblob(16)))", [], |r| r.get(0))
+            .map_err(db_err)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +300,34 @@ mod tests {
         store.set_display_prefs(&DisplayPrefs { language: "zh-Hant".into(), ..Default::default() }).unwrap();
         assert_eq!(store.display_prefs().unwrap().language, "zh-Hant");
         assert!(store.set_display_prefs(&DisplayPrefs { language: "fr".into(), ..Default::default() }).is_err());
+    }
+
+    #[test]
+    fn 遠隔の画面は既定でオフ_合言葉は自動で作られる() {
+        let store = Store::open_in_memory().unwrap();
+        let p = store.remote_prefs().unwrap();
+        assert!(!p.enabled);
+        assert_eq!((p.bind.as_str(), p.port), ("127.0.0.1", 8787));
+        // 合言葉は作られ、次に読んでも同じものが返る
+        assert_eq!(p.token.len(), 32);
+        assert_eq!(store.remote_prefs().unwrap().token, p.token);
+        // 作り直すと変わる
+        let next = store.new_remote_token().unwrap();
+        assert_ne!(next.token, p.token);
+        assert_eq!(store.remote_prefs().unwrap().token, next.token);
+    }
+
+    #[test]
+    fn 遠隔の画面の設定の保存とあり得ない値() {
+        let store = Store::open_in_memory().unwrap();
+        let p = RemotePrefs { enabled: true, bind: "100.64.0.1".into(), port: 9000, token: "a".repeat(32) };
+        assert_eq!(store.set_remote_prefs(&p).unwrap(), p);
+        assert_eq!(store.remote_prefs().unwrap(), p);
+        assert!(store.set_remote_prefs(&RemotePrefs { bind: "ここ".into(), ..p.clone() }).is_err());
+        assert!(store.set_remote_prefs(&RemotePrefs { port: 80, ..p.clone() }).is_err());
+        // 合言葉を空で渡したら作ってから保存する
+        let made = store.set_remote_prefs(&RemotePrefs { token: String::new(), ..p }).unwrap();
+        assert_eq!(made.token.len(), 32);
     }
 
     #[test]

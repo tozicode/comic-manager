@@ -22,7 +22,7 @@
 | データ保存 | SQLite（アプリのデータフォルダに1ファイル） | バックアップ・PC 移行の案内が簡単 |
 | cmc / clip 解析 | Rust 側で実装（rusqlite） | 構造は [docs/cmc-format.md](docs/cmc-format.md) を参照 |
 | 自動更新 | tauri-plugin-updater + GitHub Releases | 公開リポジトリなら無料で、容量・通信量の上限もない（5.13） |
-| 別端末からの閲覧 | アプリと同じプロセスで HTTP サーバ（axum） | 画面と DB をそのまま使い回せる。外出先は Tailscale などの VPN に任せる（5.17） |
+| 別端末からの閲覧 | アプリと同じプロセスで HTTP サーバ（tiny_http） | 画面と DB をそのまま使い回せる。非同期の仕組みを足さずに済み、インストーラーもほとんど増えない（5.17） |
 
 ### 配布時の注意
 - Windows：署名のないインストーラーは SmartScreen の警告が出る。知人配布の段階では

@@ -393,6 +393,27 @@ messages! {
         "番茄钟的时间请设为 1～180 分钟，长休息前的次数请设为 1～12 次",
         "番茄鐘的時間請設為 1～180 分鐘，長休息前的次數請設為 1～12 次",
     ],
+    RemoteBindInvalid => [
+        "待ち受けるアドレスの指定が正しくありません",
+        "Invalid listening address",
+        "수신 주소 지정이 올바르지 않습니다",
+        "监听地址不正确",
+        "監聽位址不正確",
+    ],
+    RemotePortRange => [
+        "ポート番号は 1024〜65535 にしてください",
+        "The port number must be between 1024 and 65535",
+        "포트 번호는 1024~65535로 설정해 주세요",
+        "端口号请设在 1024~65535 之间",
+        "通訊埠號請設在 1024~65535 之間",
+    ],
+    RemoteStartFailed => [
+        "別端末からの受け付けを始められませんでした（{e}）",
+        "Could not start accepting connections from other devices ({e})",
+        "다른 기기로부터의 접속을 시작할 수 없었습니다 ({e})",
+        "无法开始接受其他设备的连接（{e}）",
+        "無法開始接受其他裝置的連線（{e}）",
+    ],
     TimeFormatInvalid => [
         "時間の表記の指定が正しくありません",
         "Invalid time format",
