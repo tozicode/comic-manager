@@ -1,5 +1,6 @@
 // 色（ライト／ダーク）の切り替え（仕様書 5.8）。<html data-theme="light|dark"> を切り替え、App.css の変数で色を変える
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isRemote } from "./api";
 
 /** system は OS の設定に合わせる */
 export type ThemePref = "system" | "light" | "dark";
@@ -38,6 +39,8 @@ export function setThemePref(next: ThemePref) {
     // 次回の起動で一瞬前の色になるだけなので無視する
   }
   apply();
+  // 別端末のブラウザには動かせる窓が無い
+  if (isRemote) return;
   getCurrentWindow()
     .setTheme(next === "system" ? null : next)
     .catch(() => {});

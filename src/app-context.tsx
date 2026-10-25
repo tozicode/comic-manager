@@ -1,9 +1,10 @@
 // アプリ全体で共有する状態：計測中のタイマー、データの再読み込み、エラー表示。
 // メインの窓とミニタイマー窓はそれぞれこの状態を持ち、変更があればイベントで知らせ合って読み直す。
+// 別端末のブラウザ（遠隔の画面。5.17）にはイベントが届かないので、代わりに読み直しで追いつく。
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ActiveSession, api, StopResult } from "./api";
+import { ActiveSession, api, isRemote, StopResult } from "./api";
 import { setDayStartHour, setTimeFormat } from "./format";
 import { setLang } from "./i18n";
 import { setThemePref } from "./theme";
@@ -19,8 +20,11 @@ const CHANGED_EVENT = "otosazu://changed";
 const SAVE_EVENT = "otosazu://page-saved";
 /** グローバルショートカット（Rust 側の desktop::TOGGLE_EVENT と同じ） */
 const TOGGLE_EVENT = "otosazu://toggle-timer";
+/** 遠隔の画面が計測中の記録を読み直す間隔。これが PC 側の止め忘れの検知への合図も兼ねる（5.17） */
+const REMOTE_POLL_MS = 3_000;
 
 export const windowLabel = (() => {
+  if (isRemote) return "remote";
   try {
     return getCurrentWindow().label;
   } catch {
@@ -92,7 +96,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const showError = useCallback((e: unknown) => setError(String(e)), []);
   const refresh = useCallback(() => {
     setVersion((v) => v + 1);
-    emit(CHANGED_EVENT, { from: windowLabel }).catch(() => {});
+    // 遠隔の画面の分は、記録を変えたときに Rust 側（server.rs）が知らせる
+    if (!isRemote) emit(CHANGED_EVENT, { from: windowLabel }).catch(() => {});
   }, []);
   const setPaused = useCallback((task: PausedTask | null) => {
     setPausedState(task);
@@ -132,6 +137,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // 他の窓でデータが変わったら読み直す
   useEffect(() => {
+    if (isRemote) return;
     const unlisten = listen<{ from: string }>(CHANGED_EVENT, (e) => {
       if (e.payload.from === windowLabel) return;
       setVersion((v) => v + 1);
@@ -143,6 +149,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
       unlistenSave.then((f) => f()).catch(() => {});
     };
   }, [reloadActive]);
+
+  // 遠隔の画面（別端末のブラウザ）は、イベントの代わりに計測中の記録を読み直して PC 側に追いつく（5.17）。
+  // 画面が見えている間だけ動かす：この問い合わせが PC 側の止め忘れの検知への合図も兼ねるので、
+  // 裏に回ったタブが「操作中」を送り続けないようにする
+  const activeRef = useRef<ActiveSession | null>(null);
+  activeRef.current = active;
+  useEffect(() => {
+    if (!isRemote) return;
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const next = await api.getActiveSession();
+        const before = activeRef.current;
+        if (next?.id !== before?.id || next?.startedAt !== before?.startedAt) {
+          setActive(next);
+          setVersion((v) => v + 1);
+        }
+      } catch {
+        // つながらないときは次の確認に任せる
+      }
+    };
+    // 戻ってきたときは、見ていない間の変わりように追いつくため全部読み直す
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      setVersion((v) => v + 1);
+      check();
+    };
+    const timer = setInterval(check, REMOTE_POLL_MS);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   useEffect(() => {
     if (!active) return;

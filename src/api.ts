@@ -1,8 +1,53 @@
 // Rust 側（src-tauri/src/lib.rs）のコマンドを呼ぶ薄いラッパー。
 // 型は src-tauri/src/store.rs の構造体に対応する。時刻はすべて UNIX 時間のミリ秒。
-import { invoke } from "@tauri-apps/api/core";
+//
+// 呼び口はここ 1 箇所で振り分ける（仕様書 5.17）。アプリの中なら Tauri の invoke、
+// 別端末のブラウザなら POST /cmd/<名前>。画面側はどちらでも同じように呼べる。
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Lang, LangPref } from "./i18n";
 import type { ThemePref } from "./theme";
+
+/** 別端末のブラウザで開いているか（アプリの中なら false） */
+export const isRemote = !isTauri();
+
+const TOKEN_KEY = "otosazu.remoteToken";
+/** 合言葉を送るヘッダ（Rust 側の server.rs と合わせる） */
+const TOKEN_HEADER = "X-Otosazu-Token";
+
+/** 合言葉。初回は URL の `?t=` で受け取り、localStorage に控えてから URL から消す */
+const token = (() => {
+  // location が無いのはテストのときだけ（アプリでもブラウザでも必ずある）
+  if (!isRemote || typeof location === "undefined") return "";
+  const fromUrl = new URLSearchParams(location.search).get("t");
+  try {
+    if (fromUrl) {
+      localStorage.setItem(TOKEN_KEY, fromUrl);
+      // 履歴やブックマークに合言葉が残らないようにする
+      history.replaceState(null, "", location.pathname);
+      return fromUrl;
+    }
+    return localStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    // 保存できなければ、この画面を開いている間だけ使う
+    return fromUrl ?? "";
+  }
+})();
+
+async function call<T>(name: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isRemote) return invoke<T>(name, args);
+  const res = await fetch(`/cmd/${name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", [TOKEN_HEADER]: token },
+    body: JSON.stringify(args ?? {}),
+  });
+  const text = await res.text();
+  const body = text ? (JSON.parse(text) as unknown) : null;
+  if (!res.ok) {
+    const error = (body as { error?: string } | null)?.error;
+    throw new Error(error ?? `HTTP ${res.status}`);
+  }
+  return body as T;
+}
 
 /** 作品の種類：漫画（cmc）、イラスト（.clip / .psd を束ねたもの）、ファイルを持たない作品（行を名前で作る） */
 export type WorkKind = "comic" | "files" | "manual";
@@ -169,6 +214,9 @@ export type PageSplit = { pageId: number; label: string; newPageId: number; newL
 
 export type SyncResult = { added: number; missing: number; merges: PageMerge[]; splits: PageSplit[] };
 
+/** 遠隔の画面（別端末のブラウザ）の設定（5.17） */
+export type RemotePrefs = { enabled: boolean; bind: string; port: number; token: string };
+
 export type TimerPrefs = {
   idleMinutes: number;
   shortcut: string;
@@ -182,101 +230,107 @@ export type TimerPrefs = {
 };
 
 export const api = {
-  listWorks: () => invoke<WorkSummary[]>("list_works"),
-  addWork: (cmcPath: string, setId: number) => invoke<number>("add_work", { cmcPath, setId }),
-  addFilesWork: (title: string, paths: string[], setId: number) => invoke<number>("add_files_work", { title, paths, setId }),
-  addFiles: (workId: number, paths: string[]) => invoke<number>("add_files", { workId, paths }),
-  removeFile: (pageId: number) => invoke<void>("remove_file", { pageId }),
-  setFileOrder: (workId: number, pageIds: number[]) => invoke<void>("set_file_order", { workId, pageIds }),
-  relinkFile: (pageId: number, path: string) => invoke<void>("relink_file", { pageId, path }),
-  listStageSets: () => invoke<StageSet[]>("list_stage_sets"),
-  addStageSet: (name: string, unit: string) => invoke<StageSet>("add_stage_set", { name, unit }),
-  updateStageSet: (id: number, name: string, unit: string) => invoke<StageSet>("update_stage_set", { id, name, unit }),
-  removeStageSet: (id: number) => invoke<void>("remove_stage_set", { id }),
+  listWorks: () => call<WorkSummary[]>("list_works"),
+  addWork: (cmcPath: string, setId: number) => call<number>("add_work", { cmcPath, setId }),
+  addFilesWork: (title: string, paths: string[], setId: number) => call<number>("add_files_work", { title, paths, setId }),
+  addFiles: (workId: number, paths: string[]) => call<number>("add_files", { workId, paths }),
+  removeFile: (pageId: number) => call<void>("remove_file", { pageId }),
+  setFileOrder: (workId: number, pageIds: number[]) => call<void>("set_file_order", { workId, pageIds }),
+  relinkFile: (pageId: number, path: string) => call<void>("relink_file", { pageId, path }),
+  listStageSets: () => call<StageSet[]>("list_stage_sets"),
+  addStageSet: (name: string, unit: string) => call<StageSet>("add_stage_set", { name, unit }),
+  updateStageSet: (id: number, name: string, unit: string) => call<StageSet>("update_stage_set", { id, name, unit }),
+  removeStageSet: (id: number) => call<void>("remove_stage_set", { id }),
   /** ファイルを持たない作品。names は行の名前（1 つだけ数字なら 1〜その数の行） */
   addManualWork: (title: string, names: string[], setId: number) =>
-    invoke<number>("add_manual_work", { title, names, setId }),
-  addRows: (workId: number, names: string[]) => invoke<number>("add_rows", { workId, names }),
-  renameRow: (pageId: number, title: string) => invoke<void>("rename_row", { pageId, title }),
-  removeWork: (workId: number) => invoke<void>("remove_work", { workId }),
-  renameWork: (workId: number, title: string) => invoke<void>("rename_work", { workId, title }),
-  syncWork: (workId: number) => invoke<SyncResult>("sync_work", { workId }),
-  getBoard: (workId: number) => invoke<Board>("get_board", { workId }),
+    call<number>("add_manual_work", { title, names, setId }),
+  addRows: (workId: number, names: string[]) => call<number>("add_rows", { workId, names }),
+  renameRow: (pageId: number, title: string) => call<void>("rename_row", { pageId, title }),
+  removeWork: (workId: number) => call<void>("remove_work", { workId }),
+  renameWork: (workId: number, title: string) => call<void>("rename_work", { workId, title }),
+  syncWork: (workId: number) => call<SyncResult>("sync_work", { workId }),
+  getBoard: (workId: number) => call<Board>("get_board", { workId }),
   setTaskDone: (pageId: number, stageId: number, done: boolean) =>
-    invoke<void>("set_task_done", { pageId, stageId, done }),
-  loadThumbnail: (path: string) => invoke<string>("load_thumbnail", { path }),
+    call<void>("set_task_done", { pageId, stageId, done }),
+  loadThumbnail: (path: string) => call<string>("load_thumbnail", { path }),
 
-  getActiveSession: () => invoke<ActiveSession | null>("get_active_session"),
-  startTimer: (pageId: number, stageId: number) => invoke<ActiveSession>("start_timer", { pageId, stageId }),
-  stopTimer: () => invoke<StopResult | null>("stop_timer"),
+  getActiveSession: () => call<ActiveSession | null>("get_active_session"),
+  startTimer: (pageId: number, stageId: number) => call<ActiveSession>("start_timer", { pageId, stageId }),
+  stopTimer: () => call<StopResult | null>("stop_timer"),
 
-  listSessions: (workId: number, from: number) => invoke<SessionRow[]>("list_sessions", { workId, from }),
-  listSpans: (from: number) => invoke<Span[]>("list_spans", { from }),
+  listSessions: (workId: number, from: number) => call<SessionRow[]>("list_sessions", { workId, from }),
+  listSpans: (from: number) => call<Span[]>("list_spans", { from }),
   addSession: (pageId: number, stageId: number, startedAt: number, endedAt: number) =>
-    invoke<void>("add_session", { pageId, stageId, startedAt, endedAt }),
+    call<void>("add_session", { pageId, stageId, startedAt, endedAt }),
   updateSession: (id: number, pageId: number, stageId: number, startedAt: number, endedAt: number | null) =>
-    invoke<void>("update_session", { id, pageId, stageId, startedAt, endedAt }),
-  deleteSession: (id: number) => invoke<void>("delete_session", { id }),
+    call<void>("update_session", { id, pageId, stageId, startedAt, endedAt }),
+  deleteSession: (id: number) => call<void>("delete_session", { id }),
 
-  listStages: () => invoke<StageDef[]>("list_stages"),
-  addStage: (setId: number, name: string, color: string) => invoke<StageDef>("add_stage", { setId, name, color }),
+  listStages: () => call<StageDef[]>("list_stages"),
+  addStage: (setId: number, name: string, color: string) => call<StageDef>("add_stage", { setId, name, color }),
   updateStage: (id: number, name: string, color: string, hintMinutes: number) =>
-    invoke<StageDef>("update_stage", { id, name, color, hintMinutes }),
-  setStageHidden: (id: number, hidden: boolean) => invoke<void>("set_stage_hidden", { id, hidden }),
-  moveStage: (id: number, delta: number) => invoke<void>("move_stage", { id, delta }),
+    call<StageDef>("update_stage", { id, name, color, hintMinutes }),
+  setStageHidden: (id: number, hidden: boolean) => call<void>("set_stage_hidden", { id, hidden }),
+  moveStage: (id: number, delta: number) => call<void>("move_stage", { id, delta }),
 
-  listTags: () => invoke<TagGroup[]>("list_tags"),
-  setPageTag: (pageIds: number[], tagId: number, on: boolean) => invoke<void>("set_page_tag", { pageIds, tagId, on }),
+  listTags: () => call<TagGroup[]>("list_tags"),
+  setPageTag: (pageIds: number[], tagId: number, on: boolean) => call<void>("set_page_tag", { pageIds, tagId, on }),
   addTagGroup: (name: string, exclusive: boolean, setIds: number[]) =>
-    invoke<number>("add_tag_group", { name, exclusive, setIds }),
+    call<number>("add_tag_group", { name, exclusive, setIds }),
   updateTagGroup: (id: number, name: string, exclusive: boolean, setIds: number[]) =>
-    invoke<void>("update_tag_group", { id, name, exclusive, setIds }),
+    call<void>("update_tag_group", { id, name, exclusive, setIds }),
   addTag: (groupId: number, name: string, initialFactor: number) =>
-    invoke<number>("add_tag", { groupId, name, initialFactor }),
-  updateTag: (id: number, name: string, initialFactor: number) => invoke<void>("update_tag", { id, name, initialFactor }),
-  setTagHidden: (id: number, hidden: boolean) => invoke<void>("set_tag_hidden", { id, hidden }),
+    call<number>("add_tag", { groupId, name, initialFactor }),
+  updateTag: (id: number, name: string, initialFactor: number) => call<void>("update_tag", { id, name, initialFactor }),
+  setTagHidden: (id: number, hidden: boolean) => call<void>("set_tag_hidden", { id, hidden }),
 
-  getPrediction: (workId: number) => invoke<Prediction>("get_prediction", { workId }),
-  getModelStats: () => invoke<ModelStats>("get_model_stats"),
-  getSchedule: (workId: number) => invoke<WorkSchedule>("get_schedule", { workId }),
-  setWorkHours: (workId: number, hours: number[] | null) => invoke<void>("set_work_hours", { workId, hours }),
-  setDefaultHours: (hours: number[]) => invoke<void>("set_default_hours", { hours }),
-  setDeadline: (workId: number, deadline: string | null) => invoke<void>("set_deadline", { workId, deadline }),
-  setWorkOrder: (workId: number, order: string) => invoke<void>("set_work_order", { workId, order }),
-  setDayOff: (date: string, off: boolean) => invoke<void>("set_day_off", { date, off }),
+  getPrediction: (workId: number) => call<Prediction>("get_prediction", { workId }),
+  getModelStats: () => call<ModelStats>("get_model_stats"),
+  getSchedule: (workId: number) => call<WorkSchedule>("get_schedule", { workId }),
+  setWorkHours: (workId: number, hours: number[] | null) => call<void>("set_work_hours", { workId, hours }),
+  setDefaultHours: (hours: number[]) => call<void>("set_default_hours", { hours }),
+  setDeadline: (workId: number, deadline: string | null) => call<void>("set_deadline", { workId, deadline }),
+  setWorkOrder: (workId: number, order: string) => call<void>("set_work_order", { workId, order }),
+  setDayOff: (date: string, off: boolean) => call<void>("set_day_off", { date, off }),
   /** [全作品の既定の作業時間（月〜日）, 休みの日] */
-  getCalendar: () => invoke<[number[], string[]]>("get_calendar"),
+  getCalendar: () => call<[number[], string[]]>("get_calendar"),
   /** 1 日の区切り（時）。0〜12 */
-  getDayStartHour: () => invoke<number>("get_day_start_hour"),
-  setDayStartHour: (hour: number) => invoke<void>("set_day_start_hour", { hour }),
+  getDayStartHour: () => call<number>("get_day_start_hour"),
+  setDayStartHour: (hour: number) => call<void>("set_day_start_hour", { hour }),
 
-  stopTimerAt: (at: number) => invoke<StopResult | null>("stop_timer_at", { at }),
-  setSessionEnd: (id: number, endedAt: number) => invoke<void>("set_session_end", { id, endedAt }),
-  idleMs: () => invoke<number>("idle_ms"),
-  pageMtimes: (workId: number) => invoke<[number, number][]>("page_mtimes", { workId }),
-  mergePages: (from: number, to: number) => invoke<void>("merge_pages", { from, to }),
-  splitPage: (pageId: number, newPageId: number, half: boolean) => invoke<void>("split_page", { pageId, newPageId, half }),
-  setStageOrder: (ids: number[]) => invoke<void>("set_stage_order", { ids }),
-  getTimerPrefs: () => invoke<TimerPrefs>("get_timer_prefs"),
-  setTimerPrefs: (prefs: TimerPrefs) => invoke<void>("set_timer_prefs", { prefs }),
-  openMini: () => invoke<void>("open_mini"),
-  closeMini: () => invoke<void>("close_mini"),
-  setMiniCompact: (compact: boolean) => invoke<void>("set_mini_compact", { compact }),
-  setMiniOnTop: (onTop: boolean) => invoke<void>("set_mini_on_top", { onTop }),
-  focusMain: () => invoke<void>("focus_main"),
+  stopTimerAt: (at: number) => call<StopResult | null>("stop_timer_at", { at }),
+  setSessionEnd: (id: number, endedAt: number) => call<void>("set_session_end", { id, endedAt }),
+  idleMs: () => call<number>("idle_ms"),
+  pageMtimes: (workId: number) => call<[number, number][]>("page_mtimes", { workId }),
+  mergePages: (from: number, to: number) => call<void>("merge_pages", { from, to }),
+  splitPage: (pageId: number, newPageId: number, half: boolean) => call<void>("split_page", { pageId, newPageId, half }),
+  setStageOrder: (ids: number[]) => call<void>("set_stage_order", { ids }),
+  getTimerPrefs: () => call<TimerPrefs>("get_timer_prefs"),
+  setTimerPrefs: (prefs: TimerPrefs) => call<void>("set_timer_prefs", { prefs }),
+  openMini: () => call<void>("open_mini"),
+  closeMini: () => call<void>("close_mini"),
+  setMiniCompact: (compact: boolean) => call<void>("set_mini_compact", { compact }),
+  setMiniOnTop: (onTop: boolean) => call<void>("set_mini_on_top", { onTop }),
+  focusMain: () => call<void>("focus_main"),
 
-  dataInfo: () => invoke<{ dbPath: string; version: string }>("data_info"),
-  backupData: (dest: string) => invoke<void>("backup_data", { dest }),
-  saveCalendar: (dest: string, text: string) => invoke<void>("save_calendar", { dest, text }),
-  printPage: () => invoke<void>("print_page"),
-  revealData: () => invoke<void>("reveal_data"),
-  checkRelink: (workId: number, cmcPath: string) => invoke<RelinkCheck>("check_relink", { workId, cmcPath }),
-  relinkWork: (workId: number, cmcPath: string) => invoke<SyncResult>("relink_work", { workId, cmcPath }),
-  getDisplayPrefs: () => invoke<DisplayPrefs>("get_display_prefs"),
+  dataInfo: () => call<{ dbPath: string; version: string }>("data_info"),
+  backupData: (dest: string) => call<void>("backup_data", { dest }),
+  saveCalendar: (dest: string, text: string) => call<void>("save_calendar", { dest, text }),
+  printPage: () => call<void>("print_page"),
+  revealData: () => call<void>("reveal_data"),
+  checkRelink: (workId: number, cmcPath: string) => call<RelinkCheck>("check_relink", { workId, cmcPath }),
+  relinkWork: (workId: number, cmcPath: string) => call<SyncResult>("relink_work", { workId, cmcPath }),
+  getDisplayPrefs: () => call<DisplayPrefs>("get_display_prefs"),
   /** OS の言語（ja / en / ko / zh-Hans / zh-Hant のどれか） */
-  getSystemLanguage: () => invoke<Lang>("get_system_language"),
+  getSystemLanguage: () => call<Lang>("get_system_language"),
   /** 起動時に新しい版を確認するか */
-  getCheckUpdates: () => invoke<boolean>("get_check_updates"),
-  setCheckUpdates: (on: boolean) => invoke<void>("set_check_updates", { on }),
-  setDisplayPrefs: (prefs: DisplayPrefs) => invoke<void>("set_display_prefs", { prefs }),
+  getCheckUpdates: () => call<boolean>("get_check_updates"),
+  setCheckUpdates: (on: boolean) => call<void>("set_check_updates", { on }),
+  setDisplayPrefs: (prefs: DisplayPrefs) => call<void>("set_display_prefs", { prefs }),
+
+  getRemotePrefs: () => call<RemotePrefs>("get_remote_prefs"),
+  setRemotePrefs: (prefs: RemotePrefs) => call<RemotePrefs>("set_remote_prefs", { prefs }),
+  newRemoteToken: () => call<RemotePrefs>("new_remote_token"),
+  /** この PC が持っているアドレス（待ち受ける先を選ぶのに使う） */
+  localAddresses: () => call<string[]>("local_addresses"),
 };

@@ -2062,6 +2062,122 @@ button.lost:hover {
   text-underline-offset: 3px;
 }
 
+/* 遠隔の画面（別端末のブラウザ。仕様書 5.17）。指で押せる大きさ（44px 以上）を基本にする */
+.remote {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 10px 12px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.remote .rhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.remote .rbrand {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.remote .rhead .field {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  font-size: 15px;
+}
+.remote .tiny {
+  font-size: 11px;
+}
+.remote .rcard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.remote .rtask {
+  font-size: 15px;
+}
+.remote .rclock {
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 600;
+}
+.remote .ractions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.remote .rbtn {
+  flex: 1;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+  font-size: 15px;
+}
+.remote .rbtn.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.remote .rbtn.wide {
+  flex: 1;
+}
+.remote .rquota {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.remote .rboard h2 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.remote .rgrid {
+  display: grid;
+  gap: 4px;
+  align-items: center;
+}
+.remote .rstage {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  color: var(--muted);
+}
+.remote .rpage {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 108px;
+  overflow: hidden;
+}
+.remote .rpage > .tiny {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.remote .rcell {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.remote .rcell.waiting {
+  background: var(--surface-2);
+  color: var(--faint);
+}
+.remote .rcell.done {
+  border-color: transparent;
+  color: var(--accent-text);
+}
+
 /* 月の予定の印刷（MonthTab の print-root だけを、月ごとに A4 横 1 枚で印刷する。色はダークでもライトの色にする） */
 .print-root {
   display: none;

@@ -632,6 +632,7 @@ fn dispatch(app: &AppHandle, name: &str, args: &serde_json::Value) -> Result<ser
         "stop_timer" => out(stop_timer(state)),
         "get_prediction" => out(get_prediction(state, arg(args, "workId")?)),
         "get_schedule" => out(get_schedule(state, arg(args, "workId")?)),
+        "list_spans" => out(list_spans(state, arg(args, "from")?)),
         "get_day_start_hour" => out(get_day_start_hour(state)),
         "get_display_prefs" => out(get_display_prefs(state)),
         "load_thumbnail" => out(thumbnail(&state, arg(args, "path")?)),

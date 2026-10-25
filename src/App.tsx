@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, WorkSummary } from "./api";
+import { api, isRemote, WorkSummary } from "./api";
 import { AppProvider, isMini, useApp } from "./app-context";
 import { Dialog } from "./components/Dialog";
 import { Sidebar } from "./components/Sidebar";
@@ -8,6 +8,7 @@ import { UpdateNotice } from "./components/UpdateNotice";
 import { PomodoroDriver } from "./components/Pomodoro";
 import { SaveToast, Watchers } from "./components/Watchers";
 import { MiniApp } from "./MiniApp";
+import { RemoteApp } from "./RemoteApp";
 import { hours } from "./format";
 import { BoardScreen } from "./screens/BoardScreen";
 import { RecordsScreen } from "./screens/RecordsScreen";
@@ -155,6 +156,14 @@ function Shell() {
 export default function App() {
   // 言語を切り替えたら、画面を作り直してすべての文言を入れ替える
   const lang = useLang();
+  // 別端末のブラウザ（5.17）。ポモドーロの知らせ・保存の検知・自動更新の確認は PC の窓だけの役目なので出さない
+  if (isRemote) {
+    return (
+      <AppProvider>
+        <RemoteApp key={lang} />
+      </AppProvider>
+    );
+  }
   return (
     <AppProvider>
       <PomodoroDriver />

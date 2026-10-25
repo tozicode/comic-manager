@@ -1,6 +1,6 @@
-import { DragEvent, useEffect, useRef, useState } from "react";
+import { DragEvent, useCallback, useEffect, useRef, useState } from "react";
 import { askNotificationPermission } from "../components/Pomodoro";
-import { api, DisplayPrefs, StageDef, StageSet, Tag, TagGroup, TimerPrefs } from "../api";
+import { api, DisplayPrefs, RemotePrefs, StageDef, StageSet, Tag, TagGroup, TimerPrefs } from "../api";
 import { Dialog } from "../components/Dialog";
 import { kindKey, setName, unitText } from "../i18n/common";
 import { useApp } from "../app-context";
@@ -876,6 +876,129 @@ function DataSection() {
           <span>{t("update.check")}</span>
         </label>
         <p className="muted small-text">{t("update.note")}</p>
+      </div>
+
+      <RemoteSettings />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 別端末から見る（遠隔の画面。仕様書 5.17）
+// ---------------------------------------------------------------------------
+
+function RemoteSettings() {
+  const app = useApp();
+  const [prefs, setPrefs] = useState<RemotePrefs | null>(null);
+  const [addresses, setAddresses] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(() => {
+    api.getRemotePrefs().then(setPrefs).catch(app.showError);
+  }, [app.showError]);
+
+  useEffect(() => {
+    load();
+    api.localAddresses().then(setAddresses).catch(app.showError);
+  }, [load, app.showError]);
+
+  // 保存するたびに受け付けを立て直す。ポートが使えないなどで失敗したら、保存されている設定に戻す
+  const save = async (next: RemotePrefs) => {
+    setCopied(false);
+    try {
+      setPrefs(await api.setRemotePrefs(next));
+    } catch (e) {
+      app.showError(e);
+      load();
+    }
+  };
+
+  const newToken = async () => {
+    setCopied(false);
+    try {
+      setPrefs(await api.newRemoteToken());
+    } catch (e) {
+      app.showError(e);
+    }
+  };
+
+  if (!prefs) return null;
+  const url = `http://${prefs.bind}:${prefs.port}/?t=${prefs.token}`;
+  const localOnly = prefs.bind === "127.0.0.1";
+  // 保存されているアドレスが一覧に無い（Tailscale を切っているなど）ときも選べるように足しておく
+  const choices = addresses.includes(prefs.bind) ? addresses : [...addresses, prefs.bind];
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch (e) {
+      app.showError(e);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-title" style={{ marginTop: 22 }}>
+        {t("remote.title")}
+      </div>
+      <div className="card pad form">
+        <label className="row">
+          <input type="checkbox" checked={prefs.enabled} onChange={(e) => save({ ...prefs, enabled: e.target.checked })} />
+          <span>{t("remote.enable")}</span>
+        </label>
+        <p className="muted small-text">{t("remote.note")}</p>
+
+        {prefs.enabled && (
+          <>
+            <div className="row">
+              <span>{t("remote.bind")}</span>
+              <select className="field" value={prefs.bind} onChange={(e) => save({ ...prefs, bind: e.target.value })}>
+                {choices.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+              <span>{t("remote.port")}</span>
+              <input
+                className="field"
+                type="number"
+                min={1024}
+                max={65535}
+                style={{ width: 90 }}
+                defaultValue={prefs.port}
+                key={prefs.port}
+                onBlur={(e) => {
+                  const port = Number(e.target.value);
+                  if (port !== prefs.port) save({ ...prefs, port });
+                }}
+              />
+            </div>
+            {localOnly ? (
+              <p className="muted small-text">{t("remote.localOnly", { addr: prefs.bind })}</p>
+            ) : (
+              <div className="row">
+                <span className="grow">
+                  {t("remote.url")}
+                  <br />
+                  <span className="muted small-text path-text">{url}</span>
+                </span>
+                <button className="btn small" onClick={copy}>
+                  {t("remote.copy")}
+                </button>
+              </div>
+            )}
+            {copied && <p className="ok-text small-text">{t("remote.copied")}</p>}
+            <div className="row">
+              <span className="grow muted small-text">{t("remote.tokenNote")}</span>
+              <button className="btn small" onClick={newToken}>
+                {t("remote.newToken")}
+              </button>
+            </div>
+            <p className="muted small-text">{t("remote.vpnNote")}</p>
+          </>
+        )}
       </div>
     </>
   );

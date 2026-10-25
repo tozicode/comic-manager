@@ -32,6 +32,7 @@ const ALLOWED: &[&str] = &[
     "set_task_done",
     "get_prediction",
     "get_schedule",
+    "list_spans",
     "load_thumbnail",
     "get_display_prefs",
     "get_day_start_hour",
