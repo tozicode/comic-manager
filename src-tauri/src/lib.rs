@@ -581,6 +581,24 @@ fn reveal_data(app: AppHandle, state: State<AppState>) -> Cmd<()> {
         .map_err(|e| trf(M::OpenDataDirFailed, &[("e", &e)]))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 遠隔からの合図が無ければ無操作の判定に混ざらない() {
+        let state = AppState::new(Store::open_in_memory().unwrap(), PathBuf::from("otosazu.db"));
+        // 一度も来ていなければ、PC の無操作時間がそのまま使われる（min を取るので大きい値を返す）
+        assert_eq!(state.remote_idle_ms(), u64::MAX);
+        assert_eq!(1_000_u64.min(state.remote_idle_ms()), 1_000);
+
+        // 合図が来たら、そこからの経過時間になる。PC を触っていなくても「操作中」と見なされる
+        state.mark_remote();
+        assert!(state.remote_idle_ms() < 1_000, "合図の直後は無操作の時間がほぼ 0");
+        assert_eq!(600_000_u64.min(state.remote_idle_ms()), state.remote_idle_ms());
+    }
+}
+
 // ----- 遠隔の画面（別端末のブラウザ。5.17） -----
 
 #[tauri::command]
@@ -624,7 +642,6 @@ fn dispatch(app: &AppHandle, name: &str, args: &serde_json::Value) -> Result<ser
     let state = app.state::<AppState>();
     match name {
         "list_works" => out(list_works(state)),
-        "list_stage_sets" => out(list_stage_sets(state)),
         "get_board" => out(get_board(state, arg(args, "workId")?)),
         "set_task_done" => out(set_task_done(state, arg(args, "pageId")?, arg(args, "stageId")?, arg(args, "done")?)),
         "get_active_session" => out(get_active_session(state)),
@@ -635,6 +652,7 @@ fn dispatch(app: &AppHandle, name: &str, args: &serde_json::Value) -> Result<ser
         "list_spans" => out(list_spans(state, arg(args, "from")?)),
         "get_day_start_hour" => out(get_day_start_hour(state)),
         "get_display_prefs" => out(get_display_prefs(state)),
+        "get_system_language" => Ok(serde_json::Value::String(get_system_language())),
         "load_thumbnail" => out(thumbnail(&state, arg(args, "path")?)),
         _ => Err(format!("unknown command: {name}")),
     }

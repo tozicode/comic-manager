@@ -248,11 +248,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ショートカットで一時停止・再開する（受け取るのはメインの窓だけ）
+  // ショートカットで一時停止・再開する（受け取るのはメインの窓だけ。別端末のブラウザには届かない）
   const latest = useRef({ active, paused, pause, resume });
   latest.current = { active, paused, pause, resume };
   useEffect(() => {
-    if (isMini) return;
+    if (isMini || isRemote) return;
     const unlisten = listen(TOGGLE_EVENT, () => {
       const { active, paused, pause, resume } = latest.current;
       if (active) pause();
@@ -285,11 +285,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         saveNotice,
         notifySave: (notice) => {
           setSaveNotice(notice);
-          emit(SAVE_EVENT, notice).catch(() => {});
+          if (!isRemote) emit(SAVE_EVENT, notice).catch(() => {});
         },
         clearSaveNotice: () => {
           setSaveNotice(null);
-          emit(SAVE_EVENT, null).catch(() => {});
+          if (!isRemote) emit(SAVE_EVENT, null).catch(() => {});
         },
         error,
         showError,

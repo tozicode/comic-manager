@@ -36,7 +36,7 @@ const ALLOWED: &[&str] = &[
     "load_thumbnail",
     "get_display_prefs",
     "get_day_start_hour",
-    "list_stage_sets",
+    "get_system_language",
 ];
 
 /// 記録が変わるコマンド。終わったらアプリの窓に知らせて読み直させる

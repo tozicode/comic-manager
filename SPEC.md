@@ -529,7 +529,8 @@ Google カレンダーやカレンダー.app に取り込めるよう .ics で�
   画面側のコードは変えない（引数は Tauri と同じ camelCase で送る）
 - **受け付けるコマンドは絞る**（名前が合っても一覧に無ければ断る）：
   `list_works` `get_board` `get_active_session` `start_timer` `stop_timer` `set_task_done`
-  `get_prediction` `get_schedule` `load_thumbnail` `get_display_prefs` `get_day_start_hour` `list_stage_sets`
+  `get_prediction` `get_schedule` `list_spans` `load_thumbnail` `get_display_prefs` `get_day_start_hour`
+  `get_system_language`
 
 **つなぎ方と安全**
 - 設定 → データ に「別端末から見る」（**既定はオフ**）。オフの間はポートを開かない
