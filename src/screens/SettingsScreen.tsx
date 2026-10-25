@@ -2,6 +2,7 @@ import { DragEvent, useCallback, useEffect, useRef, useState } from "react";
 import { askNotificationPermission } from "../components/Pomodoro";
 import { api, DisplayPrefs, RemotePrefs, StageDef, StageSet, Tag, TagGroup, TimerPrefs } from "../api";
 import { Dialog } from "../components/Dialog";
+import { Qr } from "../components/Qr";
 import { kindKey, setName, unitText } from "../i18n/common";
 import { useApp } from "../app-context";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -978,16 +979,22 @@ function RemoteSettings() {
             {localOnly ? (
               <p className="muted small-text">{t("remote.localOnly", { addr: prefs.bind })}</p>
             ) : (
-              <div className="row">
-                <span className="grow">
-                  {t("remote.url")}
-                  <br />
-                  <span className="muted small-text path-text">{url}</span>
-                </span>
-                <button className="btn small" onClick={copy}>
-                  {t("remote.copy")}
-                </button>
-              </div>
+              <>
+                <div className="row">
+                  <span className="grow">
+                    {t("remote.url")}
+                    <br />
+                    <span className="muted small-text path-text">{url}</span>
+                  </span>
+                  <button className="btn small" onClick={copy}>
+                    {t("remote.copy")}
+                  </button>
+                </div>
+                <div className="row remote-qr">
+                  <Qr text={url} label={t("remote.qrLabel")} />
+                  <span className="muted small-text">{t("remote.qr")}</span>
+                </div>
+              </>
             )}
             {copied && <p className="ok-text small-text">{t("remote.copied")}</p>}
             <div className="row">
