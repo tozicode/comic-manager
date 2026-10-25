@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { api, Board, SessionRow } from "../api";
+import { api, Board, SessionRow, Span } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { Heatmap } from "../components/Heatmap";
-import { dayKey, dayLabel, dayStartMs, fromInputs, hours, startOfDay, time, timeInDay } from "../format";
+import { dailyTotals, dayKey, dayLabel, dayStartMs, fromInputs, hours, startOfDay, time, timeInDay } from "../format";
 import { kindKey, unitText } from "../i18n/common";
 import { t } from "../i18n/records";
 
@@ -46,6 +46,8 @@ export function RecordsScreen({ workId }: { workId: number }) {
   const app = useApp();
   const [board, setBoard] = useState<Board | null>(null);
   const [rows, setRows] = useState<SessionRow[]>([]);
+  /** 全作品の記録（日ごとの見出しに全作品の合計を出すため。複数の作品を並行して進める人向け） */
+  const [spans, setSpans] = useState<Span[]>([]);
   const [period, setPeriod] = useState(0);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -59,7 +61,9 @@ export function RecordsScreen({ workId }: { workId: number }) {
   useEffect(() => {
     api.getBoard(workId).then(setBoard).catch(app.showError);
     api.listSessions(workId, from).then(setRows).catch(app.showError);
+    api.listSpans(from).then(setSpans).catch(app.showError);
   }, [workId, from, app.version, app.showError]);
+  const allTotals = dailyTotals(spans, app.now);
 
   // ヒートマップで選んだ日へスクロールする（期間外なら期間を広げる）
   const selectDay = (key: string) => {
@@ -211,6 +215,9 @@ export function RecordsScreen({ workId }: { workId: number }) {
       {[...groups.entries()].map(([key, list]) => {
         const groupDay = new Date(`${key}T00:00`);
         const total = list.reduce((n, r) => n + (r.endedAt ?? app.now) - r.startedAt, 0);
+        // ほかの作品でも作業した日は、全作品の合計も並べる（全作品の合計は 1 日の区切りで分けて数える）
+        const all = allTotals.get(key)?.total ?? 0;
+        const others = spans.some((s) => s.workId !== workId && s.startedAt < (s.endedAt ?? app.now) && dayKey(startOfDay(s.startedAt)) === key);
         return (
           <div key={key} id={`day-${key}`} className={`rec-day${key === selectedDay ? " selected" : ""}`}>
             <h3>
@@ -218,7 +225,11 @@ export function RecordsScreen({ workId }: { workId: number }) {
                 {dayLabel(new Date(`${key}T00:00`))}
                 {key === todayKey && ` ${t("today")}`}
               </span>
-              <span className="muted num">{t("total", { time: hours(total) })}</span>
+              <span className="muted num">
+                {others
+                  ? `${t("totalThis", { time: hours(total) })} ／ ${t("totalAll", { time: hours(all) })}`
+                  : t("total", { time: hours(total) })}
+              </span>
             </h3>
             <table className="rec">
               <thead>{header}</thead>

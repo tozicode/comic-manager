@@ -157,6 +157,13 @@ export function Heatmap({ selected, onSelect }: { selected: string | null; onSel
       </div>
       <div className="heat-stats">
         <div>
+          <div className="lbl">{t("heat.today")}</div>
+          <div className="v num">{hours(dayMs(today))}</div>
+          <div className="d muted">
+            {t("heat.yesterday", { time: hours(dayMs(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1))) })}
+          </div>
+        </div>
+        <div>
           <div className="lbl">{t("heat.thisWeek")}</div>
           <div className="v num">{hours(thisWeek)}</div>
           <div className="d muted">{t("heat.lastWeekSame", { time: hours(lastWeekSame) })}</div>
