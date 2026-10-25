@@ -865,7 +865,6 @@ type CellProps = {
 };
 
 function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onPause, onDone, onUndo }: CellProps) {
-  if (state === "locked") return <div className="cell locked">{t("waiting")}</div>;
   if (state === "done") {
     return (
       <div className="cell done" style={{ background: stage.color }}>
@@ -908,9 +907,10 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
       </div>
     );
   }
+  // 前の工程待ち（locked）でも計測はできる（工程順に進めないこともあるため）。完了にするのは前の工程が終わってから
   return (
-    <div className={`cell ${state}`} onClick={onStart} title={t("clickToStart")}>
-      {state === "doing" ? (
+    <div className={`cell ${state}${state === "locked" && totalMs > 0 ? " doing" : ""}`} onClick={onStart} title={t("clickToStart")}>
+      {totalMs > 0 ? (
         <>
           <div className="line">
             <span>{t("cellPartial")}</span>
@@ -928,7 +928,7 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
       ) : (
         <>
           <div className="line">
-            <span>{t("notStarted")}</span>
+            <span>{t(state === "locked" ? "waiting" : "notStarted")}</span>
           </div>
           <div className="line">
             <span className="num">{t("predicted", { time: estimate(predictedMs) })}</span>
@@ -936,16 +936,18 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
         </>
       )}
       <div className="cell-actions">
-        <button
-          className="mini"
-          title={t("markDone")}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDone();
-          }}
-        >
-          ✓
-        </button>
+        {state !== "locked" && (
+          <button
+            className="mini"
+            title={t("markDone")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDone();
+            }}
+          >
+            ✓
+          </button>
+        )}
         <button className="mini accent" title={t("startTracking")}>
           ▶
         </button>

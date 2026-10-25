@@ -288,12 +288,18 @@ export function MiniApp() {
               defaultValue=""
             >
               <option value="">{t("pickTask")}</option>
-              {f.candidates.map((c) => {
+              {/* 着手できるタスクを先に、前の工程が終わっていないタスクも後ろに出す（工程順に進めないこともあるため） */}
+              {[...f.candidates, ...f.openTasks.filter((c) => !f.candidates.includes(c))].map((c) => {
                 const p = f.board.pages.find((x) => x.id === c.pageId);
                 const st = f.board.stages.find((x) => x.id === c.stageId);
+                const waiting = !f.candidates.includes(c);
                 return (
                   <option key={`${c.pageId}-${c.stageId}`} value={`${c.pageId}-${c.stageId}`}>
-                    {t("taskOption", { page: p?.label ?? "", stage: st?.name ?? "", time: estimate(c.remainingMs) })}
+                    {t(waiting ? "taskOptionWaiting" : "taskOption", {
+                      page: p?.label ?? "",
+                      stage: st?.name ?? "",
+                      time: estimate(c.remainingMs),
+                    })}
                   </option>
                 );
               })}

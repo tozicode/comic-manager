@@ -784,9 +784,17 @@ table.board {
 .cell.doing:hover {
   border-color: var(--accent);
 }
+/* 前の工程待ち。クリックで計測はできる（工程順に進めないこともあるため） */
 .cell.locked {
   border: 1px dashed var(--locked-border);
   color: var(--locked-text);
+  cursor: pointer;
+}
+.cell.locked:hover {
+  border-color: var(--accent);
+}
+.cell.locked.doing {
+  background: var(--surface-2);
 }
 .cell.done {
   color: #fff;
