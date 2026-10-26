@@ -93,7 +93,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [saveNotice, setSaveNotice] = useState<SaveNotice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const showError = useCallback((e: unknown) => setError(String(e)), []);
+  // Tauri は失敗を文字で返すが、遠隔の画面（api.ts）は Error で投げる。String(e) だと頭に「Error: 」が付くので中身だけ出す
+  const showError = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), []);
   const refresh = useCallback(() => {
     setVersion((v) => v + 1);
     // 遠隔の画面の分は、記録を変えたときに Rust 側（server.rs）が知らせる
