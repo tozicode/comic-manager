@@ -1,10 +1,11 @@
 // 呼び口の振り分け（仕様書 5.17）。別端末のブラウザでは HTTP で呼ぶ
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-/** ブラウザのふりをして api.ts を読み込む。合言葉は URL の ?t= で渡す */
+/** ブラウザのふりをして api.ts を読み込む。合言葉は URL の ?t= で渡す。
+ * 言語は日本語に決めておく（何もしないと、テストを動かす環境の言語で文言が変わる） */
 async function loadApi(search: string) {
   vi.resetModules();
-  const store = new Map<string, string>();
+  const store = new Map<string, string>([["otosazu.lang", "ja"]]);
   vi.stubGlobal("location", { search, pathname: "/" });
   vi.stubGlobal("history", { replaceState: vi.fn() });
   vi.stubGlobal("localStorage", {
