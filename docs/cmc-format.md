@@ -24,7 +24,8 @@
 ### Project テーブル（1行）
 作品全体の設定。使えそうな列:
 - `ComicStoryStoryName` 作品名 / `ComicStorySubTitle` サブタイトル / `ComicStoryAuthorName` 作者名
-- `ComicBindPosition` 綴じ方向、`ComicStartPage` 開始ページ（見開きの判定に必要かも）
+- `ComicBindPosition` 綴じ方向：1 = 右綴じ（日本語の CLIP STUDIO の既定。ダミーも 1）、0 = 左綴じ（推定。左綴じの cmc で未確認）。
+  見開きを左右に分けて表示するときに使う。`ComicStartPage` 開始ページ（0 = 既定）は今のところ使わない
 
 ### CanvasNode テーブル（ページ一覧）
 | 列 | 意味 |
@@ -59,6 +60,8 @@ root → page0001 → page0003 → page0005 → page0006 → page0007 → page00
   ファイルごと削除され、`CanvasNode` の行も消える
 - 残った行は `PageFlag = 1` になり、`LinkWidth × LinkHeight` = 420 × 297（A4 の倍幅）
 - 見開き 1 ノードで **2ページ分**を占める。ノンブル（ページ番号）は 2 つ進めて数える
+- 見開きの絵の左右：右綴じでは若い番号のページが**右側**（p4-5 なら p4 が右、p5 が左。右綴じの本は右のページから読むため）。
+  左綴じではその逆。アプリでは「見開きを 1 ページずつ管理する」のサムネイルの切り出しに使う
 ### 見開きを単ページに戻したとき
 
 ```

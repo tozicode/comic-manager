@@ -4,7 +4,7 @@ import { api } from "./api";
 import { useApp } from "./app-context";
 import { usePomodoro } from "./components/Pomodoro";
 import { SaveToast } from "./components/Watchers";
-import { Thumb } from "./components/Thumb";
+import { Thumb, spreadSide } from "./components/Thumb";
 import { loadChosenPlan, useForecast } from "./forecast";
 import { clock, estimate, hours } from "./format";
 import { t } from "./i18n/timer";
@@ -205,7 +205,13 @@ export function MiniApp() {
       ) : active ? (
         <div className="mbody">
           {f && page && f.board.work.kind !== "manual" && (
-            <Thumb path={page.path} spread={page.span === 2} free={f.board.work.kind === "files"} width={40} />
+            <Thumb
+              path={page.path}
+              spread={page.span === 2}
+              half={spreadSide(page, f.board.work)}
+              free={f.board.work.kind === "files"}
+              width={40}
+            />
           )}
           <div className="grow">
             <div className="small-text">

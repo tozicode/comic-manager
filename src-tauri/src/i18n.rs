@@ -195,6 +195,13 @@ messages! {
         "插画作品请为每个文件指定位置",
         "插畫作品請為每個檔案指定位置",
     ],
+    SplitSpreadsComicOnly => [
+        "見開きを 1 ページずつ管理できるのは漫画の作品だけです",
+        "Only comic works can manage spreads page by page",
+        "펼침면을 1페이지씩 관리할 수 있는 것은 만화 작품뿐입니다",
+        "只有漫画作品可以按单页管理跨页",
+        "只有漫畫作品可以按單頁管理跨頁",
+    ],
 
     // ----- 計測・作業記録 -----
     TrackingStartFailed => [

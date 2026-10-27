@@ -108,6 +108,8 @@ export type BoardPage = {
   label: string;
   number: number;
   span: number;
+  /** 見開きを分けた行：1 = 若い番号のページ、2 = 次のページ。0 = 分けていない */
+  half: number;
   /** cmc から消えたページ（漫画のみ） */
   missing: boolean;
   /** ファイルが今の場所にあるか */
@@ -126,6 +128,10 @@ export type Board = {
     unit: string;
     cmcPath: string | null;
     lastSyncedAt: number | null;
+    /** 見開きを 1 ページずつ（2 行）で管理する（漫画のみ） */
+    splitSpreads: boolean;
+    /** 右綴じか（見開きを分けたとき、若い番号のページが右側） */
+    rightBound: boolean;
   };
   stages: StageRef[];
   pages: BoardPage[];
@@ -235,7 +241,10 @@ export type TimerPrefs = {
 
 export const api = {
   listWorks: () => call<WorkSummary[]>("list_works"),
-  addWork: (cmcPath: string, setId: number) => call<number>("add_work", { cmcPath, setId }),
+  addWork: (cmcPath: string, setId: number, splitSpreads: boolean) =>
+    call<number>("add_work", { cmcPath, setId, splitSpreads }),
+  /** 「見開きを 1 ページずつ管理する」の切り替え（漫画のみ） */
+  setSplitSpreads: (workId: number, on: boolean) => call<void>("set_split_spreads", { workId, on }),
   addFilesWork: (title: string, paths: string[], setId: number) => call<number>("add_files_work", { title, paths, setId }),
   addFiles: (workId: number, paths: string[]) => call<number>("add_files", { workId, paths }),
   removeFile: (pageId: number) => call<void>("remove_file", { pageId }),

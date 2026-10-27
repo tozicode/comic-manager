@@ -508,6 +508,14 @@ select {
   object-fit: contain;
   display: block;
 }
+/* 見開きを分けた行：見開きの絵（横 2 ページ分）から、そのページの側だけを 1 ページ分の枠に切り出す */
+.thumb.half img {
+  object-fit: cover;
+  object-position: left center;
+}
+.thumb.half.right img {
+  object-position: right center;
+}
 
 /* 小さな丸ボタン（セルの中など） */
 .mini {

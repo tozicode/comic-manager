@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { api, BoardPage, Cell, StageRef, WorkSummary } from "./api";
 import { useApp } from "./app-context";
-import { Thumb } from "./components/Thumb";
+import { Thumb, spreadSide } from "./components/Thumb";
 import { Forecast, useForecast } from "./forecast";
 import { clock, estimate, hours } from "./format";
 import { t } from "./i18n/timer";
@@ -274,7 +274,9 @@ function RemoteRow({ page, forecast, picked, onTap }: RowProps) {
   return (
     <>
       <span className="rpage">
-        {kind !== "manual" && <Thumb path={page.path} spread={page.span === 2} free={kind === "files"} width={28} />}
+        {kind !== "manual" && (
+          <Thumb path={page.path} spread={page.span === 2} half={spreadSide(page, f.board.work)} free={kind === "files"} width={28} />
+        )}
         <span className="tiny">{page.label}</span>
       </span>
       {f.board.stages.map((stage, i) => {

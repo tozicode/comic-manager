@@ -6,7 +6,7 @@ import type { Screen } from "../App";
 import { Dialog } from "../components/Dialog";
 import { useRelink } from "../components/Relink";
 import { TagPopover } from "../components/TagPopover";
-import { Thumb } from "../components/Thumb";
+import { Thumb, spreadSide } from "../components/Thumb";
 import { Forecast, loadChosenPlan, useForecast } from "../forecast";
 import { planName } from "../schedule";
 import { clock, dayKey, dayLabel, estimate, fromInputs, hours, startOfDay, time } from "../format";
@@ -51,6 +51,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     null,
   );
   const [renaming, setRenaming] = useState<{ page: BoardPage; title: string } | null>(null);
+  /** 「見開きを 1 ページずつ」の切り替えの確認（切り替え先の値） */
+  const [splitting, setSplitting] = useState<boolean | null>(null);
   /** イラストのファイル（または行）のドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
   const dragging = useRef<number | null>(null);
@@ -251,9 +253,15 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
               {t("addRows", { unit })}
             </button>
           ) : (
-            <button className="btn small ghost" onClick={startRelink} title={t("changeLocationHint")}>
-              {t("changeLocation")}
-            </button>
+            <>
+              <label className="row tight small-text" title={t("splitSpreadsHint")} style={{ marginRight: 6 }}>
+                <input type="checkbox" checked={board.work.splitSpreads} onChange={(e) => setSplitting(e.target.checked)} />
+                {t("splitSpreads")}
+              </label>
+              <button className="btn small ghost" onClick={startRelink} title={t("changeLocationHint")}>
+                {t("changeLocation")}
+              </button>
+            </>
           )}
           {!isManual && (
             <button className="btn small ghost" onClick={() => sync(true)}>
@@ -401,7 +409,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                       ⋮⋮
                     </span>
                   )}
-                  {!isManual && <Thumb path={page.path} spread={page.span === 2} free={isFiles} />}
+                  {!isManual && <Thumb path={page.path} spread={page.span === 2} half={spreadSide(page, board.work)} free={isFiles} />}
                   <div className={hasRows ? "pinfo" : "pinfo inline"}>
                     {isManual ? (
                       <button
@@ -492,7 +500,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                 <tr key={page.id}>
                   <td>
                     <div className="pcell">
-                      <span className="pno">{page.fileName}</span>
+                      {/* 見開きを分けた行は同じファイル名が 2 つあり得るので、ページ番号も添える */}
+                      <span className="pno">{page.half ? `${page.fileName} (${page.label})` : page.fileName}</span>
                     </div>
                   </td>
                   {board.stages.map((stage, i) => (
@@ -603,6 +612,33 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       )}
 
       {relink.dialog}
+      {splitting !== null && (
+        <Dialog
+          title={t(splitting ? "splitOnTitle" : "splitOffTitle")}
+          onClose={() => setSplitting(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setSplitting(null)}>
+                {t("cancel")}
+              </button>
+              <button
+                className="btn primary"
+                autoFocus
+                onClick={() => {
+                  const on = splitting;
+                  setSplitting(null);
+                  run(() => api.setSplitSpreads(workId, on));
+                }}
+              >
+                {t("splitApply")}
+              </button>
+            </>
+          }
+        >
+          <p>{t(splitting ? "splitOnBody" : "splitOffBody")}</p>
+          {splitting && <p className="muted small-text">{t("splitOnNote")}</p>}
+        </Dialog>
+      )}
       {removing && (
         <Dialog
           title={t("removeTitle", { label: removing.label })}

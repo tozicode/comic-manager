@@ -113,9 +113,15 @@ fn relink_work(state: State<AppState>, work_id: i64, cmc_path: String) -> Cmd<st
 }
 
 #[tauri::command]
-fn add_work(state: State<AppState>, cmc_path: String, set_id: i64) -> Cmd<i64> {
+fn add_work(state: State<AppState>, cmc_path: String, set_id: i64, split_spreads: bool) -> Cmd<i64> {
     let comic = cmc::read_comic(Path::new(&cmc_path))?;
-    with_store(&state, |s| s.add_work_in_set(&cmc_path, &comic, set_id, now_ms()))
+    with_store(&state, |s| s.add_work_in_set(&cmc_path, &comic, set_id, split_spreads, now_ms()))
+}
+
+/// 「見開きを 1 ページずつ管理する」の切り替え（5.18）
+#[tauri::command]
+fn set_split_spreads(state: State<AppState>, work_id: i64, on: bool) -> Cmd<()> {
+    with_store(&state, |s| s.set_split_spreads(work_id, on))
 }
 
 // ----- イラストの作品 -----
@@ -442,9 +448,14 @@ fn page_mtimes(state: State<AppState>, work_id: i64) -> Cmd<Vec<(i64, i64)>> {
     if with_store(&state, |s| s.work_info(work_id))?.kind == store::KIND_MANUAL {
         return Ok(Vec::new());
     }
-    let files = with_store(&state, |s| s.page_paths(work_id))?;
+    let (files, active) = with_store(&state, |s| Ok((s.page_paths(work_id)?, s.active_session()?)))?;
+    // 見開きを分けた 2 行は同じファイルなので、計測中のページと同じファイルの行は「別のページ」にしない
+    let active_path = active
+        .filter(|a| a.work_id == work_id)
+        .and_then(|a| files.iter().find(|(id, _)| *id == a.page_id).map(|(_, p)| p.clone()));
     Ok(files
         .into_iter()
+        .filter(|(_, path)| active_path.as_ref() != Some(path))
         .filter_map(|(id, path)| {
             let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
             let ms = modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64;
@@ -767,6 +778,7 @@ pub fn run() {
             get_day_start_hour,
             set_day_start_hour,
             add_manual_work,
+            set_split_spreads,
             add_rows,
             rename_row,
             rename_work,

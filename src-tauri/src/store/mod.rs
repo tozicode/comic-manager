@@ -116,6 +116,10 @@ pub struct WorkInfo {
     pub unit: String,
     pub cmc_path: Option<String>,
     pub last_synced_at: Option<i64>,
+    /// 見開きを 1 ページずつ（2 行）で管理する（漫画のみ。5.18）
+    pub split_spreads: bool,
+    /// 右綴じか（cmc から読む。見開きを分けたとき、若い番号のページが右側になる）
+    pub right_bound: bool,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -144,6 +148,8 @@ pub struct BoardPage {
     pub label: String,
     pub number: i64,
     pub span: i64,
+    /// 見開きを分けた行：1 = 若い番号のページ、2 = 次のページ。0 = 分けていない
+    pub half: i64,
     /// cmc から消えたページ（漫画のみ。予測や進捗から外す）
     pub missing: bool,
     /// ファイルが今の場所にあるか（画面に返す直前に調べる。イラストの「場所を指定」に使う）
@@ -274,7 +280,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 4;
+const LATEST: i64 = 5;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -414,6 +420,51 @@ impl Store {
         }
         if version < 4 && target >= 4 {
             self.migrate_v4()?;
+        }
+        if version < 5 && target >= 5 {
+            self.migrate_v5()?;
+        }
+        Ok(())
+    }
+
+    /// 版 5：見開きを 1 ページずつ管理する（仕様書 5.18）。
+    /// 作品に「見開きを分ける」と綴じ方向を持たせ、ページに「見開きの何ページ目か」（half）を足す。
+    /// 同じ .clip を指す行が 2 つできるので、一意の条件を (work_id, file_name, half) に広げる（表の作り直し）
+    fn migrate_v5(&self) -> Result<()> {
+        self.conn
+            .execute_batch(
+                "PRAGMA foreign_keys = OFF;
+                BEGIN;
+                ALTER TABLE work ADD COLUMN split_spreads INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE work ADD COLUMN right_bound INTEGER NOT NULL DEFAULT 1;
+                CREATE TABLE page_new (
+                    id INTEGER PRIMARY KEY,
+                    work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                    file_name TEXT NOT NULL,
+                    order_index INTEGER NOT NULL,
+                    number INTEGER NOT NULL,
+                    span INTEGER NOT NULL DEFAULT 1,
+                    memo TEXT NOT NULL DEFAULT '',
+                    missing INTEGER NOT NULL DEFAULT 0,
+                    title TEXT,
+                    half INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE (work_id, file_name, half)
+                );
+                INSERT INTO page_new (id, work_id, file_name, order_index, number, span, memo, missing, title)
+                    SELECT id, work_id, file_name, order_index, number, span, memo, missing, title FROM page;
+                DROP TABLE page;
+                ALTER TABLE page_new RENAME TO page;
+                PRAGMA user_version = 5;
+                COMMIT;
+                PRAGMA foreign_keys = ON;",
+            )
+            .map_err(db_err)?;
+        let broken: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0))
+            .map_err(db_err)?;
+        if broken > 0 {
+            return Err(tr(M::MigrationBroken).into());
         }
         Ok(())
     }
@@ -743,10 +794,10 @@ impl Store {
     /// 漫画の作品を、漫画の既定の工程セットで登録する
     #[cfg(test)]
     pub fn add_work(&self, cmc_path: &str, comic: &Comic, now: i64) -> Result<i64> {
-        self.add_work_in_set(cmc_path, comic, self.default_set(KIND_COMIC)?, now)
+        self.add_work_in_set(cmc_path, comic, self.default_set(KIND_COMIC)?, false, now)
     }
 
-    pub fn add_work_in_set(&self, cmc_path: &str, comic: &Comic, set_id: i64, now: i64) -> Result<i64> {
+    pub fn add_work_in_set(&self, cmc_path: &str, comic: &Comic, set_id: i64, split_spreads: bool, now: i64) -> Result<i64> {
         let exists: bool = self
             .conn
             .query_row("SELECT COUNT(*) > 0 FROM work WHERE cmc_path = ?1", [cmc_path], |r| r.get(0))
@@ -756,8 +807,8 @@ impl Store {
         }
         self.conn
             .execute(
-                "INSERT INTO work (title, kind, set_id, cmc_path, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![comic.title, KIND_COMIC, set_id, cmc_path, now],
+                "INSERT INTO work (title, kind, set_id, cmc_path, created_at, split_spreads) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![comic.title, KIND_COMIC, set_id, cmc_path, now, split_spreads],
             )
             .map_err(db_err)?;
         let work_id = self.conn.last_insert_rowid();
@@ -789,7 +840,9 @@ impl Store {
 
     /// 別の場所の cmc が、この作品と同じものかを照らし合わせる（ページのファイル名で比べる）
     pub fn check_relink(&self, work_id: i64, comic: &Comic) -> Result<RelinkCheck> {
-        let old: Vec<String> = self.page_files(work_id)?.into_iter().map(|(_, f)| f).collect();
+        // 見開きを分けた行は同じファイルが 2 つ並ぶので、1 つに数える
+        let mut old: Vec<String> = self.page_files(work_id)?.into_iter().map(|(_, f)| f).collect();
+        old.dedup();
         let matched = comic.pages.iter().filter(|p| old.contains(&p.file_name)).count();
         Ok(RelinkCheck {
             title: comic.title.clone(),
@@ -838,7 +891,8 @@ impl Store {
     pub fn work_info(&self, work_id: i64) -> Result<WorkInfo> {
         self.conn
             .query_row(
-                "SELECT w.id, w.title, w.kind, w.set_id, w.cmc_path, w.last_synced_at, COALESCE(s.unit, '')
+                "SELECT w.id, w.title, w.kind, w.set_id, w.cmc_path, w.last_synced_at, COALESCE(s.unit, ''),
+                    w.split_spreads, w.right_bound
                  FROM work w LEFT JOIN stage_set s ON s.id = w.set_id WHERE w.id = ?1",
                 [work_id],
                 |r| {
@@ -850,6 +904,8 @@ impl Store {
                         cmc_path: r.get(4)?,
                         last_synced_at: r.get(5)?,
                         unit: r.get(6)?,
+                        split_spreads: r.get(7)?,
+                        right_bound: r.get(8)?,
                     })
                 },
             )
@@ -876,7 +932,7 @@ impl Store {
                     (SELECT MAX(COALESCE(ss.ended_at, ss.started_at))
                         FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
                     w.set_id, COALESCE(s.unit, ''),
-                    (SELECT file_name FROM page WHERE work_id = w.id AND missing = 0 ORDER BY order_index, id LIMIT 1)
+                    (SELECT file_name FROM page WHERE work_id = w.id AND missing = 0 ORDER BY order_index, half, id LIMIT 1)
                  FROM work w LEFT JOIN stage_set s ON s.id = w.set_id ORDER BY w.created_at DESC",
             )
             .map_err(db_err)?;
@@ -917,21 +973,25 @@ impl Store {
     /// cmc の内容をページ一覧に反映する。ページはファイル名で突き合わせる。
     /// cmc から消えたページは記録を残したまま `missing` にする
     pub fn sync_pages(&self, work_id: i64, comic: &Comic, now: i64) -> Result<SyncResult> {
+        let split = self.work_info(work_id)?.split_spreads;
         let old = self.page_states(work_id)?;
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let before: i64 = tx
             .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1", [work_id], |r| r.get(0))
             .map_err(db_err)?;
+        if split {
+            self.follow_split_spreads(&old, comic)?;
+        }
         tx.execute("UPDATE page SET missing = 1 WHERE work_id = ?1", [work_id])
             .map_err(db_err)?;
-        for (i, p) in comic.pages.iter().enumerate() {
+        for p in pages::page_rows(comic, split) {
             tx.execute(
-                "INSERT INTO page (work_id, file_name, order_index, number, span, memo, missing)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)
-                 ON CONFLICT (work_id, file_name) DO UPDATE SET
+                "INSERT INTO page (work_id, file_name, order_index, number, span, memo, missing, half)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)
+                 ON CONFLICT (work_id, file_name, half) DO UPDATE SET
                     order_index = excluded.order_index, number = excluded.number,
                     span = excluded.span, memo = excluded.memo, missing = 0",
-                params![work_id, p.file_name, i as i64, p.number, p.span, p.memo],
+                params![work_id, p.file_name, p.order_index, p.number, p.span, p.memo, p.half],
             )
             .map_err(db_err)?;
         }
@@ -941,11 +1001,19 @@ impl Store {
         let missing: i64 = tx
             .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1 AND missing = 1", [work_id], |r| r.get(0))
             .map_err(db_err)?;
-        tx.execute("UPDATE work SET last_synced_at = ?2 WHERE id = ?1", params![work_id, now])
-            .map_err(db_err)?;
+        tx.execute(
+            "UPDATE work SET last_synced_at = ?2, right_bound = ?3 WHERE id = ?1",
+            params![work_id, now, comic.right_bound],
+        )
+        .map_err(db_err)?;
         tx.commit().map_err(db_err)?;
-        let new = self.page_states(work_id)?;
-        let (merges, splits) = self.detect_spread_changes(&old, &new, now)?;
+        // 見開きを分ける作品では行を付け替えて追従したので、確認するものは無い
+        let (merges, splits) = if split {
+            (Vec::new(), Vec::new())
+        } else {
+            let new = self.page_states(work_id)?;
+            self.detect_spread_changes(&old, &new, now)?
+        };
         Ok(SyncResult { added: after - before, missing, merges, splits })
     }
 
@@ -969,8 +1037,8 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, file_name, number, span, missing, title FROM page
-                 WHERE work_id = ?1 ORDER BY missing, order_index, id",
+                "SELECT id, file_name, number, span, missing, title, half FROM page
+                 WHERE work_id = ?1 ORDER BY missing, order_index, half, id",
             )
             .map_err(db_err)?;
         let cmc = work.cmc_path.clone();
@@ -986,6 +1054,7 @@ impl Store {
                     label: row_label(r.get(5)?, number, span),
                     number,
                     span,
+                    half: r.get(6)?,
                     missing: r.get(4)?,
                     found: true,
                     tags: Vec::new(),
@@ -1338,6 +1407,7 @@ mod tests {
         let mut number = 1;
         Comic {
             title: "テスト作品".into(),
+            right_bound: true,
             pages: pages
                 .iter()
                 .map(|(f, span)| {
@@ -1587,6 +1657,35 @@ mod tests {
     }
 
     #[test]
+    fn 版4のデータを版5に移してもページと記録は残る() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        let old = Store { conn };
+        old.migrate(4).unwrap();
+        old.conn
+            .execute_batch(
+                "INSERT INTO work (id, title, kind, cmc_path, created_at) VALUES (1, '漫画', 'comic', 'C:/a.cmc', 0);
+                 INSERT INTO work_stage (work_id, stage_id, sort_order) VALUES (1, 1, 0);
+                 INSERT INTO page (id, work_id, file_name, order_index, number, span) VALUES (10, 1, 'page0001.clip', 0, 1, 2);
+                 INSERT INTO work_session (page_id, stage_id, started_at, ended_at) VALUES (10, 1, 0, 600000);
+                 INSERT INTO page_tag (page_id, tag_id) VALUES (10, 1);",
+            )
+            .unwrap();
+        old.migrate(LATEST).unwrap();
+        let fk: bool = old.conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert!(fk);
+        let board = old.board(1, 0).unwrap();
+        assert!(!board.work.split_spreads && board.work.right_bound);
+        assert_eq!((board.pages[0].id, board.pages[0].label.as_str(), board.pages[0].half), (10, "p1-2", 0));
+        assert_eq!(board.pages[0].cells[0].total_ms, 600000);
+        assert!(board.pages[0].tags.contains(&1));
+        // 作り直した表でも、作品を消すとページと記録が一緒に消える
+        old.remove_work(1).unwrap();
+        let left: i64 = old.conn.query_row("SELECT COUNT(*) FROM work_session", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
+    }
+
+    #[test]
     fn 版3のデータを版4に移すと作品にセットが付きタグの対象が表に移る() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
@@ -1603,7 +1702,7 @@ mod tests {
             .unwrap();
         old.migrate(LATEST).unwrap();
         let version: i64 = old.conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, LATEST);
 
         let sets: Vec<(i64, i64)> = old.list_works().unwrap().into_iter().map(|w| (w.id, w.set_id)).collect();
         assert_eq!(sets, [(1, 1), (2, 2), (3, 1)]);

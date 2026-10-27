@@ -263,6 +263,8 @@ function AddWorkDialog({
   const [setId, setSetId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [rows, setRows] = useState("");
+  /** 漫画：見開きを 1 ページずつ（2 行）で管理する */
+  const [splitSpreads, setSplitSpreads] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -309,7 +311,7 @@ function AddWorkDialog({
     setBusy(true);
     try {
       if (kind === "comic") {
-        onAdded(await api.addWork(paths[0], setId));
+        onAdded(await api.addWork(paths[0], setId, splitSpreads));
       } else {
         // 作品名を入れていなければ、最初のファイル名を使う
         const name = title.trim() || (paths[0].split(/[\\/]/).pop() ?? "").replace(/\.[^.]+$/, "");
@@ -396,6 +398,16 @@ function AddWorkDialog({
             <option value="new">{t("stageSetNew")}</option>
           </select>
         </label>
+        {kind === "comic" && (
+          <label className="row" style={{ alignItems: "flex-start" }}>
+            <input type="checkbox" checked={splitSpreads} onChange={(e) => setSplitSpreads(e.target.checked)} style={{ marginTop: 4 }} />
+            <span>
+              {t("splitSpreads")}
+              <br />
+              <span className="muted small-text">{t("splitSpreadsDesc")}</span>
+            </span>
+          </label>
+        )}
         {kind === "manual" && (
           <label className="row" style={{ alignItems: "flex-start" }}>
             <span style={{ width: 90, paddingTop: 6 }}>{t("rows", { unit: rowUnit })}</span>

@@ -18,6 +18,8 @@ use crate::i18n::{M, tr, trf};
 pub struct Comic {
     /// 作品名。cmc に設定が無ければ cmc のファイル名
     pub title: String,
+    /// 右綴じか（見開きを左右に分けたとき、若い番号のページがどちら側かを決める）
+    pub right_bound: bool,
     pub pages: Vec<Page>,
 }
 
@@ -48,6 +50,12 @@ pub fn read_comic(cmc_path: &Path) -> Result<Comic, String> {
         .flatten()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| file_stem(cmc_path));
+    // 綴じ方向。1 = 右綴じ（日本語の既定）、0 = 左綴じ。列が無い古い cmc は右綴じとみなす
+    let right_bound = conn
+        .query_row("SELECT ComicBindPosition FROM Project LIMIT 1", [], |r| r.get::<_, Option<i64>>(0))
+        .ok()
+        .flatten()
+        .is_none_or(|v| v == 1);
 
     let nodes = read_nodes(&conn)?;
     let ordered = order_pages(&nodes);
@@ -64,7 +72,7 @@ pub fn read_comic(cmc_path: &Path) -> Result<Comic, String> {
         });
         number += span;
     }
-    Ok(Comic { title, pages })
+    Ok(Comic { title, right_bound, pages })
 }
 
 /// ページファイルのパスを返す。LinkPath の `.:` は cmc と同じフォルダを指す。
@@ -310,6 +318,7 @@ mod tests {
     fn 見開きは2ページ分として数える() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/spread.cmc");
         let comic = read_comic(&path).unwrap();
+        assert!(comic.right_bound);
         assert_eq!(
             summary(&comic),
             vec![
