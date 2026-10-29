@@ -32,7 +32,7 @@ THEMES = {
 def mark(c):
     return (f'<circle cx="50" cy="54" r="22" fill="none" stroke="{c["track"]}" stroke-width="10"/>'
             f'<path d="M50 32A22 22 0 1 1 28 54" fill="none" stroke="{c["arc"]}" stroke-width="10" stroke-linecap="round"/>'
-            f'<rect x="43" y="16" width="14" height="8" rx="4" fill="{c["arc"]}"/>'
+            f'<path d="M47 20H53" stroke="{c["arc"]}" stroke-width="8" stroke-linecap="round"/>'
             f'<circle cx="50" cy="54" r="5" fill="{c["dot"]}"/>')
 
 # 輪の下端（y=81）を文字の並ぶ線に揃え、O を頭文字の大文字として読ませる
