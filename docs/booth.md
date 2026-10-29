@@ -100,10 +100,10 @@ Google カレンダーやカレンダー.app に取り込めるファイル（.i
 
 ■ ダウンロードファイル
 お使いのパソコンに合わせて、どちらか 1 つをダウンロードしてください。
-・Otosazu_2.4.0_windows.zip（Windows 版）
-　Otosazu_2.4.0_x64-setup.exe（インストーラー）と説明書 PDF
-・Otosazu_2.4.0_mac.zip（Mac 版）
-　Otosazu_2.4.0_universal.dmg と説明書 PDF
+・Otosazu_2.5.0_windows.zip（Windows 版）
+　Otosazu_2.5.0_x64-setup.exe（インストーラー）と説明書 PDF
+・Otosazu_2.5.0_mac.zip（Mac 版）
+　Otosazu_2.5.0_universal.dmg と説明書 PDF
 
 ■ インストール時のご注意
 無料配布のため、有料の署名（証明書）を付けていません。そのため初回だけ、次の手順が必要です。くわしくは同梱の説明書をご覧ください。
