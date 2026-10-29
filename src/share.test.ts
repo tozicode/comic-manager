@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Board, BoardPage } from "./api";
-import { gridLayout, shareData } from "./share";
+import { setTimeFormat } from "./format";
+import { setLang } from "./i18n";
+import { gridLayout, postText, shareData } from "./share";
+import type { ShareInfo } from "./share-draw";
 
 const DAY = new Date(2026, 9, 29).getTime();
 const stages = [
@@ -83,5 +86,51 @@ describe("gridLayout", () => {
     expect(g.bands).toBeGreaterThan(1);
     expect(g.cols * g.bands).toBeGreaterThanOrEqual(64);
     expect(g.cell).toBeGreaterThan(640 / 64);
+  });
+});
+
+describe("postText", () => {
+  beforeEach(() => {
+    setLang("ja");
+    setTimeFormat("hm");
+  });
+  afterEach(() => setLang("ja"));
+
+  const b = board([page(1, 1, [[true, DAY + 1], [true, DAY + 1]]), page(2, 1, [[true, DAY + 1], [false, null]])]);
+  const data = shareData(b, [], DAY);
+  const info = (over: Partial<ShareInfo> = {}): ShareInfo => ({
+    title: "冬の新刊",
+    today: new Date(DAY),
+    workedMs: (3 * 60 + 25) * 60_000,
+    quotaMs: 0,
+    quotaMet: false,
+    finish: new Date(2026, 10, 10),
+    completed: false,
+    row: b.work,
+    ...over,
+  });
+
+  it("作業時間と、工程ごとに進めた数を文にする", () => {
+    expect(postText(data, info())).toBe(
+      "「冬の新刊」今日は3時間25分作業して、下書きを2ページ、ペン入れを1ページ進めました。全体の進み具合は75%です。完成見込みは11/10（火）です。 #Otosazu",
+    );
+  });
+
+  it("隠した項目は文面にも入れない", () => {
+    expect(postText(data, info({ title: null, workedMs: null, finish: null }))).toBe(
+      "今日は下書きを2ページ、ペン入れを1ページ進めました。全体の進み具合は75%です。 #Otosazu",
+    );
+  });
+
+  it("今日まだ何も終えていなくても、進み具合は伝える", () => {
+    const none = shareData(b, [], DAY + 10);
+    expect(postText(none, info({ title: null, workedMs: 0, finish: null }))).toBe("全体の進み具合は75%です。 #Otosazu");
+  });
+
+  it("英語では文の間に空白を入れる", () => {
+    setLang("en");
+    expect(postText(data, info({ title: null, finish: null }))).toBe(
+      "Worked 3h 25m today and finished 下書き (2 p), ペン入れ (1 p). Overall progress: 75%. #Otosazu",
+    );
   });
 });

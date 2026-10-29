@@ -1,5 +1,9 @@
 // 進捗を共有する画像（仕様書 5.20）に載せる中身を、ボードと今日の作業記録から計算する。描くのは share-draw.ts
 import type { Board, StageRef } from "./api";
+import { dayLabel, hours } from "./format";
+import { kindKey, unitText } from "./i18n/common";
+import { t } from "./i18n/share";
+import type { ShareInfo } from "./share-draw";
 
 /** マスの状態：これまでに終えた／今日終えた／今日手を付けたが終わっていない／未着手 */
 export type CellState = "before" | "today" | "touched" | "open";
@@ -51,6 +55,33 @@ export function shareData(board: Board, sessions: SessionLike[], dayStart: numbe
     progress: total > 0 ? done / total : 0,
     todayProgress: total > 0 ? today / total : 0,
   };
+}
+
+export const HASHTAG = "#Otosazu";
+
+/**
+ * X に投稿するときの文面。「今日は 3時間25分 作業して、下書きを 1 ページ、ペン入れを 3 ページ進めました。」に、
+ * 全体の進み具合と完成見込みを添える。隠した項目（info で null）は文面にも入れない
+ */
+export function postText(data: ShareData, info: ShareInfo): string {
+  const items = data.doneToday.map((d) =>
+    t(kindKey(info.row.kind, "postItem"), { stage: d.stage.name, n: d.count, unit: unitText(info.row, d.count) }),
+  );
+  const list = items.join(t("postSep"));
+  const worked = info.workedMs !== null && info.workedMs > 0 ? hours(info.workedMs) : null;
+  const sentences = [
+    worked && list
+      ? t("postWorkedDone", { time: worked, list })
+      : worked
+        ? t("postWorked", { time: worked })
+        : list
+          ? t("postDone", { list })
+          : "",
+    info.completed ? t("postCompleted") : t("postProgress", { p: Math.round(data.progress * 100) }),
+    !info.completed && info.finish ? t("postFinish", { date: dayLabel(info.finish) }) : "",
+  ].filter(Boolean);
+  const head = info.title ? t("postTitle", { title: info.title }) : "";
+  return `${head}${sentences.join(t("postJoin"))} ${HASHTAG}`;
 }
 
 export type GridLayout = { bands: number; cols: number; cell: number };

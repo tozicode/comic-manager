@@ -1,5 +1,5 @@
 // 進捗を共有する画像のダイアログ（仕様書 5.20）。画像を確認して、コピー・保存・X への投稿をする
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image } from "@tauri-apps/api/image";
 import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -7,15 +7,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, SessionRow } from "../api";
 import { useApp } from "../app-context";
 import { useForecast } from "../forecast";
-import { dayKey, dayStartMs, hours } from "../format";
+import { dayKey, dayStartMs } from "../format";
 import { t } from "../i18n/share";
-import { shareData } from "../share";
-import { drawShare } from "../share-draw";
+import { postText, shareData } from "../share";
+import { drawShare, ShareInfo } from "../share-draw";
 import { Dialog } from "./Dialog";
 
 type Options = { title: boolean; time: boolean; finish: boolean };
 const OPTIONS_KEY = "otosazu.shareOptions";
-const HASHTAG = "#Otosazu";
 
 function loadOptions(): Options {
   const all = { title: true, time: true, finish: true };
@@ -41,10 +40,11 @@ export function ShareDialog({ workId, onClose }: { workId: number; onClose: () =
     api.listSessions(workId, dayStart).then(setSessions).catch(app.showError);
   }, [workId, dayStart, app.version, app.showError]);
 
-  useEffect(() => {
-    if (!forecast || !sessions || !canvas.current || dayStart === null) return;
+  // 画像と投稿の文面に載せる中身（隠した項目は null）
+  const content = useMemo(() => {
+    if (!forecast || !sessions || dayStart === null) return null;
     const { board, prediction } = forecast;
-    drawShare(canvas.current, shareData(board, sessions, dayStart), {
+    const info: ShareInfo = {
       title: opts.title ? board.work.title : null,
       today: forecast.today,
       workedMs: opts.time ? forecast.workedTodayMs : null,
@@ -53,8 +53,13 @@ export function ShareDialog({ workId, onClose }: { workId: number; onClose: () =
       finish: opts.finish ? forecast.finish.mid : null,
       completed: prediction.remainingMs === 0,
       row: board.work,
-    });
+    };
+    return { data: shareData(board, sessions, dayStart), info };
   }, [forecast, sessions, opts, dayStart]);
+
+  useEffect(() => {
+    if (content && canvas.current) drawShare(canvas.current, content.data, content.info);
+  }, [content]);
 
   const toggle = (key: keyof Options) => {
     const next = { ...opts, [key]: !opts[key] };
@@ -102,16 +107,12 @@ export function ShareDialog({ workId, onClose }: { workId: number; onClose: () =
   };
 
   const post = () => {
-    if (!forecast) return;
-    const parts = [
-      opts.time && forecast.workedTodayMs > 0 ? t("postTime", { time: hours(forecast.workedTodayMs) }) : "",
-      opts.title ? t("postTitle", { title: forecast.board.work.title }) : "",
-      HASHTAG,
-    ];
-    openUrl(`https://x.com/intent/post?text=${encodeURIComponent(parts.filter(Boolean).join(" "))}`).catch(app.showError);
+    if (!content) return;
+    const text = postText(content.data, content.info);
+    openUrl(`https://x.com/intent/post?text=${encodeURIComponent(text)}`).catch(app.showError);
   };
 
-  const ready = !!forecast && !!sessions;
+  const ready = !!content;
   return (
     <Dialog
       className="share-dialog"
