@@ -94,6 +94,21 @@ curl -sL https://github.com/tozicode/comic-manager/releases/latest/download/late
 - `Otosazu_<版>_windows.zip`：`Otosazu_<版>_x64-setup.exe` と説明書の PDF
 - `Otosazu_<版>_mac.zip`：`Otosazu_<版>_universal.dmg` と説明書の PDF
 
+## 利用者数の目安
+
+```sh
+node scripts/release-stats.mjs
+```
+
+版ごとに、GitHub Releases のファイルのダウンロード数を出す。
+
+- **人数**（setup.exe と .app.tar.gz）：その版が最新だった間に開いて更新した人の数。BOOTH は zip で配っているので、
+  GitHub から取るのはほぼ自動更新だけで、1 人が 1 つの版につき 1 回。「あとで」を選び続ける人は入らないので、少なめに出る
+- **起動**（latest.json）：起動した回数。メインの窓を開くたびに 1 回読む
+- 版をまたいで足すと同じ人を数え直すので、期間で見るときは合計ではなく最大の値を使う。
+  最新だった日数が短い版は、たまにしか開かない人を数えきれていない
+- 最初の自動更新の版（2.0.0）は更新するものが無かったので、人数はほぼ 0 になる。手順 6 の確認の curl も起動に入る
+
 ## 動作確認のしかた（本物のリリースを出さずに試す）
 
 `--config` で名前・識別子・置き場所を差し替えたテスト用のアプリを作れば、今使っている Otosazu と記録に触れずに試せる。
