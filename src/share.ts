@@ -12,6 +12,9 @@ export type ShareData = {
   stages: StageRef[];
   /** 行（ページ・ファイル）ごとのマス。消えたページは除く */
   rows: CellState[][];
+  /** 行の幅（見開きは 2）と名前（p1 など）。rows と同じ並び */
+  spans: number[];
+  labels: string[];
   /** 工程ごとに今日終えた数（見開きは 2 ページ分）。0 の工程は入れない */
   doneToday: { stage: StageRef; count: number }[];
   /** 全体の進み具合（0〜1。作品一覧と同じく完了したタスクの数で数える） */
@@ -51,6 +54,8 @@ export function shareData(board: Board, sessions: SessionLike[], dayStart: numbe
   return {
     stages: board.stages,
     rows,
+    spans: pages.map((p) => p.span),
+    labels: pages.map((p) => p.label),
     doneToday: board.stages.map((stage, i) => ({ stage, count: counts[i] })).filter((d) => d.count > 0),
     progress: total > 0 ? done / total : 0,
     todayProgress: total > 0 ? today / total : 0,
@@ -82,20 +87,4 @@ export function postText(data: ShareData, info: ShareInfo): string {
   ].filter(Boolean);
   const head = info.title ? t("postTitle", { title: info.title }) : "";
   return `${head}${sentences.join(t("postJoin"))} ${HASHTAG}`;
-}
-
-export type GridLayout = { bands: number; cols: number; cell: number };
-
-/**
- * マスの並べ方。行（ページ）を横に並べ、入りきらなければ段に折り返す。マスがいちばん大きくなる段数を選ぶ。
- * 1 段は工程の数だけの高さで、段と段の間は gapCells マス分あける
- */
-export function gridLayout(rows: number, stages: number, width: number, height: number, gapCells = 0.8): GridLayout {
-  let best: GridLayout = { bands: 1, cols: Math.max(rows, 1), cell: 0 };
-  for (let bands = 1; bands <= Math.max(rows, 1); bands++) {
-    const cols = Math.ceil(Math.max(rows, 1) / bands);
-    const cell = Math.min(width / cols, height / (bands * stages + (bands - 1) * gapCells));
-    if (cell > best.cell) best = { bands, cols, cell };
-  }
-  return best;
 }

@@ -4,7 +4,7 @@ import { LOGO_TEXT_PATH, LOGO_VIEWBOX } from "./components/Logo";
 import { dayLabel, estimate, hours } from "./format";
 import { kindKey, unitText } from "./i18n/common";
 import { t } from "./i18n/share";
-import { gridLayout, ShareData } from "./share";
+import type { ShareData } from "./share";
 
 export const SHARE_W = 1200;
 export const SHARE_H = 675;
@@ -38,134 +38,133 @@ export function drawShare(canvas: HTMLCanvasElement, data: ShareData, info: Shar
   if (!ctx) return;
   const family = getComputedStyle(document.body).fontFamily || "sans-serif";
   const font = (size: number, weight = 400) => `${weight} ${size}px ${family}`;
-  const text = (s: string, x: number, y: number, size: number, color = INK, weight = 400, maxWidth = 420) => {
+  const text = (s: string, x: number, y: number, size: number, color = INK, weight = 400, maxWidth = 520) => {
     ctx.font = font(size, weight);
     ctx.fillStyle = color;
-    ctx.fillText(fit(ctx, s, maxWidth), x, y);
+    const out = fit(ctx, s, maxWidth);
+    ctx.fillText(out, x, y);
+    return ctx.measureText(out).width;
   };
 
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, SHARE_W, SHARE_H);
   ctx.textBaseline = "alphabetic";
-
-  // ---- 左：今日の作業と全体の進み具合 ----
   const L = 72;
+  const R = SHARE_W - 72;
+  const pct = (p: number) => Math.round(p * 100);
+
+  // ---- 上：左に今日の作業、右に全体の進み具合（数字は横に並べる） ----
+  let leftW = 0;
   let y = 104;
   if (info.title) {
-    text(info.title, L, y, 30, INK, 800);
-    y += 40;
+    leftW = Math.max(leftW, text(info.title, L, y, 30, INK, 800));
+    y += 38;
   }
-  text(t("dayWork", { date: dayLabel(info.today) }), L, y, 22, MUTED);
-  y += 96;
-  const pct = (p: number) => Math.round(p * 100);
+  leftW = Math.max(leftW, text(t("dayWork", { date: dayLabel(info.today) }), L, y, 22, MUTED));
   const showTime = info.workedMs !== null && info.workedMs > 0;
   if (showTime) {
-    text(hours(info.workedMs!), L, y, 76, INK, 800);
-    y += 46;
+    leftW = Math.max(leftW, text(hours(info.workedMs!), L, 232, 76, INK, 800));
     if (info.quotaMs > 0) {
       const q = estimate(info.quotaMs);
-      text(info.quotaMet ? t("quotaMet", { time: q }) : t("quota", { time: q }), L, y, 24, info.quotaMet ? ACCENT : MUTED, 800);
-      y += 34;
+      const label = info.quotaMet ? t("quotaMet", { time: q }) : t("quota", { time: q });
+      leftW = Math.max(leftW, text(label, L, 272, 24, info.quotaMet ? ACCENT : MUTED, 800));
     }
-  } else {
-    text(`${pct(data.progress)}%`, L, y, 76, INK, 800);
-    y += 46;
-    ctx.font = font(24, 800);
-    const label = t("progressBig");
-    text(label, L, y, 24, MUTED, 800);
-    if (data.todayProgress > 0) {
-      text(t("todayGain", { p: Math.max(1, pct(data.todayProgress)) }), L + ctx.measureText(label).width + 4, y, 22, ACCENT, 800);
-    }
-    y += 34;
   }
-  y += 18;
-  for (const d of data.doneToday.slice(0, 4)) {
+
+  // 右端：全体の進み具合（今日の伸び）と完成見込み
+  ctx.textAlign = "right";
+  text(t("progressBig"), R, 150, 22, MUTED);
+  ctx.font = font(76, 800);
+  const big = `${pct(data.progress)}%`;
+  text(big, R, 232, 76, INK, 800);
+  const rightW = Math.max(ctx.measureText(big).width, 160);
+  if (data.todayProgress > 0) text(t("todayGain", { p: Math.max(1, pct(data.todayProgress)) }).trim(), R, 272, 22, ACCENT, 800);
+  if (info.completed) text(t("completed"), R, 306, 22, ACCENT, 800);
+  else if (info.finish) text(t("finish", { date: dayLabel(info.finish) }), R, 306, 22, MUTED);
+  ctx.textAlign = "left";
+
+  // 真ん中：工程ごとに今日終えた数（下を揃える）
+  const listX = L + Math.min(leftW, 520) + 56;
+  const listW = R - rightW - 48 - listX;
+  const items = data.doneToday.slice(0, 4);
+  items.forEach((d, i) => {
     const key = kindKey(info.row.kind, "done");
-    text(t(key, { stage: d.stage.name, n: d.count, unit: unitText(info.row, d.count) }), L, y, 22, INK, 400);
-    y += 34;
-  }
-  // 下端：全体の進み具合と完成見込み
-  let by = SHARE_H - 72;
-  if (info.completed) {
-    text(t("completed"), L, by, 24, ACCENT, 800);
-  } else {
-    if (info.finish) {
-      text(t("finish", { date: dayLabel(info.finish) }), L, by, 22, MUTED);
-      by -= 36;
-    }
-    if (showTime) {
-      ctx.font = font(26, 800);
-      const head = t("progress", { p: pct(data.progress) });
-      text(head, L, by, 26, INK, 800);
-      if (data.todayProgress > 0) {
-        text(t("todayGain", { p: Math.max(1, pct(data.todayProgress)) }), L + ctx.measureText(head).width + 4, by, 22, ACCENT, 800);
-      }
-    }
-  }
+    const line = t(key, { stage: d.stage.name, n: d.count, unit: unitText(info.row, d.count) });
+    text(line, listX, 272 - (items.length - 1 - i) * 34, 22, INK, 400, listW);
+  });
 
-  // ---- 右：ページ × 工程のマス ----
-  const area = { x: 540, y: 96, w: SHARE_W - 540 - 72, h: SHARE_H - 96 - 170 };
-  const labelW = 110;
+  // ---- 下：ページ × 工程のマス。必ず 1 段で、幅いっぱいに並べる ----
+  const labelW = 120;
+  const barX = L + labelW;
+  const barW = R - barX;
+  const top = 350;
+  const bottom = SHARE_H - 132;
   const S = Math.max(data.stages.length, 1);
-  const n = Math.max(data.rows.length, 1);
-  const g = gridLayout(n, S, area.w - labelW, area.h);
-  const cell = Math.min(g.cell, 44);
-  const gap = Math.max(1, Math.round(cell * 0.14));
-  const bandH = S * cell;
-  const gridH = g.bands * bandH + (g.bands - 1) * cell * 0.8;
-  const gx = area.x + labelW;
-  const gy = area.y + (area.h - gridH) / 2;
-  const labelSize = Math.min(18, Math.max(11, cell * 0.6));
-  for (let b = 0; b < g.bands; b++) {
-    const top = gy + b * (bandH + cell * 0.8);
-    data.stages.forEach((stage, si) => {
-      const cy = top + si * cell;
-      ctx.font = font(labelSize, 400);
-      ctx.fillStyle = MUTED;
-      ctx.textBaseline = "middle";
-      ctx.fillText(fit(ctx, stage.name, labelW - 12), area.x, cy + cell / 2);
-      ctx.textBaseline = "alphabetic";
-      for (let c = 0; c < g.cols; c++) {
-        const r = b * g.cols + c;
-        if (r >= data.rows.length) break;
-        const state = data.rows[r][si];
-        const x = gx + c * cell;
-        drawCell(ctx, x + gap / 2, cy + gap / 2, cell - gap, state, stage.color);
-      }
+  const rowGap = 6;
+  const rowH = Math.min(56, (bottom - top - (S - 1) * rowGap) / S);
+  const gridTop = top + (bottom - top - (S * rowH + (S - 1) * rowGap)) / 2;
+  // 見開きは 2 ページ分の幅にする
+  const units = data.spans.reduce((n, s) => n + s, 0) || 1;
+  const unitW = barW / units;
+  const gap = Math.min(3, unitW * 0.18);
+  const xs: number[] = [];
+  data.spans.reduce((x, s) => (xs.push(x), x + s * unitW), barX);
+  data.stages.forEach((stage, si) => {
+    const cy = gridTop + si * (rowH + rowGap);
+    ctx.font = font(18);
+    ctx.fillStyle = MUTED;
+    ctx.textBaseline = "middle";
+    ctx.fillText(fit(ctx, stage.name, labelW - 14), L, cy + rowH / 2);
+    ctx.textBaseline = "alphabetic";
+    data.rows.forEach((cells, r) => {
+      drawCell(ctx, xs[r] + gap / 2, cy, data.spans[r] * unitW - gap, rowH, cells[si], stage.color);
     });
+  });
+  // ページの目印：最初・真ん中・最後
+  if (data.labels.length > 0) {
+    const tickY = gridTop + S * rowH + (S - 1) * rowGap + 24;
+    ctx.font = font(16);
+    ctx.fillStyle = MUTED;
+    const marks = [...new Set([0, Math.floor((data.labels.length - 1) / 2), data.labels.length - 1])];
+    marks.forEach((r, i) => {
+      ctx.textAlign = i === 0 ? "left" : r === data.labels.length - 1 ? "right" : "center";
+      const x = ctx.textAlign === "left" ? xs[r] : ctx.textAlign === "right" ? xs[r] + data.spans[r] * unitW : xs[r] + (data.spans[r] * unitW) / 2;
+      ctx.fillText(data.labels[r], x, tickY);
+    });
+    ctx.textAlign = "left";
   }
 
-  // 凡例
-  const ly = SHARE_H - 72;
+  // 凡例とロゴ
+  const ly = SHARE_H - 56;
   const legendColor = data.stages[data.stages.length - 1]?.color ?? ACCENT;
-  let lx = area.x;
+  let lx = L;
   for (const [state, label] of [
     ["before", t("legendBefore")],
     ["today", t("legendToday")],
     ["touched", t("legendTouched")],
   ] as const) {
-    drawCell(ctx, lx, ly - 15, 18, state, legendColor);
+    drawCell(ctx, lx, ly - 15, 18, 18, state, legendColor);
     ctx.font = font(18);
     ctx.fillStyle = MUTED;
     ctx.fillText(label, lx + 26, ly);
     lx += 26 + ctx.measureText(label).width + 28;
   }
-
-  drawLogo(ctx, SHARE_W - 72, SHARE_H - 52, 40);
+  drawLogo(ctx, R, SHARE_H - 44, 36);
 }
 
-function drawCell(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, state: string, color: string) {
-  const r = Math.min(4, size / 5);
+function drawCell(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, state: string, color: string) {
+  const r = Math.min(4, w / 4, h / 4);
   ctx.save();
   ctx.beginPath();
-  ctx.roundRect(x, y, size, size, r);
+  ctx.roundRect(x, y, w, h, r);
   if (state === "touched") {
-    const w = Math.max(2, size / 9);
+    // 細い棒でも見えるよう、枠の太さは棒の幅に合わせる
+    const lw = Math.max(1.5, Math.min(3, w / 4));
     ctx.fillStyle = EMPTY;
     ctx.fill();
     ctx.beginPath();
-    ctx.roundRect(x + w / 2, y + w / 2, size - w, size - w, r);
-    ctx.lineWidth = w;
+    ctx.roundRect(x + lw / 2, y + lw / 2, w - lw, h - lw, r);
+    ctx.lineWidth = lw;
     ctx.strokeStyle = color;
     ctx.stroke();
   } else {

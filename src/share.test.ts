@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Board, BoardPage } from "./api";
 import { setTimeFormat } from "./format";
 import { setLang } from "./i18n";
-import { gridLayout, postText, shareData } from "./share";
+import { postText, shareData } from "./share";
 import type { ShareInfo } from "./share-draw";
 
 const DAY = new Date(2026, 9, 29).getTime();
@@ -60,6 +60,10 @@ describe("shareData", () => {
       ["today", "touched"],
       ["open", "touched"],
     ]);
+    expect([d.spans, d.labels]).toEqual([
+      [1, 2, 1],
+      ["p1", "p2", "p3"],
+    ]);
     // 見開きは 2 ページ分。全体は (1+2+1) × 2 工程 = 8
     expect(d.doneToday.map((x) => [x.stage.id, x.count])).toEqual([
       [1, 2],
@@ -72,20 +76,6 @@ describe("shareData", () => {
   it("行が無ければ進み具合は 0", () => {
     const d = shareData(board([]), [], DAY);
     expect([d.progress, d.todayProgress, d.doneToday.length]).toEqual([0, 0, 0]);
-  });
-});
-
-describe("gridLayout", () => {
-  it("横長に収まるなら 1 段に並べる", () => {
-    const g = gridLayout(16, 3, 640, 150);
-    expect([g.bands, g.cols]).toEqual([1, 16]);
-    expect(g.cell).toBe(40);
-  });
-  it("多ければ段に折り返してマスを大きくする", () => {
-    const g = gridLayout(64, 3, 640, 400);
-    expect(g.bands).toBeGreaterThan(1);
-    expect(g.cols * g.bands).toBeGreaterThanOrEqual(64);
-    expect(g.cell).toBeGreaterThan(640 / 64);
   });
 });
 
