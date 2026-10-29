@@ -28,6 +28,10 @@
   --seg-bg: #ebe6df;
   --dialog-text: #4d4741;
   --locked-border: #eee8e1;
+  /* ロゴ（docs/brand/README.md の色） */
+  --logo-arc: #c8553d;
+  --logo-track: #e8b9ac;
+  --logo-ink: #3a2a25;
   --locked-text: #d5cec6;
   --select-bg: #fdf6f3;
   --warn-soft: #faefd9;
@@ -69,6 +73,9 @@
 /* ダークモード（設定 → 表示 → 色。theme.ts が <html data-theme> を切り替える） */
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --logo-arc: #e2735a;
+  --logo-track: #6b3a2f;
+  --logo-ink: #f5ebe7;
   --bg: #1b1916;
   --surface: #24211e;
   --surface-2: #2b2724;
@@ -170,10 +177,12 @@ select {
   border-right: 1px solid var(--border);
 }
 .logo {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
   padding: 0 8px 10px;
+}
+.logo-mark {
+  display: block;
+  height: 30px;
+  margin-bottom: 4px;
 }
 .logo small {
   display: block;

@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { WorkSummary } from "../api";
 import type { Screen } from "../App";
 import { t } from "../i18n/shell";
+import { Logo } from "./Logo";
 
 const ICONS: Record<Screen, ReactElement> = {
   board: (
@@ -66,7 +67,8 @@ export function Sidebar({ works, work, screen, onScreen, onWork }: Props) {
   return (
     <aside className="sidebar">
       <div className="logo">
-        Otosazu<small>{t("tagline")}</small>
+        <Logo />
+        <small>{t("tagline")}</small>
       </div>
       <label className="work-switch">
         <span className="label">{t("work")}</span>
