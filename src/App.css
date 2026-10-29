@@ -501,6 +501,7 @@ select {
   background: var(--info-soft);
 }
 .thumb {
+  position: relative;
   flex: none;
   aspect-ratio: 1240 / 1754;
   border-radius: 3px;
@@ -511,7 +512,11 @@ select {
 .thumb.spread {
   aspect-ratio: 2480 / 1754;
 }
+/* 枠の高さは aspect-ratio で決まる。Mac の WebView（WebKit）では、枠が flex の子のとき
+   height: 100% が効かず絵の高さが 0 になるので、枠いっぱいに絶対配置する */
 .thumb img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
