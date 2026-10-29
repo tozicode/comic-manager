@@ -136,7 +136,8 @@ export function drawShare(canvas: HTMLCanvasElement, data: ShareData, info: Shar
 
   // 凡例とロゴ
   const ly = SHARE_H - 56;
-  const legendColor = data.stages[data.stages.length - 1]?.color ?? ACCENT;
+  // 凡例は工程によらない色で描く（特定の工程の色だと、その工程のマスが無い画像で意味が通らない）
+  const legendColor = MUTED;
   let lx = L;
   for (const [state, label] of [
     ["before", t("legendBefore")],
