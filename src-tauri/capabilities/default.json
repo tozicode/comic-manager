@@ -11,6 +11,7 @@
     "core:window:allow-set-theme",
     "updater:default",
     "process:allow-restart",
-    "notification:default"
+    "notification:default",
+    "clipboard-manager:allow-write-image"
   ]
 }

@@ -599,6 +599,19 @@ select {
   gap: 8px;
   margin-top: 16px;
 }
+/* 進捗を共有する画像（5.20） */
+.dialog.share-dialog {
+  width: 760px;
+}
+.share-dialog .actions {
+  align-items: center;
+}
+.share-preview canvas {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
 
 /* ===== 作品一覧 ===== */
 .works {

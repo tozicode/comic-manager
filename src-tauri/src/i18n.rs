@@ -270,6 +270,13 @@ messages! {
         "無法建立備份：{e}",
     ],
     // ----- カレンダーへの書き出し -----
+    ImageSaveFailed => [
+        "画像を保存できませんでした: {e}",
+        "Couldn't save the image: {e}",
+        "이미지를 저장할 수 없습니다: {e}",
+        "无法保存图片：{e}",
+        "無法儲存圖片：{e}",
+    ],
     CalendarSaveFailed => [
         "カレンダーのファイルを保存できませんでした: {e}",
         "Couldn't save the calendar file: {e}",

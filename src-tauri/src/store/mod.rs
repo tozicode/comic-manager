@@ -135,6 +135,8 @@ pub struct StageRef {
 pub struct Cell {
     pub stage_id: i64,
     pub done: bool,
+    /// 完了にした時刻（ミリ秒）。共有の画像で「今日終えた」を見分けるのに使う（5.20）
+    pub done_at: Option<i64>,
     pub total_ms: i64,
 }
 
@@ -1096,10 +1098,12 @@ impl Store {
             .map_err(db_err)?;
         let mut dones = self
             .conn
-            .prepare("SELECT t.page_id, t.stage_id FROM task_done t JOIN page p ON p.id = t.page_id WHERE p.work_id = ?1")
+            .prepare(
+                "SELECT t.page_id, t.stage_id, t.done_at FROM task_done t JOIN page p ON p.id = t.page_id WHERE p.work_id = ?1",
+            )
             .map_err(db_err)?;
-        let dones: Vec<(i64, i64)> = dones
-            .query_map([work_id], |r| Ok((r.get(0)?, r.get(1)?)))
+        let dones: Vec<(i64, i64, i64)> = dones
+            .query_map([work_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .and_then(|rows| rows.collect())
             .map_err(db_err)?;
 
@@ -1108,14 +1112,18 @@ impl Store {
             page.tags = page_tags.iter().filter(|(p, _)| *p == page.id).map(|(_, t)| *t).collect();
             page.cells = stages
                 .iter()
-                .map(|s| Cell {
-                    stage_id: s.id,
-                    done: dones.contains(&(page.id, s.id)),
-                    total_ms: totals
-                        .iter()
-                        .find(|(p, st, _)| *p == page.id && *st == s.id)
-                        .map(|t| t.2)
-                        .unwrap_or(0),
+                .map(|s| {
+                    let done_at = dones.iter().find(|(p, st, _)| *p == page.id && *st == s.id).map(|d| d.2);
+                    Cell {
+                        stage_id: s.id,
+                        done: done_at.is_some(),
+                        done_at,
+                        total_ms: totals
+                            .iter()
+                            .find(|(p, st, _)| *p == page.id && *st == s.id)
+                            .map(|t| t.2)
+                            .unwrap_or(0),
+                    }
                 })
                 .collect();
         }
@@ -1553,12 +1561,14 @@ mod tests {
         let pages = store.board(id, 0).unwrap().pages;
         let st = stage_ids(&store);
         // 見開き（2ページ分）の下書きを完了 → 4ページ × 3工程 = 12 のうち 2
-        store.set_task_done(pages[1].id, st[0], true, 0).unwrap();
-        store.set_task_done(pages[1].id, st[0], true, 0).unwrap();
+        store.set_task_done(pages[1].id, st[0], true, 7 * MIN).unwrap();
+        store.set_task_done(pages[1].id, st[0], true, 9 * MIN).unwrap();
         let works = store.list_works().unwrap();
         assert_eq!(works[0].page_count, 4);
         assert!((works[0].progress - 2.0 / 12.0).abs() < 1e-9);
-        assert!(store.board(id, 0).unwrap().pages[1].cells[0].done);
+        // 完了にした時刻は最初のものが残る
+        let cell = &store.board(id, 0).unwrap().pages[1].cells[0];
+        assert_eq!((cell.done, cell.done_at), (true, Some(7 * MIN)));
 
         store.set_task_done(pages[1].id, st[0], false, 0).unwrap();
         assert_eq!(store.list_works().unwrap()[0].progress, 0.0);

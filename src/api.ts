@@ -98,7 +98,13 @@ export type RelinkCheck = { title: string; newPages: number; oldPages: number; m
 
 export type StageRef = { id: number; name: string; color: string };
 
-export type Cell = { stageId: number; done: boolean; totalMs: number };
+export type Cell = {
+  stageId: number;
+  done: boolean;
+  /** 完了にした時刻（ミリ秒） */
+  doneAt: number | null;
+  totalMs: number;
+};
 
 export type BoardPage = {
   id: number;
@@ -338,6 +344,8 @@ export const api = {
 
   dataInfo: () => call<{ dbPath: string; version: string }>("data_info"),
   backupData: (dest: string) => call<void>("backup_data", { dest }),
+  /** 共有の画像（PNG）を保存する（5.20） */
+  saveImage: (dest: string, data: number[]) => call<void>("save_image", { dest, data }),
   saveCalendar: (dest: string, text: string) => call<void>("save_calendar", { dest, text }),
   printPage: () => call<void>("print_page"),
   revealData: () => call<void>("reveal_data"),

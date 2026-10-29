@@ -4,6 +4,7 @@ import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup } from "../api
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { Dialog } from "../components/Dialog";
+import { ShareDialog } from "../components/ShareDialog";
 import { useRelink } from "../components/Relink";
 import { TagPopover } from "../components/TagPopover";
 import { Thumb, spreadSide } from "../components/Thumb";
@@ -12,6 +13,7 @@ import { planName } from "../schedule";
 import { clock, dayKey, dayLabel, estimate, fromInputs, hours, startOfDay, time } from "../format";
 import { t, tn } from "../i18n/board";
 import { kindKey, unitText } from "../i18n/common";
+import { t as ts } from "../i18n/share";
 
 /** 同期で見つかった見開きの変化（1 件ずつ確認する） */
 type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSplit };
@@ -53,6 +55,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [renaming, setRenaming] = useState<{ page: BoardPage; title: string } | null>(null);
   /** 「見開きを 1 ページずつ」の切り替えの確認（切り替え先の値） */
   const [splitting, setSplitting] = useState<boolean | null>(null);
+  /** 進捗を共有する画像のダイアログ（5.20） */
+  const [sharing, setSharing] = useState(false);
   /** イラストのファイル（または行）のドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
   const dragging = useRef<number | null>(null);
@@ -263,6 +267,9 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
               </button>
             </>
           )}
+          <button className="btn small ghost" onClick={() => setSharing(true)}>
+            {ts("button")}
+          </button>
           {!isManual && (
             <button className="btn small ghost" onClick={() => sync(true)}>
               {isFiles ? t("reload") : t("reloadCmc")}
@@ -675,6 +682,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           </p>
         </Dialog>
       )}
+      {sharing && <ShareDialog workId={workId} onClose={() => setSharing(false)} />}
       {addingRows !== null && (
         <Dialog
           title={t("addRowsTitle", { unit })}
