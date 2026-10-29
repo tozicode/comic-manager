@@ -97,6 +97,19 @@ export function deadlinePlan(
   };
 }
 
+/**
+ * どの締切で計算するか（5.19）。選んでいる締切がまだ過ぎていなければそれ、
+ * そうでなければ今日以降でいちばん早い締切。今日以降の締切が無ければ null。list は日付順
+ */
+export function pickDeadline<T extends { id: number; date: string }>(
+  list: T[],
+  selected: number | null,
+  todayKey: string,
+): T | null {
+  const upcoming = list.filter((d) => d.date >= todayKey);
+  return upcoming.find((d) => d.id === selected) ?? upcoming[0] ?? null;
+}
+
 /** 締切までに終わる確率。残り時間が対数正規分布に従うとみなす */
 export function onTimeProbability(remainingMs: number, sigma: number, capacityMs: number): number {
   if (remainingMs <= 0) return 1;

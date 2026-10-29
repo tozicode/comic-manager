@@ -280,7 +280,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 5;
+const LATEST: i64 = 6;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -423,6 +423,24 @@ impl Store {
         }
         if version < 5 && target >= 5 {
             self.migrate_v5()?;
+        }
+        if version < 6 && target >= 6 {
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE deadline (
+                        id INTEGER PRIMARY KEY,
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL DEFAULT '',
+                        date TEXT NOT NULL
+                    );
+                    INSERT INTO deadline (work_id, date) SELECT id, deadline FROM work WHERE deadline IS NOT NULL;
+                    ALTER TABLE work DROP COLUMN deadline;
+                    ALTER TABLE work ADD COLUMN selected_deadline INTEGER;
+                    PRAGMA user_version = 6;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
         }
         Ok(())
     }
@@ -1772,7 +1790,11 @@ mod tests {
         assert_eq!(board.pages[0].label, "p1");
         assert_eq!((board.pages[0].cells[0].total_ms, board.pages[0].cells[0].done), (600000, true));
         assert_eq!(board.pages[0].tags, [1]);
-        assert_eq!(old.schedule(7).unwrap().deadline.as_deref(), Some("2026-12-01"));
+        // 締切は名前の空な 1 件に移っている（版 6）
+        let s = old.schedule(7).unwrap();
+        assert_eq!(s.deadlines.len(), 1);
+        assert_eq!((s.deadlines[0].name.as_str(), s.deadlines[0].date.as_str()), ("", "2026-12-01"));
+        assert_eq!(s.selected_deadline, None);
         // 既存の工程は「漫画」セット、イラストのセットが増えている
         let sets: Vec<String> = old.list_stage_sets().unwrap().into_iter().map(|s| s.name).collect();
         assert_eq!(sets, ["漫画", "イラスト"]);

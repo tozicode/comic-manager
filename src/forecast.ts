@@ -17,6 +17,7 @@ import {
   finishDateAtPace,
   MIN_STEP,
   onTimeProbability,
+  pickDeadline,
   Plan,
   PlanStep,
   StageInfo,
@@ -25,6 +26,16 @@ import {
 const PACE_DAYS = 28;
 
 export type DeadlineStatus = "ok" | "tight" | "late";
+
+/** 締切ごとの見込み（5.19）。name が空なら画面では「締切」と出す */
+export type DeadlineView = {
+  id: number;
+  name: string;
+  date: Date;
+  plan: DeadlinePlan;
+  probability: number;
+  status: DeadlineStatus;
+};
 
 export type Forecast = {
   board: Board;
@@ -39,7 +50,10 @@ export type Forecast = {
   /** その日にこの作品で作業した時間（直近 4 週間ぶん） */
   dailyMs: (d: Date) => number;
   finish: { low: Date | null; mid: Date | null; high: Date | null; pace: Date | null };
-  deadline: { date: Date; plan: DeadlinePlan; probability: number; status: DeadlineStatus } | null;
+  /** 今日以降の締切すべて（日付順） */
+  deadlines: DeadlineView[];
+  /** 計算に使っている締切（選んでいるもの。過ぎていれば次の締切） */
+  deadline: DeadlineView | null;
   /** 今日のノルマ（締切があれば逆算した量、無ければ今日の作業可能時間） */
   quotaMs: number;
   /** 案を作るときの時間：今日の残りのノルマ。達成済みなら「もう少し進める」ぶんとしてノルマ 1 日ぶん */
@@ -109,17 +123,20 @@ export function computeForecast(
     pace: paceMs > 0 ? finishDateAtPace(prediction.remainingMs, today, paceMs) : null,
   };
 
-  let deadline: Forecast["deadline"] = null;
-  if (schedule.deadline) {
-    const date = new Date(`${schedule.deadline}T00:00`);
-    const plan = deadlinePlan(prediction.remainingMs, prediction.highMs, today, date, workedTodayMs, cal);
-    // 今日の作業済みぶんは確率の計算から除く（残り時間と、今日の残りの作業可能時間で比べる）
-    const capacityLeft = Math.max(0, plan.capacityMs - Math.max(workedTodayMs, 0));
-    const probability = onTimeProbability(prediction.remainingMs, prediction.sigma, capacityLeft);
-    const status: DeadlineStatus =
-      finish.mid && finish.mid <= date ? (finish.high && finish.high <= date ? "ok" : "tight") : "late";
-    deadline = { date, plan, probability, status };
-  }
+  const deadlines = schedule.deadlines
+    .filter((d) => d.date >= dayKey(today))
+    .map((d): DeadlineView => {
+      const date = new Date(`${d.date}T00:00`);
+      const plan = deadlinePlan(prediction.remainingMs, prediction.highMs, today, date, workedTodayMs, cal);
+      // 今日の作業済みぶんは確率の計算から除く（残り時間と、今日の残りの作業可能時間で比べる）
+      const capacityLeft = Math.max(0, plan.capacityMs - Math.max(workedTodayMs, 0));
+      const probability = onTimeProbability(prediction.remainingMs, prediction.sigma, capacityLeft);
+      const status: DeadlineStatus =
+        finish.mid && finish.mid <= date ? (finish.high && finish.high <= date ? "ok" : "tight") : "late";
+      return { id: d.id, name: d.name, date, plan, probability, status };
+    });
+  const picked = pickDeadline(schedule.deadlines, schedule.selectedDeadline, dayKey(today));
+  const deadline = deadlines.find((d) => d.id === picked?.id) ?? null;
   const quotaMs = deadline ? deadline.plan.todayQuotaMs : capacity(today, cal);
   const leftMs = quotaMs - workedTodayMs;
   const quotaMet = leftMs < MIN_STEP;
@@ -158,6 +175,7 @@ export function computeForecast(
     paceMs,
     dailyMs: (d: Date) => totals.get(dayKey(d))?.total ?? 0,
     finish,
+    deadlines,
     deadline,
     quotaMs,
     planQuotaMs,

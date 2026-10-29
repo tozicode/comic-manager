@@ -379,6 +379,13 @@ messages! {
         "工作时间请设在 0~24 小时之间",
         "工作時間請設在 0~24 小時之間",
     ],
+    DeadlineNotFound => [
+        "締切が見つかりませんでした",
+        "Deadline not found",
+        "마감을 찾을 수 없습니다",
+        "找不到截止日期",
+        "找不到截止日期",
+    ],
     DateFormatInvalid => [
         "日付の形式が正しくありません",
         "Invalid date format",

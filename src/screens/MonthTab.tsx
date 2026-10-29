@@ -25,7 +25,7 @@ const words = (): DayWords => ({
 
 export function MonthTab({ forecast }: { forecast: Forecast }) {
   const app = useApp();
-  const { board, schedule, prediction, today, deadline } = forecast;
+  const { board, schedule, prediction, today, deadlines } = forecast;
   const workId = board.work.id;
   const kind = board.work.kind;
   const unit = unitText(board.work);
@@ -55,7 +55,7 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
         : t("orderHintFit");
 
   // 今月から、完成予定と締切の遅いほうの月まで
-  const last = [plan.finish, deadline?.date].filter((d): d is Date => !!d).reduce((m, d) => (d > m ? d : m), today);
+  const last = [plan.finish, ...deadlines.map((d) => d.date)].filter((d): d is Date => !!d).reduce((m, d) => (d > m ? d : m), today);
   const months: Date[] = [];
   for (let m = new Date(today.getFullYear(), today.getMonth(), 1); m <= last; m = new Date(m.getFullYear(), m.getMonth() + 1, 1))
     months.push(m);
@@ -76,7 +76,8 @@ export function MonthTab({ forecast }: { forecast: Forecast }) {
       ].join("\n"),
     }));
     if (plan.finish) events.push({ uid: `finish-w${workId}@otosazu`, date: plan.finish, summary: t("finishEvent", { title }) });
-    if (deadline) events.push({ uid: `deadline-w${workId}@otosazu`, date: deadline.date, summary: t("deadlineEvent", { title }) });
+    for (const d of deadlines)
+      events.push({ uid: `deadline-${d.id}-w${workId}@otosazu`, date: d.date, summary: `${title} ${d.name || t("deadline")}` });
     const dest = await saveDialog({
       title: t("exportDialog"),
       defaultPath: `otosazu-${title.replace(/[\\/:*?"<>|]/g, "_")}.ics`,
@@ -178,7 +179,7 @@ function MonthGrid({
   /** 今日より前の週も出す（印刷用） */
   full?: boolean;
 }) {
-  const { board, today, deadline, cal } = forecast;
+  const { board, today, deadline, deadlines, cal } = forecast;
   // 月曜はじまりで、月の初めの週の月曜から月の終わりの週の日曜まで
   const end = new Date(month.getFullYear(), month.getMonth() + 1, 0);
   const cells: Date[] = [];
@@ -223,7 +224,13 @@ function MonthGrid({
                   </span>
                 </div>
               ))}
-              {deadline && key === dayKey(deadline.date) && <div className="month-mark deadline">{t("deadline")}</div>}
+              {deadlines
+                .filter((dl) => key === dayKey(dl.date))
+                .map((dl) => (
+                  <div key={dl.id} className={`month-mark deadline${dl.id === deadline?.id ? "" : " other"}`}>
+                    {dl.name || t("deadline")}
+                  </div>
+                ))}
               {finish && key === dayKey(finish) && <div className="month-mark finish">{t("finish")}</div>}
             </div>
           );

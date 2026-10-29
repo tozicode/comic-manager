@@ -878,8 +878,10 @@ function DeadlineCard({ forecast, onSet }: { forecast: Forecast; onSet: () => vo
   const s = STATUS[d.status];
   return (
     <div className="card">
-      <div className="section-title">{t("deadlineOn", { date: dayLabel(d.date) })}</div>
-      <div className="big">{d.plan.days > 0 ? t("daysLeft", { n: d.plan.days }) : t("overdue")}</div>
+      <div className="section-title">
+        {d.name || t("deadline")} {dayLabel(d.date)}
+      </div>
+      <div className="big">{t("daysLeft", { n: d.plan.days })}</div>
       <div className="range">
         <span className={`tag status ${s.cls}`}>{t(s.label)}</span> {t("onTimeChance", { p: Math.round(d.probability * 100) })}
       </div>

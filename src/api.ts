@@ -209,12 +209,18 @@ export type TagFit = {
 /** 統計画面に出す、予測の前提（実績のあるタグと、全工程の基準時間） */
 export type ModelStats = { tags: TagFit[]; stages: Prediction["stages"] };
 
+/** 締切（5.19）。name が空なら画面では「締切」と出す */
+export type Deadline = { id: number; name: string; date: string };
+
 export type WorkSchedule = {
   /** 月〜日の作業時間（時間） */
   weekdayHours: number[];
   customHours: boolean;
   defaultWeekdayHours: number[];
-  deadline: string | null;
+  /** 日付順 */
+  deadlines: Deadline[];
+  /** いま見ている締切の id（消した締切を指していることもある） */
+  selectedDeadline: number | null;
   workOrder: "stage" | "page";
   daysOff: string[];
 };
@@ -302,7 +308,11 @@ export const api = {
   getSchedule: (workId: number) => call<WorkSchedule>("get_schedule", { workId }),
   setWorkHours: (workId: number, hours: number[] | null) => call<void>("set_work_hours", { workId, hours }),
   setDefaultHours: (hours: number[]) => call<void>("set_default_hours", { hours }),
-  setDeadline: (workId: number, deadline: string | null) => call<void>("set_deadline", { workId, deadline }),
+  addDeadline: (workId: number, name: string, date: string) => call<number>("add_deadline", { workId, name, date }),
+  updateDeadline: (id: number, name: string, date: string) => call<void>("update_deadline", { id, name, date }),
+  removeDeadline: (id: number) => call<void>("remove_deadline", { id }),
+  /** null なら「今日以降でいちばん早い締切」に任せる */
+  selectDeadline: (workId: number, id: number | null) => call<void>("select_deadline", { workId, id }),
   setWorkOrder: (workId: number, order: string) => call<void>("set_work_order", { workId, order }),
   setDayOff: (date: string, off: boolean) => call<void>("set_day_off", { date, off }),
   /** [全作品の既定の作業時間（月〜日）, 休みの日] */

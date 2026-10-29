@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, Deadline } from "../api";
 import { useApp } from "../app-context";
 import { ChosenPlan, Forecast, loadChosenPlan, saveChosenPlan, useForecast } from "../forecast";
 import { dayKey, dayLabel, estimate, hours, weekdayName } from "../format";
@@ -219,14 +219,14 @@ function FinishTab({
 
 /** 進み具合のグラフ。横軸は日付、縦軸は「これまでの作業時間 ÷（作業時間 + 残り）」 */
 function ProgressChart({ forecast }: { forecast: Forecast }) {
-  const { today, finish, prediction, board, deadline } = forecast;
+  const { today, finish, prediction, board, deadline, deadlines } = forecast;
   const W = 620, H = 230, L = 40, R = 610, T = 20, B = 200;
   const spent = board.pages.reduce((n, p) => n + p.cells.reduce((m, c) => m + c.totalMs, 0), 0);
   const total = spent + prediction.remainingMs;
   if (total <= 0) return null;
 
   const start = addDays(today, -27);
-  const endCandidates = [finish.high, deadline?.date, addDays(today, 7)].filter((d): d is Date => !!d);
+  const endCandidates = [finish.high, ...deadlines.map((d) => d.date), addDays(today, 7)].filter((d): d is Date => !!d);
   const end = addDays(new Date(Math.max(...endCandidates.map((d) => d.getTime()))), 2);
   const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000));
   const x = (d: Date) => L + ((d.getTime() - start.getTime()) / 86_400_000 / days) * (R - L);
@@ -279,14 +279,14 @@ function ProgressChart({ forecast }: { forecast: Forecast }) {
           </text>
         </>
       )}
-      {deadline && (
-        <>
-          <line x1={fx(deadline.date)} y1={T - 6} x2={fx(deadline.date)} y2={B} style={{ stroke: "var(--ok)" }} strokeWidth="1.5" />
-          <text x={fx(deadline.date) - 4} y={B - 10} fontSize="11" style={{ fill: "var(--ok)" }} textAnchor="end">
-            {t("deadlineMark", { date: `${deadline.date.getMonth() + 1}/${deadline.date.getDate()}` })}
+      {deadlines.map((d, i) => (
+        <g key={d.id} opacity={d.id === deadline?.id ? 1 : 0.4}>
+          <line x1={fx(d.date)} y1={T - 6} x2={fx(d.date)} y2={B} style={{ stroke: "var(--ok)" }} strokeWidth="1.5" />
+          <text x={fx(d.date) - 4} y={B - 10 - 14 * (deadlines.length - 1 - i)} fontSize="11" style={{ fill: "var(--ok)" }} textAnchor="end">
+            {d.name || t("deadlineDefault")} {d.date.getMonth() + 1}/{d.date.getDate()}
           </text>
-        </>
-      )}
+        </g>
+      ))}
       <line x1={nowX} y1={T - 6} x2={nowX} y2={B} style={{ stroke: "var(--faint)" }} strokeDasharray="2 3" />
       <text x={nowX} y={B + 18} fontSize="11" style={{ fill: "var(--muted)" }} textAnchor="middle">
         {t("today")}
@@ -328,12 +328,100 @@ function StageBases({ forecast }: { forecast: Forecast }) {
 // (B) 目標から逆算する
 // ---------------------------------------------------------------------------
 
+const shortDate = (date: string) => date.slice(5).split("-").map(Number).join("/");
+
+/** 締切を並べたタブ（5.19）。押した締切で計算する。過ぎた締切は薄く出して押せない */
+function DeadlineTabs({ forecast, run, onAdd }: { forecast: Forecast; run: (f: () => Promise<unknown>) => void; onAdd: () => void }) {
+  const { board, schedule, deadline, deadlines } = forecast;
+  if (schedule.deadlines.length === 0) return null;
+  return (
+    <div className="row" style={{ marginBottom: 12 }}>
+      <span className="seg deadline-tabs">
+        {schedule.deadlines.map((d) => {
+          const view = deadlines.find((v) => v.id === d.id);
+          return (
+            <button
+              key={d.id}
+              className={deadline?.id === d.id ? "on" : ""}
+              disabled={!view}
+              title={view ? undefined : t("pastDeadline")}
+              onClick={() => run(() => api.selectDeadline(board.work.id, d.id))}
+            >
+              {d.name || t("deadlineDefault")} {shortDate(d.date)}
+              {view && <span className="chance"> · {Math.round(view.probability * 100)}%</span>}
+            </button>
+          );
+        })}
+      </span>
+      <button className="btn small" onClick={onAdd}>
+        {t("addDeadline")}
+      </button>
+    </div>
+  );
+}
+
+function AddDeadline({
+  canCancel,
+  onCancel,
+  onAdd,
+}: {
+  canCancel: boolean;
+  onCancel: () => void;
+  onAdd: (name: string, date: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [date, setDate] = useState("");
+  return (
+    <div className="deadline-edit">
+      <input className="field" placeholder={t("deadlineNamePlaceholder")} value={name} onChange={(e) => setName(e.target.value)} />
+      <div className="row tight">
+        <input type="date" className="field" value={date} onChange={(e) => setDate(e.target.value)} />
+        <button className="btn small primary" disabled={!date} onClick={() => onAdd(name, date)}>
+          {t("add")}
+        </button>
+        {canCancel && (
+          <button className="btn small" onClick={onCancel}>
+            {t("cancel")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 計算に使っている締切の名前と日付を直す。名前は欄を離れたとき、日付は選んだときに保存する */
+function EditDeadline({ deadline, run }: { deadline: Deadline; run: (f: () => Promise<unknown>) => void }) {
+  const [name, setName] = useState(deadline.name);
+  const save = (n: string, date: string) => {
+    if (n.trim() !== deadline.name || date !== deadline.date) run(() => api.updateDeadline(deadline.id, n, date));
+  };
+  return (
+    <div className="deadline-edit">
+      <input
+        className="field"
+        placeholder={t("deadlineNamePlaceholder")}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => save(name, deadline.date)}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      />
+      <input
+        type="date"
+        className="field"
+        value={deadline.date}
+        onChange={(e) => e.target.value && save(name, e.target.value)}
+      />
+    </div>
+  );
+}
+
 function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: unknown) => void }) {
   const app = useApp();
   const { board, schedule, deadline, prediction, finish } = forecast;
   const workId = board.work.id;
   const [chosen, setChosen] = useState<ChosenPlan | null>(() => loadChosenPlan(workId));
   const [custom, setCustom] = useState<PlanStep[] | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const run = async (f: () => Promise<unknown>) => {
     try {
@@ -366,24 +454,36 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
 
   return (
     <>
+      <DeadlineTabs forecast={forecast} run={run} onAdd={() => setAdding(true)} />
       <div className="quota">
         <div className="card">
-          <div className="section-title">{t("targetDate")}</div>
-          <div className="row">
-            <input
-              type="date"
-              className="field"
-              value={schedule.deadline ?? ""}
-              onChange={(e) => run(() => api.setDeadline(workId, e.target.value || null))}
+          <div className="section-title">{t("deadlineDefault")}</div>
+          {adding || !deadline ? (
+            <AddDeadline
+              canCancel={!!deadline}
+              onCancel={() => setAdding(false)}
+              onAdd={(name, date) =>
+                run(async () => {
+                  const id = await api.addDeadline(workId, name, date);
+                  await api.selectDeadline(workId, id);
+                  setAdding(false);
+                })
+              }
             />
-            {deadline && (
-              <span className="muted small-text" style={{ lineHeight: 1.4 }}>
-                {t("daysLeft", { n: deadline.plan.days })}
-                <br />
-                {t("daysOffLeft", { n: daysOffLeft })}
-              </span>
-            )}
-          </div>
+          ) : (
+            <>
+              <EditDeadline key={deadline.id} deadline={schedule.deadlines.find((d) => d.id === deadline.id)!} run={run} />
+              <div className="row" style={{ marginTop: 8 }}>
+                <span className="muted small-text">
+                  {t("daysLeft", { n: deadline.plan.days })} {t("daysOffLeft", { n: daysOffLeft })}
+                </span>
+                <span className="grow" />
+                <button className="link small-text" onClick={() => run(() => api.removeDeadline(deadline.id))}>
+                  {t("removeDeadline")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
         <div className="card">
           <div className="section-title">{t("perDayNeeded")}</div>

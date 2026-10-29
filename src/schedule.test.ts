@@ -13,6 +13,7 @@ import {
   HOUR,
   onTimeProbability,
   ordered,
+  pickDeadline,
 } from "./schedule";
 
 // 2026/10/19 は月曜日
@@ -80,6 +81,27 @@ describe("deadlinePlan", () => {
     const past = deadlinePlan(HOUR, HOUR, MON, day(2026, 10, 18), 0, WEEK);
     expect(past.days).toBe(0);
     expect(past.feasible).toBe(false);
+  });
+});
+
+describe("pickDeadline", () => {
+  const list = [
+    { id: 1, date: "2026-10-18" },
+    { id: 2, date: "2026-10-20" },
+    { id: 3, date: "2026-10-27" },
+  ];
+  it("選んでいる締切が過ぎていなければそれを使う", () => {
+    expect(pickDeadline(list, 3, "2026-10-19")?.id).toBe(3);
+  });
+  it("選んでいない・消した・過ぎたときは今日以降でいちばん早い締切", () => {
+    expect(pickDeadline(list, null, "2026-10-19")?.id).toBe(2);
+    expect(pickDeadline(list, 99, "2026-10-19")?.id).toBe(2);
+    expect(pickDeadline(list, 1, "2026-10-19")?.id).toBe(2);
+  });
+  it("締切日の当日はまだ過ぎていない。全部過ぎたら null", () => {
+    expect(pickDeadline(list, 2, "2026-10-20")?.id).toBe(2);
+    expect(pickDeadline(list, 3, "2026-10-28")).toBeNull();
+    expect(pickDeadline([], null, "2026-10-19")).toBeNull();
   });
 });
 

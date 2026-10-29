@@ -392,8 +392,23 @@ fn set_default_hours(state: State<AppState>, hours: [f64; 7]) -> Cmd<()> {
 }
 
 #[tauri::command]
-fn set_deadline(state: State<AppState>, work_id: i64, deadline: Option<String>) -> Cmd<()> {
-    with_store(&state, |s| s.set_deadline(work_id, deadline.as_deref()))
+fn add_deadline(state: State<AppState>, work_id: i64, name: String, date: String) -> Cmd<i64> {
+    with_store(&state, |s| s.add_deadline(work_id, &name, &date))
+}
+
+#[tauri::command]
+fn update_deadline(state: State<AppState>, id: i64, name: String, date: String) -> Cmd<()> {
+    with_store(&state, |s| s.update_deadline(id, &name, &date))
+}
+
+#[tauri::command]
+fn remove_deadline(state: State<AppState>, id: i64) -> Cmd<()> {
+    with_store(&state, |s| s.remove_deadline(id))
+}
+
+#[tauri::command]
+fn select_deadline(state: State<AppState>, work_id: i64, id: Option<i64>) -> Cmd<()> {
+    with_store(&state, |s| s.select_deadline(work_id, id))
 }
 
 #[tauri::command]
@@ -739,7 +754,10 @@ pub fn run() {
             get_schedule,
             set_work_hours,
             set_default_hours,
-            set_deadline,
+            add_deadline,
+            update_deadline,
+            remove_deadline,
+            select_deadline,
             set_work_order,
             set_day_off,
             get_calendar,

@@ -1,4 +1,4 @@
-//! スケジュールの設定：曜日ごとの作業時間、休みの日、締切、作業順。
+//! スケジュールの設定：曜日ごとの作業時間、休みの日、締切（複数。5.19）、作業順。
 //! 曜日ごとの作業時間は全作品の既定値があり、作品ごとに上書きできる。休みの日は全作品で共通。
 
 use rusqlite::{OptionalExtension, params};
@@ -24,12 +24,24 @@ pub struct WorkSchedule {
     /// 作品独自の作業時間を設定しているか
     pub custom_hours: bool,
     pub default_weekday_hours: WeekHours,
-    /// 完成目標日（YYYY-MM-DD）
-    pub deadline: Option<String>,
+    /// 締切（日付順）
+    pub deadlines: Vec<Deadline>,
+    /// いま見ている締切の id（消した締切を指していることもある。どれで計算するかは画面側で決める）
+    pub selected_deadline: Option<i64>,
     /// "stage"（工程ごと）または "page"（ページごと）
     pub work_order: String,
     /// 休みの日（YYYY-MM-DD、全作品共通）
     pub days_off: Vec<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Deadline {
+    pub id: i64,
+    /// 空なら画面で「締切」と出す
+    pub name: String,
+    /// YYYY-MM-DD
+    pub date: String,
 }
 
 impl Store {
@@ -65,10 +77,10 @@ impl Store {
     }
 
     pub fn schedule(&self, work_id: i64) -> Result<WorkSchedule> {
-        let (hours, deadline, work_order): (Option<String>, Option<String>, String) = self
+        let (hours, selected_deadline, work_order): (Option<String>, Option<i64>, String) = self
             .conn
             .query_row(
-                "SELECT weekday_hours, deadline, work_order FROM work WHERE id = ?1",
+                "SELECT weekday_hours, selected_deadline, work_order FROM work WHERE id = ?1",
                 [work_id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
@@ -81,7 +93,8 @@ impl Store {
             weekday_hours: custom.unwrap_or(default),
             custom_hours: custom.is_some(),
             default_weekday_hours: default,
-            deadline,
+            deadlines: self.deadlines(work_id)?,
+            selected_deadline,
             work_order,
             days_off: self.days_off()?,
         })
@@ -101,12 +114,46 @@ impl Store {
         Ok(())
     }
 
-    pub fn set_deadline(&self, work_id: i64, deadline: Option<&str>) -> Result<()> {
-        if let Some(d) = deadline {
-            check_date(d)?;
-        }
+    fn deadlines(&self, work_id: i64) -> Result<Vec<Deadline>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, date FROM deadline WHERE work_id = ?1 ORDER BY date, id")
+            .map_err(db_err)?;
+        stmt.query_map([work_id], |r| Ok(Deadline { id: r.get(0)?, name: r.get(1)?, date: r.get(2)? }))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)
+    }
+
+    /// 締切を足す。戻り値は新しい締切の id
+    pub fn add_deadline(&self, work_id: i64, name: &str, date: &str) -> Result<i64> {
+        check_date(date)?;
         self.conn
-            .execute("UPDATE work SET deadline = ?2 WHERE id = ?1", params![work_id, deadline])
+            .execute(
+                "INSERT INTO deadline (work_id, name, date) VALUES (?1, ?2, ?3)",
+                params![work_id, name.trim(), date],
+            )
+            .map_err(db_err)?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn update_deadline(&self, id: i64, name: &str, date: &str) -> Result<()> {
+        check_date(date)?;
+        let n = self
+            .conn
+            .execute("UPDATE deadline SET name = ?2, date = ?3 WHERE id = ?1", params![id, name.trim(), date])
+            .map_err(db_err)?;
+        if n == 0 { Err(tr(M::DeadlineNotFound).into()) } else { Ok(()) }
+    }
+
+    pub fn remove_deadline(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM deadline WHERE id = ?1", [id]).map_err(db_err)?;
+        Ok(())
+    }
+
+    /// いま見ている締切を覚える。None なら「今日以降でいちばん早い締切」に任せる
+    pub fn select_deadline(&self, work_id: i64, id: Option<i64>) -> Result<()> {
+        self.conn
+            .execute("UPDATE work SET selected_deadline = ?2 WHERE id = ?1", params![work_id, id])
             .map_err(db_err)?;
         Ok(())
     }
@@ -196,7 +243,7 @@ mod tests {
         assert_eq!(s.weekday_hours, DEFAULT_HOURS);
         assert!(!s.custom_hours);
         assert_eq!(s.work_order, "stage");
-        assert_eq!(s.deadline, None);
+        assert!(s.deadlines.is_empty());
 
         store.set_default_hours([2.0, 2.0, 2.0, 2.0, 2.0, 5.0, 0.0]).unwrap();
         assert_eq!(store.schedule(id).unwrap().weekday_hours[6], 0.0);
@@ -214,27 +261,55 @@ mod tests {
     #[test]
     fn 締切_作業順_休みの日() {
         let (store, id) = setup();
-        store.set_deadline(id, Some("2026-11-30")).unwrap();
         store.set_work_order(id, "page").unwrap();
         store.set_day_off("2026-11-03", true).unwrap();
         store.set_day_off("2026-11-15", true).unwrap();
         store.set_day_off("2026-11-15", true).unwrap();
         let s = store.schedule(id).unwrap();
-        assert_eq!(s.deadline.as_deref(), Some("2026-11-30"));
         assert_eq!(s.work_order, "page");
         assert_eq!(s.days_off, ["2026-11-03", "2026-11-15"]);
 
         store.set_day_off("2026-11-03", false).unwrap();
-        store.set_deadline(id, None).unwrap();
-        let s = store.schedule(id).unwrap();
-        assert_eq!((s.deadline, s.days_off.len()), (None, 1));
-
-        assert!(store.set_deadline(id, Some("11/30")).is_err());
+        assert_eq!(store.schedule(id).unwrap().days_off.len(), 1);
 
         assert_eq!(store.day_start_hour().unwrap(), 0);
         store.set_day_start_hour(5).unwrap();
         assert_eq!(store.day_start_hour().unwrap(), 5);
         assert!(store.set_day_start_hour(13).is_err());
         assert!(store.set_work_order(id, "random").is_err());
+    }
+
+    #[test]
+    fn 締切は複数持てて日付順に並ぶ() {
+        let (store, id) = setup();
+        let normal = store.add_deadline(id, " 通常 ", "2026-11-27").unwrap();
+        let early = store.add_deadline(id, "早割", "2026-11-20").unwrap();
+        let extra = store.add_deadline(id, "割増", "2026-12-01").unwrap();
+        let names = |store: &Store| -> Vec<String> {
+            store.schedule(id).unwrap().deadlines.into_iter().map(|d| d.name).collect()
+        };
+        assert_eq!(names(&store), ["早割", "通常", "割増"]);
+
+        store.select_deadline(id, Some(normal)).unwrap();
+        assert_eq!(store.schedule(id).unwrap().selected_deadline, Some(normal));
+
+        // 日付を変えると並びも変わる
+        store.update_deadline(early, "早割", "2026-11-28").unwrap();
+        assert_eq!(names(&store), ["通常", "早割", "割増"]);
+        assert!(store.update_deadline(extra, "割増", "12/1").is_err());
+        assert!(store.add_deadline(id, "", "12/1").is_err());
+        assert!(store.update_deadline(9999, "x", "2026-12-01").is_err());
+
+        // 選んでいる締切を消しても、選んだ id は残る（どれで計算するかは画面側で決める）
+        store.remove_deadline(normal).unwrap();
+        let s = store.schedule(id).unwrap();
+        assert_eq!((s.deadlines.len(), s.selected_deadline), (2, Some(normal)));
+        store.select_deadline(id, None).unwrap();
+        assert_eq!(store.schedule(id).unwrap().selected_deadline, None);
+
+        // 作品を消すと締切も消える
+        store.remove_work(id).unwrap();
+        let left: i64 = store.conn.query_row("SELECT COUNT(*) FROM deadline", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
     }
 }

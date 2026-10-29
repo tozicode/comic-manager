@@ -1358,6 +1358,10 @@ table.rec {
 .month-mark.deadline {
   background: var(--ok);
 }
+/* 計算に使っていない締切（5.19） */
+.month-mark.deadline.other {
+  opacity: 0.5;
+}
 .month-mark.finish {
   background: var(--accent);
   color: var(--accent-text);
@@ -1425,6 +1429,26 @@ table.rec {
 }
 .quota .card {
   padding: 14px 16px;
+}
+/* 複数の締切（5.19） */
+.deadline-tabs {
+  flex-wrap: wrap;
+}
+.deadline-tabs button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.deadline-tabs .chance {
+  font-weight: 400;
+  color: var(--muted);
+}
+.deadline-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.deadline-edit .field {
+  min-width: 0;
 }
 .plans {
   display: grid;

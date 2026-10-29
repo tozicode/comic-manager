@@ -239,6 +239,7 @@ function WorkOutlook({ workId }: { workId: number }) {
         <>
           <dt>{t("deadline")}</dt>
           <dd>
+            {f.deadline.name && `${f.deadline.name} `}
             {dayLabel(f.deadline.date)} <span className={`tag status ${STATUS[f.deadline.status]}`}>{t(`status.${f.deadline.status}`)}</span>
           </dd>
         </>
