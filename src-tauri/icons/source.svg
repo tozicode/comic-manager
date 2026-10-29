@@ -1,22 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Otosazu のアイコン（各サイズは `npx tauri icon` でこの絵から作る） -->
-  <rect x="64" y="64" width="896" height="896" rx="200" fill="#c8553d"/>
-  <!-- 原稿用紙とコマ割り -->
-  <g transform="rotate(-6 450 500)">
-    <rect x="230" y="190" width="440" height="620" rx="26" fill="#ffffff"/>
-    <g fill="none" stroke="#2b2723" stroke-width="26" stroke-linejoin="round">
-      <rect x="282" y="242" width="336" height="160"/>
-      <rect x="282" y="456" width="136" height="302"/>
-      <rect x="472" y="456" width="146" height="302"/>
-    </g>
-  </g>
-  <!-- ストップウォッチ -->
-  <g transform="translate(700 690)">
-    <rect x="-34" y="-232" width="68" height="62" rx="14" fill="#2b2723"/>
-    <circle r="182" fill="#2b2723"/>
-    <circle r="138" fill="#ffffff"/>
-    <path d="M0 0 L0 -100" stroke="#c8553d" stroke-width="34" stroke-linecap="round"/>
-    <path d="M0 0 L70 50" stroke="#2b2723" stroke-width="30" stroke-linecap="round"/>
-    <circle r="24" fill="#2b2723"/>
+  <!-- Otosazu のアイコン（各サイズは `npx tauri icon` でこの絵から作る）。マークは docs/brand/otosazu-mark.svg と同じ -->
+  <path d="M264 64H760A200 200 0 0 1 960 264V760A200 200 0 0 1 760 960H264A200 200 0 0 1 64 760V264A200 200 0 0 1 264 64Z" fill="#fbf1ec"/>
+  <g transform="translate(512 512) scale(9.2) translate(-50 -48.5)">
+    <circle cx="50" cy="54" r="22" fill="none" stroke="#e8b9ac" stroke-width="10"/>
+    <path d="M50 32A22 22 0 1 1 28 54" fill="none" stroke="#c8553d" stroke-width="10" stroke-linecap="round"/>
+    <path d="M47 20H53" stroke="#c8553d" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="50" cy="54" r="5" fill="#3a2a25"/>
   </g>
 </svg>
