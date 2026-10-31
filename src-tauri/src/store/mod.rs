@@ -3,6 +3,7 @@
 //! 時刻はすべて UNIX 時間のミリ秒（i64）で保存する。日付への変換は画面側（ローカル時刻）で行う。
 //! テストしやすいよう、現在時刻 `now` は呼び出し側から渡す。
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -282,7 +283,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 6;
+const LATEST: i64 = 7;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -443,6 +444,51 @@ impl Store {
                     COMMIT;",
                 )
                 .map_err(db_err)?;
+        }
+        if version < 7 && target >= 7 {
+            self.migrate_v7()?;
+        }
+        Ok(())
+    }
+
+    /// 版 7：漫画のページを cmc の MainId（node_id）で見分ける。
+    /// 「ページファイル名の整列」でファイル名が付け替わると、消えたページの行と今のページの行で
+    /// ファイル名が重なることがあるので、一意の条件を「消えていない行だけ」にする（表の作り直し）。
+    /// 今ある行の node_id は空のままにし、次の読み直しでファイル名で突き合わせて埋める
+    fn migrate_v7(&self) -> Result<()> {
+        self.conn
+            .execute_batch(
+                "PRAGMA foreign_keys = OFF;
+                BEGIN;
+                CREATE TABLE page_new (
+                    id INTEGER PRIMARY KEY,
+                    work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                    file_name TEXT NOT NULL,
+                    order_index INTEGER NOT NULL,
+                    number INTEGER NOT NULL,
+                    span INTEGER NOT NULL DEFAULT 1,
+                    memo TEXT NOT NULL DEFAULT '',
+                    missing INTEGER NOT NULL DEFAULT 0,
+                    title TEXT,
+                    half INTEGER NOT NULL DEFAULT 0,
+                    node_id INTEGER
+                );
+                INSERT INTO page_new (id, work_id, file_name, order_index, number, span, memo, missing, title, half)
+                    SELECT id, work_id, file_name, order_index, number, span, memo, missing, title, half FROM page;
+                DROP TABLE page;
+                ALTER TABLE page_new RENAME TO page;
+                CREATE UNIQUE INDEX page_file ON page (work_id, file_name, half) WHERE missing = 0;
+                PRAGMA user_version = 7;
+                COMMIT;
+                PRAGMA foreign_keys = ON;",
+            )
+            .map_err(db_err)?;
+        let broken: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0))
+            .map_err(db_err)?;
+        if broken > 0 {
+            return Err(tr(M::MigrationBroken).into());
         }
         Ok(())
     }
@@ -858,12 +904,15 @@ impl Store {
         Ok(self.work_info(work_id)?.kind)
     }
 
-    /// 別の場所の cmc が、この作品と同じものかを照らし合わせる（ページのファイル名で比べる）
+    /// 別の場所の cmc が、この作品と同じものかを照らし合わせる（読み直しと同じく node_id で比べる）
     pub fn check_relink(&self, work_id: i64, comic: &Comic) -> Result<RelinkCheck> {
-        // 見開きを分けた行は同じファイルが 2 つ並ぶので、1 つに数える
-        let mut old: Vec<String> = self.page_files(work_id)?.into_iter().map(|(_, f)| f).collect();
-        old.dedup();
-        let matched = comic.pages.iter().filter(|p| old.contains(&p.file_name)).count();
+        // 見開きを分けた行は同じページが 2 つ並ぶので、1 つに数える
+        let old: Vec<_> = self.page_states(work_id)?.into_iter().filter(|q| !q.missing && q.half != 2).collect();
+        let matched = comic
+            .pages
+            .iter()
+            .filter(|p| old.iter().any(|q| pages::is_row_of(q, false, p.node_id, &p.file_name)))
+            .count();
         Ok(RelinkCheck {
             title: comic.title.clone(),
             new_pages: comic.pages.len() as i64,
@@ -990,7 +1039,8 @@ impl Store {
         .map_err(db_err)
     }
 
-    /// cmc の内容をページ一覧に反映する。ページはファイル名で突き合わせる。
+    /// cmc の内容をページ一覧に反映する。ページは node_id（cmc の MainId）で突き合わせ、
+    /// ファイル名は cmc の今の名前に書き換える（「ページファイル名の整列」で付け替わるため）。
     /// cmc から消えたページは記録を残したまま `missing` にする
     pub fn sync_pages(&self, work_id: i64, comic: &Comic, now: i64) -> Result<SyncResult> {
         let split = self.work_info(work_id)?.split_spreads;
@@ -999,21 +1049,37 @@ impl Store {
         let before: i64 = tx
             .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1", [work_id], |r| r.get(0))
             .map_err(db_err)?;
+        // 先にすべて消えた扱いにする。ファイル名の一意の条件は消えていない行だけなので、
+        // 整列で名前が入れ替わっても、付け替えの途中で重ならない
+        tx.execute("UPDATE page SET missing = 1 WHERE work_id = ?1", [work_id])
+            .map_err(db_err)?;
         if split {
             self.follow_split_spreads(&old, comic)?;
         }
-        tx.execute("UPDATE page SET missing = 1 WHERE work_id = ?1", [work_id])
-            .map_err(db_err)?;
+        let rows = self.page_states(work_id)?;
+        let was_missing = |id: i64| old.iter().any(|o| o.id == id && o.missing);
+        let mut used: HashSet<i64> = HashSet::new();
         for p in pages::page_rows(comic, split) {
-            tx.execute(
-                "INSERT INTO page (work_id, file_name, order_index, number, span, memo, missing, half)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)
-                 ON CONFLICT (work_id, file_name, half) DO UPDATE SET
-                    order_index = excluded.order_index, number = excluded.number,
-                    span = excluded.span, memo = excluded.memo, missing = 0",
-                params![work_id, p.file_name, p.order_index, p.number, p.span, p.memo, p.half],
-            )
-            .map_err(db_err)?;
+            let row = rows.iter().find(|q| {
+                q.half == p.half && !used.contains(&q.id) && pages::is_row_of(q, was_missing(q.id), p.node_id, p.file_name)
+            });
+            if let Some(row) = row {
+                used.insert(row.id);
+                tx.execute(
+                    "UPDATE page SET node_id = ?2, file_name = ?3, order_index = ?4, number = ?5, span = ?6,
+                        memo = ?7, missing = 0
+                     WHERE id = ?1",
+                    params![row.id, p.node_id, p.file_name, p.order_index, p.number, p.span, p.memo],
+                )
+                .map_err(db_err)?;
+            } else {
+                tx.execute(
+                    "INSERT INTO page (work_id, node_id, file_name, order_index, number, span, memo, missing, half)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8)",
+                    params![work_id, p.node_id, p.file_name, p.order_index, p.number, p.span, p.memo, p.half],
+                )
+                .map_err(db_err)?;
+            }
         }
         let after: i64 = tx
             .query_row("SELECT COUNT(*) FROM page WHERE work_id = ?1", [work_id], |r| r.get(0))
@@ -1429,15 +1495,28 @@ mod tests {
 
     pub(crate) const MIN: i64 = 60_000;
 
+    /// テスト用の作品。node_id は CLIP STUDIO と同じく、ファイル名の番号 + 1 にする（page0001.clip → 2）
     pub(crate) fn comic(pages: &[(&str, u32)]) -> Comic {
+        let ids: Vec<(&str, i64, u32)> = pages
+            .iter()
+            .map(|(f, span)| {
+                let digits: String = f.chars().filter(|c| c.is_ascii_digit()).collect();
+                (*f, digits.parse::<i64>().unwrap_or(0) + 1, *span)
+            })
+            .collect();
+        comic_with_ids(&ids)
+    }
+
+    /// node_id を指定したテスト用の作品（ファイル名の整列を再現するのに使う）
+    pub(crate) fn comic_with_ids(pages: &[(&str, i64, u32)]) -> Comic {
         let mut number = 1;
         Comic {
             title: "テスト作品".into(),
             right_bound: true,
             pages: pages
                 .iter()
-                .map(|(f, span)| {
-                    let p = Page { file_name: f.to_string(), number, span: *span, memo: String::new() };
+                .map(|(f, node_id, span)| {
+                    let p = Page { node_id: *node_id, file_name: f.to_string(), number, span: *span, memo: String::new() };
                     number += span;
                     p
                 })
@@ -1517,6 +1596,68 @@ mod tests {
         let board = store.board(id, 0).unwrap();
         assert_eq!(board.pages.len(), 2);
         assert!(board.pages[1].missing);
+    }
+
+    fn testdata(name: &str) -> Comic {
+        crate::cmc::read_comic(&Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata").join(name)).unwrap()
+    }
+
+    #[test]
+    fn ページファイル名を整列しても記録は元のページに付いたまま() {
+        // sort-after.cmc は sort-before.cmc を CLIP STUDIO の「ページファイル名の整列」にかけたもの
+        let store = Store::open_in_memory().unwrap();
+        let id = store.add_work("C:/a.cmc", &testdata("sort-before.cmc"), 0).unwrap();
+        let st = stage_ids(&store);
+        let before = store.board(id, 0).unwrap();
+        // ページごとに違う長さの記録を付け、偶数ページを完了にする
+        for (i, p) in before.pages.iter().enumerate() {
+            let start = i as i64 * 100 * MIN;
+            store.add_session(p.id, st[0], start, start + (i as i64 + 1) * MIN, i64::MAX).unwrap();
+            if i % 2 == 1 {
+                store.set_task_done(p.id, st[0], true, 0).unwrap();
+            }
+        }
+        let before = store.board(id, 0).unwrap();
+
+        let r = store.sync_pages(id, &testdata("sort-after.cmc"), 0).unwrap();
+        assert_eq!((r.added, r.missing), (0, 0));
+        let after = store.board(id, 0).unwrap();
+        let summary = |b: &Board| -> Vec<(i64, String, i64, bool)> {
+            b.pages.iter().map(|p| (p.id, p.label.clone(), p.cells[0].total_ms, p.cells[0].done)).collect()
+        };
+        assert_eq!(summary(&after), summary(&before));
+        // ファイル名だけが今の名前に変わる
+        assert_eq!(before.pages[1].file_name, "page0003.clip");
+        let files: Vec<String> = after.pages.iter().map(|p| p.file_name.clone()).collect();
+        let sorted: Vec<String> = (1..=10).map(|n| format!("page{n:04}.clip")).collect();
+        assert_eq!(files, sorted);
+    }
+
+    #[test]
+    fn 消えたページの名前を整列で別のページが継いでも記録を取り違えない() {
+        let store = Store::open_in_memory().unwrap();
+        let id = store
+            .add_work("C:/a.cmc", &comic_with_ids(&[("page0001.clip", 2, 1), ("page0002.clip", 3, 1), ("page0003.clip", 4, 1)]), 0)
+            .unwrap();
+        let st = stage_ids(&store);
+        let board = store.board(id, 0).unwrap();
+        let (deleted, third) = (board.pages[1].id, board.pages[2].id);
+        store.add_session(deleted, st[0], 0, 30 * MIN, i64::MAX).unwrap();
+
+        // 2 ページ目を消して整列すると、3 ページ目が page0002.clip になる
+        let r = store
+            .sync_pages(id, &comic_with_ids(&[("page0001.clip", 2, 1), ("page0002.clip", 4, 1)]), 0)
+            .unwrap();
+        assert_eq!((r.added, r.missing), (0, 1));
+        let board = store.board(id, 0).unwrap();
+        let rows: Vec<(i64, &str, bool, i64)> =
+            board.pages.iter().map(|p| (p.id, p.file_name.as_str(), p.missing, p.cells[0].total_ms)).collect();
+        assert_eq!(rows[1], (third, "page0002.clip", false, 0));
+        assert_eq!(rows[2], (deleted, "page0002.clip", true, 30 * MIN));
+
+        // 消えたページは、同じ名前のページがあっても生き返らない
+        store.sync_pages(id, &comic_with_ids(&[("page0001.clip", 2, 1), ("page0002.clip", 4, 1)]), 0).unwrap();
+        assert!(store.board(id, 0).unwrap().pages[2].missing);
     }
 
     #[test]
@@ -1768,6 +1909,34 @@ mod tests {
         store.remove_stage_set(set.id).unwrap();
         assert!(store.list_stages().unwrap().iter().all(|s| s.set_id != set.id));
         assert!(store.remove_stage_set(set.id).is_err());
+    }
+
+    #[test]
+    fn 版6のページは読み直しでファイル名から_node_id_を埋め_そのあとの整列に追従する() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        let old = Store { conn };
+        old.migrate(6).unwrap();
+        old.conn
+            .execute_batch(
+                "INSERT INTO work (id, title, cmc_path, created_at, kind, set_id) VALUES (7, '旧作品', 'C:/old.cmc', 0, 'comic', 1);
+                 INSERT INTO work_stage (work_id, stage_id, sort_order) VALUES (7, 1, 0);
+                 INSERT INTO page (id, work_id, file_name, order_index, number) VALUES (70, 7, 'page0003.clip', 0, 1);
+                 INSERT INTO page (id, work_id, file_name, order_index, number) VALUES (71, 7, 'page0001.clip', 1, 2);
+                 INSERT INTO work_session (page_id, stage_id, started_at, ended_at) VALUES (70, 1, 0, 600000);",
+            )
+            .unwrap();
+        old.migrate(LATEST).unwrap();
+
+        // 版 7 になって最初の読み直しは、ファイル名で突き合わせる
+        old.sync_pages(7, &comic_with_ids(&[("page0003.clip", 4, 1), ("page0001.clip", 2, 1)]), 0).unwrap();
+        // そのあと整列しても、node_id で追従する
+        let r = old.sync_pages(7, &comic_with_ids(&[("page0001.clip", 4, 1), ("page0002.clip", 2, 1)]), 0).unwrap();
+        assert_eq!((r.added, r.missing), (0, 0));
+        let board = old.board(7, 0).unwrap();
+        let rows: Vec<(i64, &str, i64)> =
+            board.pages.iter().map(|p| (p.id, p.file_name.as_str(), p.cells[0].total_ms)).collect();
+        assert_eq!(rows, [(70, "page0001.clip", 600000), (71, "page0002.clip", 0)]);
     }
 
     #[test]

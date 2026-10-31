@@ -26,7 +26,10 @@ pub struct Comic {
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Page {
-    /// ページファイル名（例: page0001.clip）。作品内でのページ ID として使う
+    /// CanvasNode の MainId。作品内でのページ ID として使う
+    /// （「ページファイル名の整列」でファイル名が付け替わっても変わらない）
+    pub node_id: i64,
+    /// ページファイル名（例: page0001.clip）
     pub file_name: String,
     /// 先頭ページを 1 としたページ番号。見開きは左右 2 ページ分のうち小さい方
     pub number: u32,
@@ -65,6 +68,7 @@ pub fn read_comic(cmc_path: &Path) -> Result<Comic, String> {
     for node in ordered {
         let span = if node.page_flag == 1 { 2 } else { 1 };
         pages.push(Page {
+            node_id: node.main_id,
             file_name: link_file_name(&node.link_path),
             number,
             span,
@@ -331,6 +335,17 @@ mod tests {
                 ("page0002.clip", 8, 1),
             ]
         );
+    }
+
+    #[test]
+    fn ページファイル名を整列してもページの_node_id_は変わらない() {
+        let testdata = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata");
+        let before = read_comic(&testdata.join("sort-before.cmc")).unwrap();
+        let after = read_comic(&testdata.join("sort-after.cmc")).unwrap();
+        let ids = |c: &Comic| c.pages.iter().map(|p| p.node_id).collect::<Vec<_>>();
+        assert_eq!(ids(&before), [2, 4, 9, 11, 10, 12, 6, 7, 5, 3]);
+        assert_eq!(ids(&after), ids(&before));
+        assert_eq!((before.pages[1].file_name.as_str(), after.pages[1].file_name.as_str()), ("page0003.clip", "page0002.clip"));
     }
 
     #[test]
