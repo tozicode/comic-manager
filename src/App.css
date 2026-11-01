@@ -617,6 +617,21 @@ select {
   border-radius: 8px;
   border: 1px solid var(--border);
 }
+/* AI に相談する文（5.21） */
+.dialog.ai-dialog {
+  width: 760px;
+}
+.ai-dialog .actions {
+  align-items: center;
+}
+.ai-text {
+  width: 100%;
+  height: 360px;
+  resize: vertical;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 /* ===== 作品一覧 ===== */
 .works {

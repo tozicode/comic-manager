@@ -3,6 +3,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup } from "../api";
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
+import { AiDialog } from "../components/AiDialog";
 import { Dialog } from "../components/Dialog";
 import { ShareDialog } from "../components/ShareDialog";
 import { useRelink } from "../components/Relink";
@@ -13,6 +14,7 @@ import { planName } from "../schedule";
 import { clock, dayKey, dayLabel, estimate, fromInputs, hours, startOfDay, time } from "../format";
 import { t, tn } from "../i18n/board";
 import { kindKey, unitText } from "../i18n/common";
+import { t as ta } from "../i18n/ai";
 import { t as ts } from "../i18n/share";
 
 /** 同期で見つかった見開きの変化（1 件ずつ確認する） */
@@ -57,6 +59,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [splitting, setSplitting] = useState<boolean | null>(null);
   /** 進捗を共有する画像のダイアログ（5.20） */
   const [sharing, setSharing] = useState(false);
+  /** AI に相談する文のダイアログ（5.21） */
+  const [asking, setAsking] = useState(false);
   /** イラストのファイル（または行）のドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
   const dragging = useRef<number | null>(null);
@@ -269,6 +273,9 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           )}
           <button className="btn small ghost" onClick={() => setSharing(true)}>
             {ts("button")}
+          </button>
+          <button className="btn small ghost" onClick={() => setAsking(true)}>
+            {ta("button")}
           </button>
           {!isManual && (
             <button className="btn small ghost" onClick={() => sync(true)}>
@@ -683,6 +690,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         </Dialog>
       )}
       {sharing && <ShareDialog workId={workId} onClose={() => setSharing(false)} />}
+      {asking && <AiDialog workId={workId} onClose={() => setAsking(false)} />}
       {addingRows !== null && (
         <Dialog
           title={t("addRowsTitle", { unit })}
