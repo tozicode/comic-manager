@@ -16,6 +16,11 @@ type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data" | "abo
 const SECTIONS: Section[] = ["stages", "tags", "hours", "timer", "display", "data", "about"];
 
 const SITE_URL = "https://otosazu.com/";
+/** ご意見・不具合の報告フォーム。版と OS を事前入力して開く（entry の番号はフォーム側の設問の ID） */
+const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfZiFdcGdq_BGvwtE6SqVEFJ7FbaFPN539hD57gBYYPvFcuAA/viewform";
+const FORM_OS_ENTRY = "entry.245049095";
+const FORM_VERSION_ENTRY = "entry.911636501";
+const FEEDBACK_MAIL = "feedback@otosazu.com";
 const BOOTH_URL = "https://tozicode.booth.pm/items/8867379";
 const X_ACCOUNT = "tozicode";
 
@@ -1025,6 +1030,12 @@ function AboutSection() {
   }, [app.showError]);
 
   const open = (url: string) => openUrl(url).catch(app.showError);
+  /** 報告フォームを、版と OS を埋めた状態で開く */
+  const openForm = () => {
+    const os = navigator.userAgent.includes("Mac") ? "Mac" : "Windows";
+    const q = new URLSearchParams({ usp: "pp_url", [FORM_OS_ENTRY]: os, [FORM_VERSION_ENTRY]: version ?? "" });
+    open(`${FORM_URL}?${q}`);
+  };
 
   return (
     <>
@@ -1048,12 +1059,23 @@ function AboutSection() {
             </button>
             <span className="muted small-text">{t("about.boothNote")}</span>
           </dd>
+          <dt>{t("about.feedback")}</dt>
+          <dd>
+            <button className="link" onClick={openForm}>
+              {t("about.form")}
+            </button>
+            <span className="muted small-text">{t("about.formNote")}</span>
+            <br />
+            <button className="link" onClick={() => open(`mailto:${FEEDBACK_MAIL}`)}>
+              {FEEDBACK_MAIL}
+            </button>
+            <span className="muted small-text">{t("about.mailNote")}</span>
+          </dd>
           <dt>{t("about.author")}</dt>
           <dd>
             <button className="link" onClick={() => open(`https://x.com/${X_ACCOUNT}`)}>
               {t("about.xLink", { account: X_ACCOUNT })}
             </button>
-            <span className="muted small-text">{t("about.reportNote")}</span>
           </dd>
         </dl>
       </div>
