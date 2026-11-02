@@ -1779,6 +1779,16 @@ table.rec {
 .miniwin .mfoot .bar {
   margin: 3px 0 2px;
 }
+/* 完了にした直後の通知。ノルマの行とゲージの 2 行ぶん（約 28px）の高さに収める */
+.miniwin .mfinished {
+  min-height: 28px;
+  gap: 8px;
+}
+.miniwin .mfinished .grow {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .miniwin .mfoot select {
   width: 100%;
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import { useApp } from "./app-context";
 import { usePomodoro } from "./components/Pomodoro";
-import { FinishToast, SaveToast } from "./components/Watchers";
+import { SaveToast } from "./components/Watchers";
 import { Thumb, spreadSide } from "./components/Thumb";
 import { Forecast, loadChosenPlan, useForecast } from "./forecast";
 import { clock, estimate, hours } from "./format";
@@ -55,6 +55,11 @@ const StopIcon = () => (
 const CheckIcon = () => (
   <svg viewBox="0 0 10 10">
     <path d="M1.5 5.5 L4 8 L8.5 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+const UndoIcon = () => (
+  <svg viewBox="0 0 10 10">
+    <path d="M3.5 2 L1.5 4 L3.5 6 M1.5 4 H6 a2 2 0 0 1 0 4 H4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 const PlayIcon = () => (
@@ -199,6 +204,10 @@ export function MiniApp() {
               <CheckIcon />
             </button>
           </>
+        ) : app.finished && !app.finished.wasDone ? (
+          <button className="icon-btn sec" title={t("undoFinish")} onClick={app.undoFinish}>
+            <UndoIcon />
+          </button>
         ) : paused ? (
           <button className="icon-btn accent" title={t("resume")} onClick={app.resume}>
             <PlayIcon />
@@ -330,20 +339,34 @@ export function MiniApp() {
             <TaskPicker f={f} onPick={app.start} onClose={() => setPicking(false)} />
           ) : (
             <>
-              <div className="row small-text" style={{ justifyContent: "space-between" }}>
-                <span>{t("quota")}</span>
-                <span className="num">
-                  <b>{hours(f.workedTodayMs)}</b> / {estimate(plan?.quotaMs ?? f.quotaMs)}
-                </span>
-              </div>
-              <div className="bar">
-                <span
-                  style={{
-                    width: `${Math.min(100, (f.workedTodayMs / Math.max(1, plan?.quotaMs ?? f.quotaMs)) * 100)}%`,
-                    background: "var(--accent)",
-                  }}
-                />
-              </div>
+              {/* 完了にした直後は、ノルマの 2 行を通知に差し替える（窓に重ねると「別のタスクを選ぶ」を塞ぐため） */}
+              {app.finished ? (
+                <div className="mfinished row small-text">
+                  <span className="grow">{t("finishedTitle", { page: app.finished.pageLabel, stage: app.finished.stageName })}</span>
+                  {!app.finished.wasDone && (
+                    <button className="btn small" onClick={app.undoFinish}>
+                      {t("undo")}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="row small-text" style={{ justifyContent: "space-between" }}>
+                    <span>{t("quota")}</span>
+                    <span className="num">
+                      <b>{hours(f.workedTodayMs)}</b> / {estimate(plan?.quotaMs ?? f.quotaMs)}
+                    </span>
+                  </div>
+                  <div className="bar">
+                    <span
+                      style={{
+                        width: `${Math.min(100, (f.workedTodayMs / Math.max(1, plan?.quotaMs ?? f.quotaMs)) * 100)}%`,
+                        background: "var(--accent)",
+                      }}
+                    />
+                  </div>
+                </>
+              )}
               <button className="link small-text" onClick={() => setPicking(true)}>
                 {t("pickOther")}
               </button>
@@ -352,7 +375,6 @@ export function MiniApp() {
         </div>
       )}
       <SaveToast />
-      <FinishToast />
     </div>
   );
 }
