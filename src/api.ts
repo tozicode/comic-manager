@@ -394,7 +394,8 @@ export const api = {
   setStageOrder: (ids: number[]) => call<void>("set_stage_order", { ids }),
   getTimerPrefs: () => call<TimerPrefs>("get_timer_prefs"),
   setTimerPrefs: (prefs: TimerPrefs) => call<void>("set_timer_prefs", { prefs }),
-  openMini: () => call<void>("open_mini"),
+  /** focus を偽にすると、前に出さずに開く（起動時の開き直し用） */
+  openMini: (focus = true) => call<void>("open_mini", { focus }),
   closeMini: () => call<void>("close_mini"),
   setMiniCompact: (compact: boolean) => call<void>("set_mini_compact", { compact }),
   setMiniOnTop: (onTop: boolean) => call<void>("set_mini_on_top", { onTop }),

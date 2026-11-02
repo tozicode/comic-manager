@@ -9,7 +9,7 @@ import { PomodoroDriver } from "./components/Pomodoro";
 import { SaveToast, Watchers } from "./components/Watchers";
 import { Publisher } from "./components/Publisher";
 import { CollabWatcher } from "./components/CollabWatcher";
-import { MiniApp } from "./MiniApp";
+import { MINI_OPEN_KEY, MiniApp } from "./MiniApp";
 import { RemoteApp } from "./RemoteApp";
 import { hours } from "./format";
 import { BoardScreen } from "./screens/BoardScreen";
@@ -70,6 +70,16 @@ function Shell() {
     setWorkId(id);
     setScreen(to);
   };
+
+  // 前回ミニタイマーを開いたまま終えていたら、起動時に開き直す（✕ で閉じていれば開かない）
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(MINI_OPEN_KEY) !== "1") return;
+    } catch {
+      return;
+    }
+    api.openMini(false).catch(() => {});
+  }, []);
 
   const needsWork = (screen === "board" || screen === "schedule" || screen === "records") && !work;
 

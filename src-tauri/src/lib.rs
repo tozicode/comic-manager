@@ -593,8 +593,8 @@ fn get_system_language() -> String {
 
 /// Windows では同期コマンドの中で窓を作るとデッドロックするため、窓の操作は async にする
 #[tauri::command]
-async fn open_mini(app: AppHandle) -> Cmd<()> {
-    desktop::open_mini(&app)
+async fn open_mini(app: AppHandle, focus: bool) -> Cmd<()> {
+    desktop::open_mini(&app, focus)
 }
 
 #[tauri::command]

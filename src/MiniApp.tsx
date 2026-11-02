@@ -12,6 +12,8 @@ import { pomoClock, remainingMs } from "./pomodoro";
 
 const COMPACT_KEY = "otosazu.miniCompact";
 const PIN_KEY = "otosazu.miniPinned";
+/** ミニ窓を開いたままアプリを終えたか。1 なら次の起動でメインの窓が開き直す（App.tsx） */
+export const MINI_OPEN_KEY = "otosazu.miniOpen";
 
 function loadFlag(key: string, fallback: boolean): boolean {
   try {
@@ -63,6 +65,15 @@ export function MiniApp() {
   const workId = app.active?.workId ?? app.paused?.workId ?? lastWorkId();
   const forecast = useForecast(workId);
   const [picking, setPicking] = useState(false);
+
+  // 開いている間は「開いていた」と覚えておき、✕ で閉じたときだけ消す（次の起動で開き直すかの目印）
+  useEffect(() => {
+    saveFlag(MINI_OPEN_KEY, true);
+  }, []);
+  const close = () => {
+    saveFlag(MINI_OPEN_KEY, false);
+    api.closeMini().catch(app.showError);
+  };
 
   useEffect(() => {
     api.setMiniCompact(compact).catch(app.showError);
@@ -164,7 +175,7 @@ export function MiniApp() {
           <button title={t("compact")} onClick={toggleCompact}>
             ⤡
           </button>
-          <button title={t("close")} onClick={() => api.closeMini()}>
+          <button title={t("close")} onClick={close}>
             ✕
           </button>
         </span>

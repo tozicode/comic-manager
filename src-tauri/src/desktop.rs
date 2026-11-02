@@ -12,11 +12,12 @@ pub const TOGGLE_EVENT: &str = "otosazu://toggle-timer";
 const MINI_SIZE: (f64, f64) = (340.0, 196.0);
 const MINI_COMPACT_SIZE: (f64, f64) = (236.0, 64.0);
 
-/// ミニタイマー窓を開く（開いていれば前に出す）。中身は同じ画面で、窓のラベルを見て切り替える
-pub fn open_mini(app: &AppHandle) -> Result<(), String> {
+/// ミニタイマー窓を開く（開いていれば前に出す）。中身は同じ画面で、窓のラベルを見て切り替える。
+/// `focus` が偽なら前に出さない（起動時に開き直すときに、メインの窓からフォーカスを奪わないように）
+pub fn open_mini(app: &AppHandle, focus: bool) -> Result<(), String> {
     if let Some(w) = app.get_webview_window(MINI_LABEL) {
         w.show().map_err(err)?;
-        return w.set_focus().map_err(err);
+        return if focus { w.set_focus().map_err(err) } else { Ok(()) };
     }
     WebviewWindowBuilder::new(app, MINI_LABEL, WebviewUrl::App("index.html".into()))
         .title(tr(M::MiniTitle))
@@ -24,6 +25,7 @@ pub fn open_mini(app: &AppHandle) -> Result<(), String> {
         .resizable(false)
         .decorations(false)
         .always_on_top(true)
+        .focused(focus)
         .build()
         .map_err(err)?;
     Ok(())
