@@ -266,17 +266,17 @@ fn read_clip_sqlite(clip_path: &Path) -> Result<Vec<u8>, String> {
 
 /// SQLite の中身を一時ファイルに書き出し、読み取り専用で開くためのもの。
 /// drop 時に一時ファイルは消える。
-struct TempDb(tempfile::NamedTempFile);
+pub(crate) struct TempDb(tempfile::NamedTempFile);
 
 impl TempDb {
-    fn new(bytes: &[u8]) -> Result<Self, String> {
+    pub(crate) fn new(bytes: &[u8]) -> Result<Self, String> {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().map_err(|e| trf(M::TempCreateFailed, &[("e", &e)]))?;
         f.write_all(bytes).map_err(|e| trf(M::TempWriteFailed, &[("e", &e)]))?;
         Ok(Self(f))
     }
 
-    fn open(&self) -> Result<Connection, String> {
+    pub(crate) fn open(&self) -> Result<Connection, String> {
         Connection::open_with_flags(self.0.path(), OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|e| trf(M::DbOpenUnsupported, &[("e", &e)]))
     }

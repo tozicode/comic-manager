@@ -32,6 +32,8 @@ tauri-plugin-notification = "2"
 tiny_http = { version = "0.12", default-features = false }
 if-addrs = "0.15"
 tauri-plugin-clipboard-manager = "2"
+# 共同作業データの反映日時（現地時刻の年月日時分秒）をミリ秒にする（collab.rs）
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

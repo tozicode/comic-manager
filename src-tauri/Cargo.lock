@@ -2782,6 +2782,7 @@ name = "otosazu"
 version = "2.6.0"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "if-addrs",
  "image",
  "objc2",

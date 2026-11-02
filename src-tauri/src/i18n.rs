@@ -428,6 +428,13 @@ messages! {
         "隐藏项目的指定不正确",
         "隱藏項目的指定不正確",
     ],
+    CollabReadFailed => [
+        "共同作業データを読めませんでした: {e}",
+        "Couldn't read the group work data: {e}",
+        "공동 작업 데이터를 읽을 수 없습니다: {e}",
+        "无法读取协作数据：{e}",
+        "無法讀取協作資料：{e}",
+    ],
     RemotePortRange => [
         "ポート番号は 1024〜65535 にしてください",
         "The port number must be between 1024 and 65535",

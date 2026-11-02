@@ -1,4 +1,5 @@
 mod cmc;
+mod collab;
 mod desktop;
 mod i18n;
 mod server;
