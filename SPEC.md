@@ -909,4 +909,4 @@ ChatGPT・Claude・Gemini などのチャット AI に「間に合う？」「�
 
 ## 8. 未決事項
 - 商標の確認（J-PlatPat で「オトサズ」「OTOSAZU」を第9類・第42類で検索）
-- 配布サイト用ドメインの取得（`otosazu.com` または `otosazu.app`）
+- （済）配布サイト用ドメイン：`otosazu.com` を取得し、公式サイトを Cloudflare Pages（`site/`）、進捗の公開を `share.otosazu.com` に置いた（2026-11-02）。BOOTH の商品ページは <https://tozicode.booth.pm/items/8867379>

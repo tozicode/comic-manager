@@ -96,7 +96,7 @@ curl -sL https://github.com/tozicode/comic-manager/releases/latest/download/late
 
 ## 7. BOOTH
 
-今までどおり、インストーラー（.exe／.dmg）と説明書の PDF を zip にまとめて置く。
+商品ページは <https://tozicode.booth.pm/items/8867379>。今までどおり、インストーラー（.exe／.dmg）と説明書の PDF を zip にまとめて置く。
 
 - `Otosazu_<版>_windows.zip`：`Otosazu_<版>_x64-setup.exe` と説明書の PDF
 - `Otosazu_<版>_mac.zip`：`Otosazu_<版>_universal.dmg` と説明書の PDF
