@@ -7,7 +7,7 @@
 
 | 決めごと | 案 | 状態 |
 |---|---|---|
-| ドメイン | `otosazu.com` を取り、`share.otosazu.com` を Worker に向ける。Cloudflare にゾーンを置く（Family Quest と同じ） | 決定。取得待ち |
+| ドメイン | `otosazu.com` を取り、`share.otosazu.com` を Worker に向ける。Cloudflare にゾーンを置く（Family Quest と同じ） | 取得済み。2026-11-02 に Worker を配備し、本番で PUT・GET・DELETE と閲覧ページを確認 |
 | 保存期間 | 送信が 180 日止まった行は消す | 仕様に書いた |
 | 見せる粒度 | マスまで見せる。隠したい人はマスを隠せる | 仕様に書いた |
 | 公開停止時 | サーバの行を消す | 仕様に書いた |
