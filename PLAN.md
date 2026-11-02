@@ -1,4 +1,4 @@
-# 実装計画：共同作業の取り込み（仕様書 5.23、2.7.0）
+# 実装計画：共同作業の取り込み（仕様書 5.23、3.0.0）
 
 CLIP STUDIO PAINT EX の共同作業機能で分担している作品について、作家側の Otosazu が共同作業データ（`Collabo/`）を読み、
 アシスタントの担当と反映を盤面に映す。仕様は [SPEC.md](SPEC.md) の 5.23 が正本、ファイル形式は
@@ -15,12 +15,12 @@ CLIP STUDIO PAINT EX の共同作業機能で分担している作品につい�
 | 完了の付け方 | メンバーの反映の版ごとに 1 回だけ `task_done` に入れる（完了時刻 = 反映の日時）。前の工程が未完了でも付ける。作家が外せば外れたまま |
 | 予測 | メンバー担当のマスは作家の残りから外す。メンバーの時間は扱わない |
 | 読めないとき | 黙って何もしない。設定画面にだけ失敗の旨を出す |
-| 出す版 | 2.7.0。データベースは版 9 |
+| 出す版 | 3.0.0（進捗の公開 5.22 と一緒に出す）。データベースは版 9 |
 
 **リスク**：形式が非公開。クリスタの更新で読めなくなりうるので、読み取りは 1 か所（`collab.rs`）にまとめ、失敗は必ず握りつぶす。
-2.6.0（進捗の公開）の配備・リリースが先。これはその後に着手する。
+進捗の公開（5.22）は配備・リリース前なので、同じ 3.0.0 にまとめて出す。
 
-## 1. 読み取り（Rust、`src-tauri/src/collab.rs`）
+## 1. 読み取り（Rust、`src-tauri/src/collab.rs`）（済）
 
 cmc.rs と同じ立ち位置の純粋な読み取り。DB には触らない。
 
@@ -49,7 +49,7 @@ cmc.rs と同じ立ち位置の純粋な読み取り。DB には触らない。
 
 **確かめ方**：`cargo test collab`
 
-## 2. 記録（Rust、`src-tauri/src/store/collab.rs`、版 9）
+## 2. 記録（Rust、`src-tauri/src/store/collab.rs`、版 9）（済）
 
 ```sql
 CREATE TABLE collab_member (
@@ -86,13 +86,13 @@ CREATE TABLE collab_state (
   4. `collab_state` を更新。失敗は `last_error` に入れて `Ok` を返す（呼び元に知らせは出させない）
 - `collab_info(work_id) -> CollabInfo { folder, last_read_at, last_error, members, commits(新しい順 100 件) }`
 - `set_collab_member(work_id, name, stage_ids, color)`
-- `board()` の各ページに `assignees: Vec<{ name, color, comment }>` を足す（担当は Collabo を読んだ直後の値を `AppState` に
-  持つだけで DB には入れない。遠隔の画面と公開の要約が同じ `Board` を使うので、ここに乗せれば工程 5 が楽）
+- `board()` の各ページに `assignees: Vec<{ name, color, comment, stage_ids }>` を足す（担当は `collab_assign` に写して DB から引く。
+  AppState に持つより単純で、遠隔の画面と公開の要約が同じ `Board` を使える）
 - 版 9 の移行テスト、適用のテスト（同じ版を二度適用しない・admin を捨てる・工程が空なら完了を付けない・消えたページは飛ばす）
 
 **確かめ方**：`cargo test`
 
-## 3. 読むタイミングと画面（Rust コマンド + TypeScript）
+## 3. 読むタイミングと画面（Rust コマンド + TypeScript）（済）
 
 - `lib.rs`：`read_collab(work_id) -> CollabSummary`（`find_collabo` → `read_collabo` → `apply_collabo`。Collabo が無ければ何もせず `None`）、
   `get_collab_info`、`set_collab_member`。`sync_work` の最後でも `read_collab` を呼ぶ（作品を開いたとき・起動時に乗る）。
@@ -111,7 +111,7 @@ CREATE TABLE collab_state (
   アシスタント側（`dummy-cmc/test-assistant`）で 2 ページ目を反映 → 60 秒以内に 2 ページ目 × その工程が完了になる →
   手で外しても戻らない → 管理者で担当を解除すると丸が消える
 
-## 4. 予測とスケジュールから外す
+## 4. 予測とスケジュールから外す（済）
 
 - `store/predict.rs`：メンバー担当のマス（担当ページ × そのメンバーの `stage_ids`）を `done` と同じ扱いで `open` から外す
   （`TaskPrediction` に `assigned: bool` を足し、画面では「待ち」と出す）。倍率の学習には使わない（時間が無いので元々入らない）
@@ -120,20 +120,20 @@ CREATE TABLE collab_state (
 
 **確かめ方**：`cargo test predict`、`npm test`（forecast）
 
-## 5. 公開の要約と説明書
+## 5. 公開の要約と説明書（済）
 
 - `docs/snapshot-format.md`：版 2。`cells` の各マスに任意で `{ who: "a", color }` を足せる（頭文字と色だけ。名前は送らない）。
   `server/public/share.js` は `who` があれば丸を描く。無ければ版 1 と同じ
 - `docs/guide/guide.html`：「10. アシスタントと分担しているとき」。共同作業データを準備するのは作家、Otosazu は読むだけ、
   メンバーの工程を 1 度決めること、形式が変わると読めなくなること
-- `docs/booth.md`：2.7.0 の更新履歴。版を 2.7.0 に上げる
+- `docs/booth.md`：3.0.0 の更新履歴（5.22 と 5.23 をまとめる）。版を 3.0.0 に上げる
 
 ## 順番と区切り
 
 1 → 2 → 3 → 4 → 5。1 は DB に触らないので先に単独で確かめられる。3 まででひととおり動く。4 と 5 は後から足せる。
-コミットは工程ごと。2.6.0 の配備・リリースを済ませてから 1 に入る。
+コミットは工程ごと。
 
-## やらないこと（2.7.0 では）
+## やらないこと（3.0.0 では）
 
 - アシスタント側からの申告（ブラウザの入力ページ、アシスタントの Otosazu）。共同作業機能を使っていない現場向けに別途
 - メンバーごとの作業時間・ペース・予測

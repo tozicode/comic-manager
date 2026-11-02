@@ -86,7 +86,7 @@ const sessions = [
   { pageId: 2, stageId: 2, startedAt: DAY + 100, endedAt: DAY + 200 },
   { pageId: 3, stageId: 2, startedAt: DAY + 300, endedAt: null },
 ];
-const extra = { sessions, dayStart: DAY, lastWorkedAt: DAY - 3600_000, appVersion: "2.6.0", now: NOW };
+const extra = { sessions, dayStart: DAY, lastWorkedAt: DAY - 3600_000, appVersion: "3.0.0", now: NOW };
 
 describe("buildSnapshot", () => {
   beforeEach(() => setDayStartHour(0));
@@ -107,8 +107,8 @@ describe("buildSnapshot", () => {
       NOW,
     );
     const s = buildSnapshot(f, extra, []);
-    expect(s.v).toBe(1);
-    expect(s.app).toBe("2.6.0");
+    expect(s.v).toBe(2);
+    expect(s.app).toBe("3.0.0");
     expect(s.work).toEqual({ title: "冬の新刊", kind: "comic", unit: "", rows: 3 });
     expect(s.stages).toEqual([
       { name: "下書き", color: "#6fa8dc" },
@@ -122,6 +122,9 @@ describe("buildSnapshot", () => {
     ]);
     expect(s.spans).toEqual([1, 2, 1]);
     expect(s.labels).toEqual(["p1", "p2", "p3"]);
+    // 共同作業のメンバーが居なければ who は null
+    expect(s.members).toEqual([]);
+    expect(s.who).toBeNull();
     // 8 マスぶん（見開きは 2）のうち完了 4、今日の完了 3
     expect(s.progress).toBeCloseTo(4 / 8);
     expect(s.todayProgress).toBeCloseTo(3 / 8);
@@ -167,6 +170,26 @@ describe("buildSnapshot", () => {
     // 10/29 の 3 時は、区切りが 5 時なら 10/28 の作業
     const s = buildSnapshot(f, { ...extra, lastWorkedAt: new Date(2026, 9, 29, 3).getTime() }, []);
     expect(s.lastWorkedOn).toBe("2026-10-28");
+  });
+});
+
+describe("buildSnapshot（共同作業）", () => {
+  it("メンバーの頭文字と色と、マスごとの担当を送る。名前は送らない", () => {
+    const withAssignee = board([
+      { ...page(1, 1, [[false, null, 0], [false, null, 0]]), assignees: [{ name: "assistant", color: "#b5651d", comment: "背景", stageIds: [2] }] },
+      page(2, 1, [[false, null, 0], [false, null, 0]]),
+      page(3, 1, [[false, null, 0], [false, null, 0]], true),
+    ]);
+    const f = computeForecast(withAssignee, prediction(withAssignee, 4 * 3600_000), schedule([], null), [], NOW);
+    const s = buildSnapshot(f, extra, []);
+    expect(s.members).toEqual([{ i: "A", c: "#b5651d" }]);
+    expect(s.who).toEqual([
+      [-1, 0],
+      [-1, -1],
+    ]);
+    expect(JSON.stringify(s)).not.toContain("assistant");
+    // マスを隠すと担当も送らない
+    expect(buildSnapshot(f, extra, ["cells"]).who).toBeNull();
   });
 });
 

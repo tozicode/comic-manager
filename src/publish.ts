@@ -11,7 +11,7 @@ import { SessionLike, shareData } from "./share";
 export const PUBLISH_BASE: string = import.meta.env.VITE_PUBLISH_BASE ?? "https://share.otosazu.com";
 
 /** 要約の版。形を変えたら上げる（閲覧ページは知らない版でも進み具合と最終更新だけは出す） */
-export const SNAPSHOT_VERSION = 1;
+export const SNAPSHOT_VERSION = 2;
 
 export type Snapshot = {
   v: number;
@@ -23,6 +23,10 @@ export type Snapshot = {
   cells: number[][] | null;
   spans: number[] | null;
   labels: string[] | null;
+  /** 共同作業のメンバー（頭文字と色だけ。名前は送らない。5.23）。居なければ [] */
+  members: { i: string; c: string }[];
+  /** 行 × 工程。担当しているメンバーの members での番号。居なければ -1。cells が null のとき・メンバーが居ないときは null */
+  who: number[][] | null;
   progress: number;
   todayProgress: number;
   completed: boolean;
@@ -46,6 +50,9 @@ export type SnapshotExtra = {
 
 const CELL_CODE = { open: 0, touched: 1, before: 2, today: 2 } as const;
 
+/** メンバーの印に使う頭文字（1 文字。CollabDialog と同じ） */
+const initial = (name: string) => (Array.from(name.trim())[0] ?? "?").toUpperCase();
+
 /** 純粋関数。隠す項目は null にする */
 export function buildSnapshot(forecast: Forecast, extra: SnapshotExtra, hide: HideKey[]): Snapshot {
   const { board, prediction } = forecast;
@@ -56,6 +63,16 @@ export function buildSnapshot(forecast: Forecast, extra: SnapshotExtra, hide: Hi
   const finish = forecast.finish;
   const totalMs = board.pages.reduce((n, p) => n + p.cells.reduce((m, c) => m + c.totalMs, 0), 0);
   const selected = forecast.deadline?.id ?? null;
+  // 共同作業のメンバー（出てきた順）と、マスごとの担当
+  const pages = board.pages.filter((p) => !p.missing);
+  const members: { name: string; color: string }[] = [];
+  for (const p of pages) for (const a of p.assignees) if (!members.some((m) => m.name === a.name)) members.push(a);
+  const who = pages.map((p) =>
+    board.stages.map((s) => {
+      const a = p.assignees.find((x) => x.stageIds.includes(s.id));
+      return a ? members.findIndex((m) => m.name === a.name) : -1;
+    }),
+  );
   return {
     v: SNAPSHOT_VERSION,
     generatedAt: extra.now,
@@ -70,6 +87,8 @@ export function buildSnapshot(forecast: Forecast, extra: SnapshotExtra, hide: Hi
     cells: showCells ? data.rows.map((row) => row.map((c) => CELL_CODE[c])) : null,
     spans: showCells ? data.spans : null,
     labels: showCells ? data.labels : null,
+    members: members.map((m) => ({ i: initial(m.name), c: m.color })),
+    who: showCells && members.length > 0 ? who : null,
     progress: data.progress,
     todayProgress: data.todayProgress,
     completed: prediction.remainingMs === 0,

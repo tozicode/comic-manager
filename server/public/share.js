@@ -37,6 +37,7 @@ const MESSAGES = {
     legendDone: "完了",
     legendWorking: "作業中",
     legendOpen: "未着手",
+    legendMember: "メンバー担当",
     todayTime: "今日の作業 {t}",
     totalTime: "合計 {t}",
     lastWorked: "最後に作業した日 {d}",
@@ -100,6 +101,7 @@ const MESSAGES = {
     legendDone: "done",
     legendWorking: "in progress",
     legendOpen: "not started",
+    legendMember: "assigned to a member",
     todayTime: "Worked today {t}",
     totalTime: "Total {t}",
     lastWorked: "Last worked {d}",
@@ -162,6 +164,7 @@ const MESSAGES = {
     legendDone: "완료",
     legendWorking: "작업 중",
     legendOpen: "미착수",
+    legendMember: "멤버 담당",
     todayTime: "오늘 작업 {t}",
     totalTime: "합계 {t}",
     lastWorked: "마지막 작업일 {d}",
@@ -224,6 +227,7 @@ const MESSAGES = {
     legendDone: "完成",
     legendWorking: "进行中",
     legendOpen: "未开始",
+    legendMember: "成员负责",
     todayTime: "今天工作 {t}",
     totalTime: "合计 {t}",
     lastWorked: "最后工作日 {d}",
@@ -286,6 +290,7 @@ const MESSAGES = {
     legendDone: "完成",
     legendWorking: "進行中",
     legendOpen: "未開始",
+    legendMember: "成員負責",
     todayTime: "今天工作 {t}",
     totalTime: "合計 {t}",
     lastWorked: "最後工作日 {d}",
@@ -555,11 +560,13 @@ function renderWork(root, updatedAt, s) {
       s.cells.forEach((row, r) => {
         const v = row[i];
         const span = (s.spans && s.spans[r]) || 1;
+        // 版 2：共同作業のメンバーが担当しているマス（頭文字と色だけ）
+        const m = s.who && s.members && s.who[r] && s.who[r][i] >= 0 ? s.members[s.who[r][i]] : null;
         grid.appendChild(
           el("div", {
-            class: `cell${span > 1 ? " span2" : ""}${v === 2 ? " done" : v === 1 ? " working" : ""}`,
-            style: `--c:${st.color}`,
-            title: `${(s.labels && s.labels[r]) || ""} ${st.name}`,
+            class: `cell${span > 1 ? " span2" : ""}${v === 2 ? " done" : v === 1 ? " working" : ""}${m ? " assigned" : ""}`,
+            style: `--c:${st.color}${m ? `;--m:${m.c}` : ""}`,
+            title: `${(s.labels && s.labels[r]) || ""} ${st.name}${m ? ` (${m.i})` : ""}`,
           }),
         );
       });
@@ -577,6 +584,9 @@ function renderWork(root, updatedAt, s) {
         el("span", null, [el("i", { style: "background:var(--accent)" }), t("legendDone")]),
         el("span", null, [el("i", { style: "box-shadow:inset 0 0 0 2px var(--accent)" }), t("legendWorking")]),
         el("span", null, [el("i", { style: "background:var(--empty)" }), t("legendOpen")]),
+        ...(s.members && s.members.length && s.who
+          ? [el("span", null, [el("i", { class: "member", style: "--m:var(--muted)" }), t("legendMember")])]
+          : []),
       ]),
     );
   }
