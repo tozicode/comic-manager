@@ -1,0 +1,226 @@
+/* 進捗の公開の閲覧ページ（仕様書 5.22）。色は docs/brand/README.md のロゴの色に合わせる */
+:root {
+  --bg: #fbf1ec;
+  --card: #ffffff;
+  --ink: #3a2a25;
+  --muted: #8a6f66;
+  --accent: #c8553d;
+  --track: #e8b9ac;
+  --empty: #efe3dd;
+  --line: #e6d6cf;
+  --ok: #3f8f5f;
+  --tight: #c88a2a;
+  --late: #c8553d;
+  --warn-bg: #fde9c9;
+  --warn-ink: #6b4a12;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1f1715;
+    --card: #2a211e;
+    --ink: #f5ebe7;
+    --muted: #b79c93;
+    --accent: #e2735a;
+    --track: #6b3a2f;
+    --empty: #3a2f2b;
+    --line: #463a36;
+    --ok: #6cc08c;
+    --tight: #e2b05a;
+    --late: #e2735a;
+    --warn-bg: #4a3a1a;
+    --warn-ink: #f3dca6;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", "Noto Sans CJK JP", "Segoe UI", system-ui, sans-serif;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+a { color: var(--accent); }
+button, input {
+  font: inherit;
+  color: inherit;
+}
+button {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+input[type="text"], input[type="url"] {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+header.top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 16px;
+}
+header.top img { width: 28px; height: 28px; }
+header.top .brand {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+header.top .sub {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+footer {
+  color: var(--muted);
+  font-size: 0.85em;
+  padding: 24px 0 8px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.muted { color: var(--muted); }
+.small { font-size: 0.85em; }
+.title {
+  font-size: 1.35em;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.hidden-title {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.notice {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.notice.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.notice.error { background: var(--empty); color: var(--ink); }
+
+/* 上段：進み具合・締切・見込み */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.stat .label { color: var(--muted); font-size: 0.85em; }
+.stat .value { font-size: 1.6em; font-weight: 700; line-height: 1.2; }
+.stat .value.big { font-size: 2.4em; }
+.stat .note { font-size: 0.9em; }
+.status { font-weight: 700; }
+.status.ok { color: var(--ok); }
+.status.tight { color: var(--tight); }
+.status.late { color: var(--late); }
+
+.bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+  margin-top: 6px;
+}
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 5px;
+}
+
+/* 工程ごとの数 */
+.stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 8px 0;
+}
+.stages .stage { display: inline-flex; align-items: center; gap: 6px; }
+.stages .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* マス：1 列が 1 行（ページ）、1 行が 1 工程。横に流して見る（5.20 と同じ並べ方） */
+.cells-wrap { overflow-x: auto; padding-bottom: 6px; }
+.cells {
+  display: grid;
+  gap: 2px;
+  /* 幅を中身に合わせる（100% にすると auto の先頭列が余白を吸って、マスが右に寄る） */
+  width: max-content;
+}
+.cells .stage-name {
+  font-size: 0.75em;
+  color: var(--muted);
+  padding-right: 8px;
+  white-space: nowrap;
+  align-self: center;
+  position: sticky;
+  left: 0;
+  background: var(--card);
+}
+.cells .cell {
+  width: 14px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--empty);
+}
+.cells .cell.span2 { width: 30px; }
+.cells .cell.working { background: transparent; box-shadow: inset 0 0 0 2px var(--c); }
+.cells .cell.done { background: var(--c); }
+.cells .page-label {
+  font-size: 0.7em;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.85em; color: var(--muted); margin-top: 6px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
+
+.meta { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--muted); font-size: 0.9em; margin-top: 10px; }
+
+/* まとめページ */
+.add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.add input { flex: 1 1 280px; }
+/* 狭い画面では列を潰さず、横に流して見る */
+table.list { width: 100%; min-width: 760px; border-collapse: collapse; }
+table.list td.title { max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.list th, table.list td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+table.list th { color: var(--muted); font-weight: 500; font-size: 0.85em; white-space: nowrap; }
+table.list td.num { white-space: nowrap; }
+table.list input.name { width: 9em; padding: 4px 6px; }
+table.list .bar { width: 120px; margin: 4px 0 0; }
+table.list .remove { padding: 2px 8px; color: var(--muted); }
+.list-wrap { overflow-x: auto; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+@media (max-width: 600px) {
+  .page { padding: 12px; }
+  .stat .value.big { font-size: 2em; }
+}

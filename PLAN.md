@@ -50,23 +50,23 @@ FCM まわりは持ち込まない。
 - `npm test` が通る
 - `wrangler dev` に curl で PUT → GET → DELETE が通る（手順を `server/README.md` に書く）
 
-## 2. 閲覧ページ（`server/public/`）
+## 2. 閲覧ページ（`server/public/`）（済）
 
 ビルドなしの静的 HTML + 素の JS（React は持ち込まない。配るものを小さく保つ）。
 
-- `public/p/index.html`：作品 1 つのページ。URL の `#k=` から閲覧鍵を取り、`/p/<id>/snapshot` を読んで描く。
+- `public/p.html`：作品 1 つのページ。URL の `#k=` から閲覧鍵を取り、`/p/<id>/snapshot` を読んで描く。
   描くもの：作品名・進み具合・締切と見込みの関係・工程ごとの数・マス（5.20 の並べ方）・最後に作業した日・最終更新。
   最終更新が 3 日より前なら目立たせる。404 なら「公開が終わっています」
-  - assets の経路：`/p/<id>` を `public/p/index.html` に当てるため、`[assets]` の `not_found_handling = "single-page-application"` か、
-    Worker 側で `/p/:id` を `index.html` に書き換える。どちらが素直か最初に試す
-- `public/list/index.html`：まとめページ。`#p=<id>:<鍵>,…` を読み、各作品の JSON を並べて締切の近い順に表。
+  - assets の経路：Worker 側で `/p/:id` を `/p`（= `public/p.html`）に書き換えて済ませた
+- `public/list.html`：まとめページ。`#p=<id>:<鍵>,…` を読み、各作品の JSON を並べて締切の近い順に表。
   閲覧 URL の貼り付け欄で足す・外す（URL のフラグメントを書き換える）。作者名の欄は localStorage
-- `public/i18n.js`：見出しの訳（ja / en / ko / zh。アプリの `src/i18n/share.ts` の言葉を揃える）。`navigator.language` で選ぶ
+- `public/share.js`：見出しの訳（ja / en / ko / zh-Hans / zh-Hant）、取得、描画。`navigator.languages` で選ぶ。`public/share.css` が色と配置
+- 要約の形は [docs/snapshot-format.md](docs/snapshot-format.md) に固めた。工程 4 はこれに合わせて作る
 - 色：`prefers-color-scheme` でライト／ダーク。マスの色は JSON の工程の色をそのまま使う
 
 **確かめ方**
-- `wrangler dev` にダミーの要約を PUT して、PC・スマホ幅・ダークで表示を見る（Browser pane）
-- 鍵違い・404・3 日より古い、の 3 つの表示
+- `wrangler dev` にダミーの要約を PUT して、PC・スマホ幅・ダークで表示を見た（`.claude/launch.json` の `share`）
+- 鍵違い・404・鍵なし・3 日より古い・完成済み・締切なし・作品名非公開、の表示を確かめた
 
 ## 3. アプリ：鍵と設定（Rust）
 

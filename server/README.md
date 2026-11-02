@@ -11,12 +11,18 @@
 | `DELETE /p/<公開 ID>` | 同上 | 消す。無い行でも 204（アプリのやり直しが安全に効くように） |
 | `GET /p/<公開 ID>/snapshot` | `X-Otosazu-Read: <閲覧鍵>` | `{ updatedAt, snapshot }`。`Cache-Control: no-store` |
 | `GET /p/<公開 ID>` | なし | 閲覧ページ（`public/p.html`）。鍵は URL のフラグメント `#k=` にあり、サーバには届かない |
-| `GET /list` | なし | まとめページ（`public/list.html`。工程 2） |
+| `GET /list` | なし | まとめページ（`public/list.html`）。`#p=<ID>:<閲覧鍵>,…` に一覧を持ち、サーバには何も置かない |
 
 断り方：鍵が無い 401 ／ 鍵が違う 403 ／ ID の形が違う・JSON でない 400 ／ 64 KB 超 413 ／ 同じ ID へ 10 秒以内の再送 429。
 上限は `src/limits.ts`。サーバは鍵の SHA-256 だけを持ち、要約の中身は見ない。
 
 毎日 03:00 UTC の cron で、送信が 180 日止まった行を消す。
+
+## 閲覧ページ
+
+`public/` の静的ファイル。ビルドなしの素の HTML / CSS / JS で、`share.js` に言葉（5 言語）・取得・描画をまとめてある。
+要約の形は [docs/snapshot-format.md](../docs/snapshot-format.md)。ダミーを入れて見るには `wrangler dev` を起動し、
+`PUT` で要約を入れてから `http://127.0.0.1:8787/p/<ID>#k=<閲覧鍵>` を開く（リポジトリ直下の `.claude/launch.json` の `share` でも起動できる）。
 
 ## 開発
 

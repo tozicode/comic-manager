@@ -1,1 +1,57 @@
-<!doctype html><meta charset="utf-8"><title>Otosazu</title><p>閲覧ページは工程 2 で作る</p>
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Otosazu</title>
+<link rel="icon" href="/otosazu-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/share.css">
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <picture>
+      <source srcset="/otosazu-mark-dark.svg" media="(prefers-color-scheme: dark)">
+      <img src="/otosazu-mark.svg" alt="">
+    </picture>
+    <span class="brand" data-t="brand"></span>
+    <span class="sub" data-t="pageSub"></span>
+  </header>
+  <main id="root"><div class="card muted" data-t="loading"></div></main>
+  <footer><a href="https://otosazu.com/" rel="noopener">otosazu.com</a></footer>
+</div>
+<script src="/share.js"></script>
+<script>
+(function () {
+  // 作品 1 つの閲覧ページ（仕様書 5.22）。URL は /p/<公開 ID>#k=<閲覧鍵>。鍵はフラグメントにあるのでサーバには届かない
+  const S = window.OtosazuShare;
+  document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = S.t(e.dataset.t); });
+  const root = document.getElementById("root");
+  const id = (/^\/p\/([0-9a-f]{16,64})\/?$/.exec(location.pathname) || [])[1];
+  async function load() {
+    // 鍵はフラグメントから毎回読む（鍵だけ違う URL に移ってもページは読み直されないため）
+    const key = new URLSearchParams(location.hash.replace(/^#/, "")).get("k");
+    if (!id || !key) {
+      root.textContent = "";
+      root.appendChild(S.el("div", { class: "notice error" }, S.t("badUrl")));
+      return;
+    }
+    const r = await S.fetchSnapshot(id, key);
+    root.textContent = "";
+    if (!r.ok) {
+      root.appendChild(S.el("div", { class: "notice error" }, S.errorMessage(r.status)));
+      return;
+    }
+    if (r.snapshot.work && r.snapshot.work.title) document.title = `${r.snapshot.work.title} - Otosazu`;
+    S.renderWork(root, r.updatedAt, r.snapshot);
+  }
+  load();
+  window.addEventListener("hashchange", load);
+  // タブを開きっぱなしにしても古いままにならないよう、見えるようになったとき読み直す
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(); });
+})();
+</script>
+</body>
+</html>

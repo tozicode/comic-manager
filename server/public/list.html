@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Otosazu</title>
+<link rel="icon" href="/otosazu-mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/share.css">
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <picture>
+      <source srcset="/otosazu-mark-dark.svg" media="(prefers-color-scheme: dark)">
+      <img src="/otosazu-mark.svg" alt="">
+    </picture>
+    <span class="brand" data-t="brand"></span>
+    <span class="sub" data-t="listSub"></span>
+  </header>
+  <div class="card">
+    <label class="small muted" for="url" data-t="addLabel"></label>
+    <form class="add" id="add">
+      <input type="url" id="url" placeholder="https://share.otosazu.com/p/…#k=…" autocomplete="off">
+      <button type="submit" class="primary" data-t="addButton"></button>
+    </form>
+    <div id="addMsg" class="small" style="margin-top:6px"></div>
+  </div>
+  <div class="card">
+    <div class="list-wrap"><table class="list" id="table"></table></div>
+    <div id="empty" class="muted" hidden data-t="empty"></div>
+    <div class="tools">
+      <button id="copy" data-t="copyList"></button>
+      <span id="copyMsg" class="small muted"></span>
+    </div>
+    <p class="small muted" data-t="listNote"></p>
+  </div>
+  <footer><a href="https://otosazu.com/" rel="noopener">otosazu.com</a></footer>
+</div>
+<script src="/share.js"></script>
+<script>
+(function () {
+  // まとめページ（仕様書 5.22）。URL は /list#p=<ID>:<鍵>,<ID>:<鍵>,…
+  // 一覧は URL そのものに入れる（共同の主催者に URL を渡せば同じものが見える）。作者の名前だけ localStorage
+  const S = window.OtosazuShare;
+  const t = S.t;
+  document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = t(e.dataset.t); });
+  const NAMES_KEY = "otosazu.listNames";
+
+  function readItems() {
+    const p = new URLSearchParams(location.hash.replace(/^#/, "")).get("p") || "";
+    return p.split(",").map((s) => s.split(":")).filter((a) => a.length === 2 && a[0] && a[1]).map(([id, key]) => ({ id, key }));
+  }
+  function writeItems(items) {
+    const p = items.map((i) => `${i.id}:${i.key}`).join(",");
+    history.replaceState(null, "", p ? `#p=${p}` : location.pathname);
+  }
+  function readNames() {
+    try { return JSON.parse(localStorage.getItem(NAMES_KEY) || "{}"); } catch { return {}; }
+  }
+  function writeName(id, name) {
+    const names = readNames();
+    if (name) names[id] = name; else delete names[id];
+    try { localStorage.setItem(NAMES_KEY, JSON.stringify(names)); } catch {}
+  }
+
+  const table = document.getElementById("table");
+  const empty = document.getElementById("empty");
+
+  function row(item, r, names) {
+    const nameInput = S.el("input", {
+      type: "text", class: "name", value: names[item.id] || "", placeholder: t("namePlaceholder"),
+      onchange: (e) => writeName(item.id, e.target.value.trim()),
+    });
+    const removeBtn = S.el("button", { class: "remove", type: "button", onclick: () => {
+      writeItems(readItems().filter((i) => i.id !== item.id));
+      writeName(item.id, "");
+      render();
+    } }, t("remove"));
+    const link = S.el("a", { href: `/p/${item.id}#k=${encodeURIComponent(item.key)}`, target: "_blank", rel: "noopener" }, t("open"));
+
+    if (!r.ok) {
+      return S.el("tr", null, [
+        S.el("td", null, nameInput),
+        S.el("td", { colspan: 6, class: "muted" }, S.errorMessage(r.status)),
+        S.el("td", null, [link, " ", removeBtn]),
+      ]);
+    }
+    const s = r.snapshot;
+    const pct = Math.round((s.progress || 0) * 100);
+    const dl = S.mainDeadline(s);
+    const st = dl && !s.completed ? S.deadlineStatus(s.finish, dl.date) : null;
+    const stale = Date.now() - r.updatedAt > S.STALE_MS;
+    const n = dl ? S.dayDiff(S.startOfToday(), S.parseDay(dl.date)) : null;
+    return S.el("tr", null, [
+      S.el("td", null, nameInput),
+      S.el("td", { class: "title", title: s.work.title || "" }, s.work.title ? s.work.title : S.el("span", { class: "hidden-title" }, t("hiddenTitle"))),
+      S.el("td", { class: "num" }, [
+        s.completed ? t("completed") : `${pct}%`,
+        S.el("div", { class: "bar" }, S.el("i", { style: `width:${Math.min(100, pct)}%` })),
+      ]),
+      S.el("td", { class: "num" }, dl ? [
+        S.fmtDay(dl.date),
+        S.el("div", { class: "small muted" }, n === 0 ? t("deadlineToday") : n > 0 ? t("deadlineIn", { n }) : t("deadlinePast", { n: -n })),
+      ] : S.el("span", { class: "muted" }, t("noDeadline"))),
+      S.el("td", { class: "num" }, s.completed ? "" : [
+        s.finish && s.finish.mid ? S.fmtDay(s.finish.mid) : S.el("span", { class: "muted" }, t("noFinish")),
+        st ? S.el("div", { class: `small status ${st}` }, t(st === "ok" ? "statusOk" : st === "tight" ? "statusTight" : "statusLate")) : null,
+      ]),
+      S.el("td", { class: "num" }, s.lastWorkedOn ? S.fmtRelativeDay(s.lastWorkedOn) : S.el("span", { class: "muted" }, t("neverWorked"))),
+      S.el("td", { class: `num small ${stale ? "status late" : "muted"}` }, S.timeFmt.format(new Date(r.updatedAt))),
+      S.el("td", { class: "num" }, [link, " ", removeBtn]),
+    ]);
+  }
+
+  async function render() {
+    const items = readItems();
+    table.textContent = "";
+    empty.hidden = items.length > 0;
+    if (!items.length) return;
+    table.appendChild(S.el("thead", null, S.el("tr", null, [
+      t("colName"), t("colTitle"), t("colProgress"), t("colDeadline"), t("colFinish"), t("colLast"), t("colUpdated"), "",
+    ].map((h) => S.el("th", null, h)))));
+    const results = await Promise.all(items.map((i) => S.fetchSnapshot(i.id, i.key).then((r) => ({ item: i, r }))));
+    // 締切の近い順。締切が無いもの・読めないものは後ろ
+    const sortKey = ({ r }) => {
+      if (!r.ok) return Infinity;
+      const dl = S.mainDeadline(r.snapshot);
+      return dl ? S.parseDay(dl.date).getTime() : Infinity - 1;
+    };
+    results.sort((a, b) => sortKey(a) - sortKey(b));
+    const names = readNames();
+    const tbody = S.el("tbody");
+    for (const { item, r } of results) tbody.appendChild(row(item, r, names));
+    table.appendChild(tbody);
+  }
+
+  document.getElementById("add").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = document.getElementById("url");
+    const msg = document.getElementById("addMsg");
+    const parsed = S.parseShareUrl(input.value);
+    if (!parsed) { msg.textContent = t("addBad"); return; }
+    msg.textContent = "";
+    const items = readItems().filter((i) => i.id !== parsed.id);
+    items.push(parsed);
+    writeItems(items);
+    input.value = "";
+    render();
+  });
+  document.getElementById("copy").addEventListener("click", async () => {
+    const msg = document.getElementById("copyMsg");
+    try { await navigator.clipboard.writeText(location.href); msg.textContent = t("copied"); }
+    catch { msg.textContent = location.href; }
+  });
+  window.addEventListener("hashchange", render);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") render(); });
+  render();
+})();
+</script>
+</body>
+</html>
