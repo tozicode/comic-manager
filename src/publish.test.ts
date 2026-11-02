@@ -29,6 +29,7 @@ const page = (id: number, span: number, cells: [boolean, number | null, number][
   found: true,
   tags: [],
   cells: cells.map(([done, doneAt, totalMs], i) => ({ stageId: stages[i].id, done, doneAt, totalMs })),
+  assignees: [],
 });
 const board = (pages: BoardPage[]): Board => ({
   work: {
@@ -44,6 +45,7 @@ const board = (pages: BoardPage[]): Board => ({
   },
   stages,
   pages,
+  collab: false,
 });
 /** 残り時間だけを持つ予測（完成見込みの計算に要るのはこれだけ） */
 const prediction = (b: Board, remainingMs: number): Prediction => ({

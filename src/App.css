@@ -2384,3 +2384,62 @@ button.lost:hover {
     color: #fff;
   }
 }
+
+/* 共同作業のメンバーの印（5.23）。ページの欄と、そのメンバーの工程のマスに出す */
+.member-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  flex: none;
+  cursor: default;
+}
+.member-badge.on-cell {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  box-shadow: 0 0 0 1px var(--surface);
+}
+.collab-dialog {
+  width: min(760px, 92vw);
+}
+.collab-members td {
+  padding: 4px 8px 4px 0;
+  vertical-align: top;
+}
+.collab-members input[type="color"] {
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.collab-history {
+  max-height: 240px;
+  overflow: auto;
+}
+.collab-history table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.collab-history th,
+.collab-history td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.collab-history td.center {
+  text-align: center;
+}

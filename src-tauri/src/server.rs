@@ -37,6 +37,7 @@ const ALLOWED: &[&str] = &[
     "get_display_prefs",
     "get_day_start_hour",
     "get_system_language",
+    "get_collab_info",
 ];
 
 /// 記録が変わるコマンド。終わったらアプリの窓に知らせて読み直させる

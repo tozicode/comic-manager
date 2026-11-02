@@ -27,6 +27,7 @@ const page = (id: number, label: string, span: number, cells: [boolean, number][
   found: true,
   tags,
   cells: cells.map(([done, totalMs], i) => ({ stageId: stages[i].id, done, doneAt: done ? NOW - HOUR : null, totalMs })),
+  assignees: [],
 });
 const board: Board = {
   work: {
@@ -46,6 +47,7 @@ const board: Board = {
     page(2, "p2-3", 2, [[true, 4 * HOUR], [false, 70 * 60_000]], [10, 99]),
     page(4, "p4", 1, [[false, 0], [false, 0]]),
   ],
+  collab: false,
 };
 const task = (pageId: number, stageId: number, done: boolean, remainingMs: number, spentMs = 0) => ({
   pageId,

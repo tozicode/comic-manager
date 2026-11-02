@@ -200,8 +200,60 @@ fn sync_work(state: State<AppState>, work_id: i64) -> Cmd<store::SyncResult> {
     with_store(&state, |s| {
         let result = s.sync_pages(work_id, &comic, now_ms())?;
         s.remove_empty_missing_pages(work_id)?;
+        // 共同作業データも同じタイミングで読む（5.23）。読めなくても同期は成功にする
+        let _ = read_collab_into(s, work_id);
         Ok(result)
     })
+}
+
+// ----- 共同作業の取り込み（5.23） -----
+
+/// 共同作業データを読んで記録に写す。共同作業でない作品は None。
+/// 読めなかったときは失敗を記録して None（作家の作業を邪魔しないよう、呼び元に知らせは出させない）
+fn read_collab_into(s: &Store, work_id: i64) -> store::Result<Option<store::CollabSummary>> {
+    let work = s.work_info(work_id)?;
+    let Some(cmc) = work.cmc_path.filter(|_| work.kind == store::KIND_COMIC) else { return Ok(None) };
+    let Some(loc) = collab::find_collabo(Path::new(&cmc)) else {
+        s.clear_collab(work_id)?;
+        return Ok(None);
+    };
+    let folder = loc.dir.display().to_string();
+    match collab::read_collabo(&loc.dir) {
+        Ok(c) => s.apply_collabo(work_id, &folder, loc.admin.as_deref(), &c, now_ms()).map(Some),
+        Err(e) => {
+            s.mark_collab_error(work_id, &folder, &e)?;
+            Ok(None)
+        }
+    }
+}
+
+#[tauri::command]
+fn read_collab(state: State<AppState>, work_id: i64) -> Cmd<Option<store::CollabSummary>> {
+    with_store(&state, |s| read_collab_into(s, work_id))
+}
+
+/// 起動時に全作品の共同作業データを読む。何か変わった作品があれば true
+#[tauri::command]
+fn read_collab_all(state: State<AppState>) -> Cmd<bool> {
+    with_store(&state, |s| {
+        let mut changed = false;
+        for w in s.list_works()? {
+            if let Ok(Some(r)) = read_collab_into(s, w.id) {
+                changed |= r.new_commits > 0 || r.applied_cells > 0 || r.assignments_changed;
+            }
+        }
+        Ok(changed)
+    })
+}
+
+#[tauri::command]
+fn get_collab_info(state: State<AppState>, work_id: i64) -> Cmd<Option<store::CollabInfo>> {
+    with_store(&state, |s| s.collab_info(work_id))
+}
+
+#[tauri::command]
+fn set_collab_member(state: State<AppState>, work_id: i64, name: String, stage_ids: Vec<i64>, color: String) -> Cmd<store::CollabMember> {
+    with_store(&state, |s| s.set_collab_member(work_id, &name, &stage_ids, &color))
 }
 
 #[tauri::command]
@@ -770,6 +822,10 @@ pub fn run() {
             add_work,
             remove_work,
             sync_work,
+            read_collab,
+            read_collab_all,
+            get_collab_info,
+            set_collab_member,
             get_board,
             set_task_done,
             load_thumbnail,

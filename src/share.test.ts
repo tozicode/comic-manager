@@ -22,6 +22,7 @@ const page = (id: number, span: number, cells: [boolean, number | null][], missi
   found: true,
   tags: [],
   cells: cells.map(([done, doneAt], i) => ({ stageId: stages[i].id, done, doneAt, totalMs: 0 })),
+  assignees: [],
 });
 const board = (pages: BoardPage[]): Board => ({
   work: {
@@ -37,6 +38,7 @@ const board = (pages: BoardPage[]): Board => ({
   },
   stages,
   pages,
+  collab: false,
 });
 
 describe("shareData", () => {

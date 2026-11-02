@@ -106,6 +106,41 @@ export type Cell = {
   totalMs: number;
 };
 
+// ----- 共同作業の取り込み（5.23） -----
+
+/** ボードのページに付く担当 */
+export type Assignee = {
+  name: string;
+  color: string;
+  /** 管理者（作家）が書いた指示 */
+  comment: string;
+  /** このメンバーの反映で完了にする工程（マスに印を付ける列） */
+  stageIds: number[];
+};
+
+export type CollabMember = { name: string; stageIds: number[]; color: string };
+
+export type CollabCommit = {
+  revision: number;
+  userName: string;
+  comment: string;
+  committedAt: number;
+  files: string[];
+  /** 完了を付けたか */
+  applied: boolean;
+};
+
+export type CollabInfo = {
+  folder: string;
+  lastReadAt: number | null;
+  lastError: string | null;
+  members: CollabMember[];
+  /** 新しい順 */
+  commits: CollabCommit[];
+};
+
+export type CollabSummary = { newCommits: number; appliedCells: number; assignmentsChanged: boolean };
+
 export type BoardPage = {
   id: number;
   fileName: string;
@@ -123,6 +158,8 @@ export type BoardPage = {
   /** 付いているタグの ID（自動の「見開き」も含む） */
   tags: number[];
   cells: Cell[];
+  /** 共同作業でこのページを担当しているメンバー（5.23）。共同作業でなければ空 */
+  assignees: Assignee[];
 };
 
 export type Board = {
@@ -140,7 +177,8 @@ export type Board = {
     rightBound: boolean;
   };
   stages: StageRef[];
-  pages: BoardPage[];
+  pages: BoardPage[];  /** 共同作業データを読んでいる作品か（5.23） */
+  collab: boolean;
 };
 
 export type ActiveSession = {
@@ -388,6 +426,12 @@ export const api = {
   markPublished: (workId: number, error: string | null) => call<void>("mark_published", { workId, error }),
   markUnpublished: (workId: number) => call<void>("mark_unpublished", { workId }),
   listPublishing: () => call<PublishPrefs[]>("list_publishing"),
+  // 共同作業の取り込み（5.23）
+  readCollab: (workId: number) => call<CollabSummary | null>("read_collab", { workId }),
+  readCollabAll: () => call<boolean>("read_collab_all"),
+  getCollabInfo: (workId: number) => call<CollabInfo | null>("get_collab_info", { workId }),
+  setCollabMember: (workId: number, name: string, stageIds: number[], color: string) =>
+    call<CollabMember>("set_collab_member", { workId, name, stageIds, color }),
   /** この PC が持っているアドレス（待ち受ける先を選ぶのに使う） */
   localAddresses: () => call<string[]>("local_addresses"),
 };

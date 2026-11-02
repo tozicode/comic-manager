@@ -7,6 +7,7 @@ import { AiDialog } from "../components/AiDialog";
 import { Dialog } from "../components/Dialog";
 import { ShareDialog } from "../components/ShareDialog";
 import { PublishDialog } from "../components/PublishDialog";
+import { CollabDialog, initial } from "../components/CollabDialog";
 import { useRelink } from "../components/Relink";
 import { TagPopover } from "../components/TagPopover";
 import { Thumb, spreadSide } from "../components/Thumb";
@@ -18,6 +19,7 @@ import { kindKey, unitText } from "../i18n/common";
 import { t as ta } from "../i18n/ai";
 import { t as ts } from "../i18n/share";
 import { t as tp } from "../i18n/publish";
+import { t as tc } from "../i18n/collab";
 
 /** 同期で見つかった見開きの変化（1 件ずつ確認する） */
 type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSplit };
@@ -28,6 +30,8 @@ type Filter = "all" | "open";
 const illustFilter = () => [{ name: t("illustFilter"), extensions: ["clip", "psd", "psb"] }];
 
 const HOUR = 3_600_000;
+/** 共同作業データを読み直す間隔（5.23） */
+const COLLAB_CHECK_MS = 60_000;
 
 /** セルの状態。locked = 前の工程が終わっていない */
 type CellState = "done" | "running" | "doing" | "todo" | "locked";
@@ -65,6 +69,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [asking, setAsking] = useState(false);
   /** 進捗の公開のダイアログ（5.22） */
   const [publishing, setPublishing] = useState(false);
+  /** 共同作業の取り込みのダイアログ（5.23） */
+  const [collabOpen, setCollabOpen] = useState(false);
   /** イラストのファイル（または行）のドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
   const dragging = useRef<number | null>(null);
@@ -78,6 +84,22 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   useEffect(() => {
     api.listTags().then(setTags).catch(app.showError);
   }, [app.version, app.showError]);
+
+  // 共同作業の作品は、ボードを開いている間 60 秒ごとに共同作業データを読み直す（5.23）
+  const isCollab = forecast?.board.collab ?? false;
+  useEffect(() => {
+    if (!isCollab) return;
+    const timer = setInterval(async () => {
+      try {
+        const r = await api.readCollab(workId);
+        if (r && (r.newCommits > 0 || r.appliedCells > 0 || r.assignmentsChanged)) app.refresh();
+      } catch {
+        // 同期中などで読めないことはある。次回に任せる
+      }
+    }, COLLAB_CHECK_MS);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workId, isCollab]);
 
   const forecastRef = useRef(forecast);
   forecastRef.current = forecast;
@@ -284,6 +306,11 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           <button className="btn small ghost" onClick={() => setPublishing(true)}>
             {tp("button")}
           </button>
+          {board.collab && (
+            <button className="btn small ghost" onClick={() => setCollabOpen(true)}>
+              {tc("button")}
+            </button>
+          )}
           {!isManual && (
             <button className="btn small ghost" onClick={() => sync(true)}>
               {isFiles ? t("reload") : t("reloadCmc")}
@@ -464,6 +491,16 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                           )
                         );
                       })}
+                      {page.assignees.map((a) => (
+                        <span
+                          key={a.name}
+                          className="member-badge"
+                          style={{ background: a.color }}
+                          title={a.comment ? tc("assigned", { name: a.name, comment: a.comment }) : tc("assignedNoComment", { name: a.name })}
+                        >
+                          {initial(a.name)}
+                        </span>
+                      ))}
                       <button className="tag add" title={t("addTag")} onClick={() => setTagging(page.id)}>
                         ＋
                       </button>
@@ -490,7 +527,19 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                 )}
               </td>
               {board.stages.map((stage, i) => (
-                <td key={stage.id}>
+                <td key={stage.id} style={{ position: "relative" }}>
+                  {page.assignees
+                    .filter((a) => a.stageIds.includes(stage.id))
+                    .map((a) => (
+                      <span
+                        key={a.name}
+                        className="member-badge on-cell"
+                        style={{ background: a.color }}
+                        title={a.comment ? tc("assigned", { name: a.name, comment: a.comment }) : tc("assignedNoComment", { name: a.name })}
+                      >
+                        {initial(a.name)}
+                      </span>
+                    ))}
                   <BoardCell
                     state={cellState(page, i)}
                     stage={stage}
@@ -699,6 +748,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       {sharing && <ShareDialog workId={workId} onClose={() => setSharing(false)} />}
       {asking && <AiDialog workId={workId} onClose={() => setAsking(false)} />}
       {publishing && <PublishDialog workId={workId} onClose={() => setPublishing(false)} />}
+      {collabOpen && <CollabDialog workId={workId} stages={board.stages} onClose={() => setCollabOpen(false)} />}
       {addingRows !== null && (
         <Dialog
           title={t("addRowsTitle", { unit })}

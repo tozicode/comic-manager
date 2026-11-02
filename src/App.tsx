@@ -8,6 +8,7 @@ import { UpdateNotice } from "./components/UpdateNotice";
 import { PomodoroDriver } from "./components/Pomodoro";
 import { SaveToast, Watchers } from "./components/Watchers";
 import { Publisher } from "./components/Publisher";
+import { CollabWatcher } from "./components/CollabWatcher";
 import { MiniApp } from "./MiniApp";
 import { RemoteApp } from "./RemoteApp";
 import { hours } from "./format";
@@ -125,6 +126,7 @@ function Shell() {
 
       <Watchers />
       <Publisher />
+      <CollabWatcher />
       <SaveToast />
       <UpdateNotice />
       {app.stopped && (
