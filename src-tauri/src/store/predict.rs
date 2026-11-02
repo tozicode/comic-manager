@@ -42,6 +42,8 @@ pub struct TaskPrediction {
     pub spent_ms: i64,
     pub remaining_ms: i64,
     pub done: bool,
+    /// 共同作業のメンバーが担当しているマス（5.23）。作家の残りには入れない（remaining_ms は 0）
+    pub assigned: bool,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -190,7 +192,9 @@ impl Store {
         for page in board.pages.iter().filter(|p| !p.missing) {
             for cell in &page.cells {
                 let predicted = model.bases.get(&cell.stage_id).map(|b| b.base_ms as f64).unwrap_or(0.0) * model.factor(page.id);
-                let remaining = if cell.done {
+                // メンバー担当のマスは、その人が描くので作家の残りには入れない
+                let assigned = page.assignees.iter().any(|a| a.stage_ids.contains(&cell.stage_id));
+                let remaining = if cell.done || assigned {
                     0.0
                 } else {
                     (predicted - cell.total_ms as f64).max(predicted * 0.1)
@@ -202,12 +206,13 @@ impl Store {
                     spent_ms: cell.total_ms,
                     remaining_ms: remaining.round() as i64,
                     done: cell.done,
+                    assigned,
                 });
             }
         }
 
         let mut bases = model.bases;
-        let open: Vec<&TaskPrediction> = tasks.iter().filter(|t| !t.done).collect();
+        let open: Vec<&TaskPrediction> = tasks.iter().filter(|t| !t.done && !t.assigned).collect();
         let remaining: i64 = open.iter().map(|t| t.remaining_ms).sum();
         let open_stages: Vec<i64> = board.stages.iter().map(|s| s.id).filter(|id| open.iter().any(|t| t.stage_id == *id)).collect();
         let n_samples: i64 = open_stages.iter().map(|id| bases[id].samples).sum();
@@ -354,6 +359,30 @@ mod tests {
         assert_eq!(p.remaining_ms, 4 * 210 * MIN);
         assert!(p.low_ms < p.remaining_ms && p.remaining_ms < p.high_ms);
         assert!((p.sigma - HINT_SIGMA).abs() < 1e-9);
+    }
+
+    #[test]
+    fn メンバー担当のマスは残りに入れない() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        // p1 の ペン入れ を assistant が担当
+        store.set_collab_member(id, "assistant", &[st[1]], "#000").unwrap();
+        let c = crate::collab::Collabo {
+            assignments: vec![crate::collab::Assignment {
+                file_name: "page0001.clip".into(),
+                user_name: "assistant".into(),
+                comment: String::new(),
+                since_ms: 0,
+            }],
+            commits: vec![],
+        };
+        store.apply_collabo(id, "C:/x/Collabo", None, &c, 0).unwrap();
+        let p = store.prediction(id, 0).unwrap();
+        let t = p.tasks.iter().find(|t| t.stage_id == st[1] && t.page_id == store.board(id, 0).unwrap().pages[0].id).unwrap();
+        assert!(t.assigned && !t.done && t.remaining_ms == 0);
+        // 4 ページ分 × 210 分から、p1 のペン入れ 90 分を引く
+        assert_eq!(p.remaining_ms, 4 * 210 * MIN - 90 * MIN);
+        assert_eq!(p.tasks.iter().filter(|t| t.assigned).count(), 1);
     }
 
     #[test]

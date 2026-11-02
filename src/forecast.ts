@@ -64,6 +64,8 @@ export type Forecast = {
   candidates: Candidate[];
   /** 終わっていないタスクすべて（月の予定を割り振るときに使う） */
   openTasks: Candidate[];
+  /** 共同作業のメンバーが担当していて、まだ完了していないマスの数（予測に含めない。5.23） */
+  assignedCount: number;
   plans: Plan[];
   notice: string | null;
   task: (pageId: number, stageId: number) => TaskPrediction | undefined;
@@ -151,7 +153,8 @@ export function computeForecast(
   pages.forEach((page, pageIndex) => {
     board.stages.forEach((stage, stageIndex) => {
       const t = task(page.id, stage.id);
-      if (!t || t.done) return;
+      // メンバー担当のマスは、その人が描くので作家のやることには入れない（5.23）
+      if (!t || t.done || t.assigned) return;
       const c = { pageId: page.id, stageId: stage.id, pageIndex, stageIndex, remainingMs: t.remainingMs, inProgress: t.spentMs > 0 };
       openTasks.push(c);
       if (stageIndex > 0 && !page.cells[stageIndex - 1].done) return;
@@ -161,9 +164,11 @@ export function computeForecast(
   const stageInfos: StageInfo[] = board.stages.map((s) => ({
     id: s.id,
     name: s.name,
-    openMs: prediction.tasks.filter((t) => t.stageId === s.id && !t.done).reduce((n, t) => n + t.remainingMs, 0),
+    openMs: prediction.tasks.filter((t) => t.stageId === s.id && !t.done && !t.assigned).reduce((n, t) => n + t.remainingMs, 0),
   }));
-  const openCounts = board.stages.map((_, i) => pages.filter((p) => !p.cells[i].done).length);
+  const assigned = (page: Board["pages"][number], stageId: number) => page.assignees.some((a) => a.stageIds.includes(stageId));
+  const openCounts = board.stages.map((s, i) => pages.filter((p) => !p.cells[i].done && !assigned(p, s.id)).length);
+  const assignedCount = prediction.tasks.filter((t) => t.assigned && !t.done).length;
 
   return {
     board,
@@ -182,6 +187,7 @@ export function computeForecast(
     quotaMet,
     candidates,
     openTasks,
+    assignedCount,
     plans: buildPlans(candidates, stageInfos, planQuotaMs, schedule.workOrder, board.work),
     notice: catchUpNotice(candidates, stageInfos, openCounts, board.work),
     task,

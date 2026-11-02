@@ -57,6 +57,7 @@ const prediction = (b: Board, remainingMs: number): Prediction => ({
       spentMs: c.totalMs,
       remainingMs: c.done ? 0 : 3600_000,
       done: c.done,
+      assigned: false,
     })),
   ),
   remainingMs,

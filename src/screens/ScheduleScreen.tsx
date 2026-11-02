@@ -201,6 +201,7 @@ function FinishTab({
               </div>
             </div>
             {!finish.mid && <p className="range">{t("noHours")}</p>}
+            {forecast.assignedCount > 0 && <p className="range">{t("waitingCells", { n: forecast.assignedCount })}</p>}
             <ProgressChart forecast={forecast} />
             <div className="compare">
               <span className="grow">

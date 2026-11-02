@@ -230,6 +230,8 @@ export type TaskPrediction = {
   spentMs: number;
   remainingMs: number;
   done: boolean;
+  /** 共同作業のメンバーが担当しているマス（5.23）。作家の残りには入れない */
+  assigned: boolean;
 };
 
 export type Prediction = {

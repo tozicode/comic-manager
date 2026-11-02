@@ -56,6 +56,7 @@ const task = (pageId: number, stageId: number, done: boolean, remainingMs: numbe
   spentMs,
   remainingMs,
   done,
+  assigned: false,
 });
 const prediction: Prediction = {
   tasks: [
