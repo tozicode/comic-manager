@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Otosazu のアイコン（各サイズは `npx tauri icon` でこの絵から作る）。マークは docs/brand/otosazu-mark.svg と同じ -->
+  <path d="M264 64H760A200 200 0 0 1 960 264V760A200 200 0 0 1 760 960H264A200 200 0 0 1 64 760V264A200 200 0 0 1 264 64Z" fill="#fbf1ec"/>
+  <g transform="translate(512 512) scale(9.2) translate(-50 -48.5)">
+    <circle cx="50" cy="54" r="22" fill="none" stroke="#e8b9ac" stroke-width="10"/>
+    <path d="M50 32A22 22 0 1 1 28 54" fill="none" stroke="#c8553d" stroke-width="10" stroke-linecap="round"/>
+    <path d="M47 20H53" stroke="#c8553d" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="50" cy="54" r="5" fill="#3a2a25"/>
+  </g>
+</svg>
