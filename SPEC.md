@@ -95,6 +95,10 @@ Task（ページ × 工程）
 
 WorkSession（作業記録）
   id, page_id, stage_def_id, started_at, ended_at, edited（手で修正したか）
+
+Publish（進捗の公開の設定。作品ごと。5.22）
+  work_id, enabled, publish_id, write_key, read_key, hide（隠す項目）, last_sent_at, last_error, pending_delete
+  ※ 鍵はアプリだけが持ち、遠隔の画面（5.17）からは読めない。作品を消すと一緒に消える
 ```
 
 - 工程やタグは削除せず「隠す」（`archived`）で一覧やボードから非表示にする。過去の記録は残し、「表示する」で戻せる

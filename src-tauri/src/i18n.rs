@@ -421,6 +421,13 @@ messages! {
         "监听地址不正确",
         "監聽位址不正確",
     ],
+    PublishHideInvalid => [
+        "隠す項目の指定が正しくありません",
+        "Invalid hidden item",
+        "숨길 항목 지정이 올바르지 않습니다",
+        "隐藏项目的指定不正确",
+        "隱藏項目的指定不正確",
+    ],
     RemotePortRange => [
         "ポート番号は 1024〜65535 にしてください",
         "The port number must be between 1024 and 65535",

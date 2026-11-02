@@ -654,6 +654,42 @@ fn new_remote_token(app: AppHandle, state: State<AppState>) -> Cmd<store::Remote
     Ok(saved)
 }
 
+// ----- 進捗の公開（5.22）。鍵を含むので server.rs の ALLOWED には入れない -----
+
+#[tauri::command]
+fn get_publish_prefs(state: State<AppState>, work_id: i64) -> Cmd<store::PublishPrefs> {
+    with_store(&state, |s| s.publish_prefs(work_id))
+}
+
+#[tauri::command]
+fn set_publish_prefs(state: State<AppState>, work_id: i64, enabled: bool, hide: Vec<String>) -> Cmd<store::PublishPrefs> {
+    with_store(&state, |s| s.set_publish_prefs(work_id, enabled, &hide))
+}
+
+/// 閲覧鍵を作り直す。次の送信で古い閲覧 URL は見えなくなる
+#[tauri::command]
+fn new_publish_read_key(state: State<AppState>, work_id: i64) -> Cmd<store::PublishPrefs> {
+    with_store(&state, |s| s.new_publish_read_key(work_id))
+}
+
+/// 送信の結果を記録する。error が無ければ送れた
+#[tauri::command]
+fn mark_published(state: State<AppState>, work_id: i64, error: Option<String>) -> Cmd<()> {
+    with_store(&state, |s| s.mark_published(work_id, error.as_deref(), now_ms()))
+}
+
+/// サーバの行を消せた
+#[tauri::command]
+fn mark_unpublished(state: State<AppState>, work_id: i64) -> Cmd<()> {
+    with_store(&state, |s| s.mark_unpublished(work_id))
+}
+
+/// 送る必要のある作品（公開中と、オフにしたが消せていないもの）
+#[tauri::command]
+fn list_publishing(state: State<AppState>) -> Cmd<Vec<store::PublishPrefs>> {
+    with_store(&state, |s| s.list_publishing())
+}
+
 /// PC が持っているアドレス（設定画面で待ち受ける先を選ぶのに使う）
 #[tauri::command]
 fn local_addresses() -> Vec<String> {
@@ -815,6 +851,12 @@ pub fn run() {
             set_remote_prefs,
             new_remote_token,
             local_addresses,
+            get_publish_prefs,
+            set_publish_prefs,
+            new_publish_read_key,
+            mark_published,
+            mark_unpublished,
+            list_publishing,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

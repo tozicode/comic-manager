@@ -224,8 +224,8 @@ impl Store {
         Ok(())
     }
 
-    /// 合言葉（16 バイトを 16 進で）。SQLite の乱数を使う
-    fn new_token(&self) -> Result<String> {
+    /// 合言葉・公開の鍵（16 バイトを 16 進で）。SQLite の乱数を使う
+    pub(super) fn new_token(&self) -> Result<String> {
         self.conn
             .query_row("SELECT lower(hex(randomblob(16)))", [], |r| r.get(0))
             .map_err(db_err)

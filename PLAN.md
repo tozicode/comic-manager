@@ -68,7 +68,7 @@ FCM まわりは持ち込まない。
 - `wrangler dev` にダミーの要約を PUT して、PC・スマホ幅・ダークで表示を見た（`.claude/launch.json` の `share`）
 - 鍵違い・404・鍵なし・3 日より古い・完成済み・締切なし・作品名非公開、の表示を確かめた
 
-## 3. アプリ：鍵と設定（Rust）
+## 3. アプリ：鍵と設定（Rust）（済）
 
 - `store/mod.rs`：版 8。`publish` 表を足す
   ```sql
@@ -88,6 +88,9 @@ FCM まわりは持ち込まない。
   `mark_sent(work_id, ok, error)`、`list_publishing()`（有効な作品と、消し残しの行）
 - `lib.rs`：上をコマンドとして出す。**`server.rs` の `ALLOWED` には入れない**（遠隔の画面から鍵を読めないように）
 - 既存のテストの流儀に合わせて、版 7 → 8 の移行と、鍵の生成のテスト
+- コマンド名：`get_publish_prefs` `set_publish_prefs(work_id, enabled, hide)` `new_publish_read_key` `mark_published(work_id, error?)` `mark_unpublished` `list_publishing`
+- 作品を消すと `publish` の行も消える（CASCADE）が、サーバの行は残る（180 日の掃除で消える）。
+  工程 4 で、作品を消す前に公開中なら DELETE を送るか検討する
 
 **確かめ方**：`cargo test`
 

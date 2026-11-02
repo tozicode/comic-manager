@@ -17,6 +17,7 @@ mod localize;
 mod pages;
 mod predict;
 mod prefs;
+mod publish;
 mod rows;
 mod schedule;
 mod tags;
@@ -24,6 +25,7 @@ mod tags;
 pub use pages::{PageMerge, PageSplit};
 pub use predict::{ModelStats, Prediction};
 pub use prefs::{DisplayPrefs, RemotePrefs, TimerPrefs};
+pub use publish::PublishPrefs;
 pub use schedule::WorkSchedule;
 pub use tags::TagGroup;
 
@@ -283,7 +285,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 7;
+const LATEST: i64 = 8;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -447,6 +449,27 @@ impl Store {
         }
         if version < 7 && target >= 7 {
             self.migrate_v7()?;
+        }
+        if version < 8 && target >= 8 {
+            // 版 8：進捗の公開（仕様書 5.22）。作品ごとの公開のオン／オフ・鍵・隠す項目・最後の送信
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE publish (
+                        work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE,
+                        enabled INTEGER NOT NULL DEFAULT 0,
+                        publish_id TEXT NOT NULL,
+                        write_key TEXT NOT NULL,
+                        read_key TEXT NOT NULL,
+                        hide TEXT NOT NULL DEFAULT '[]',
+                        last_sent_at INTEGER,
+                        last_error TEXT,
+                        pending_delete INTEGER NOT NULL DEFAULT 0
+                    );
+                    PRAGMA user_version = 8;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
         }
         Ok(())
     }
