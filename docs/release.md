@@ -27,11 +27,18 @@ BOOTH には今までどおり zip を置く。
 説明書（`docs/guide/guide.html`）の版とファイル名を直して `npm run guide` で PDF を作り直す。
 仕様書の開発ステップの履歴と、`docs/booth.md` のアップデート履歴も書く。
 
+## 1.5 進捗の公開の Worker（2.6.0 から）
+
+アプリより先に `server/` を配備する（手順は [server/README.md](../server/README.md)）。Worker の中身を変えていない版では不要。
+アプリの送り先は `src/publish.ts` の `PUBLISH_BASE`（`https://share.otosazu.com`）。ビルド時に `VITE_PUBLISH_BASE` が
+環境変数に残っていないことを確かめる（開発中に wrangler dev へ向けたまま配布しない）。
+
 ## 2. テスト
 
 ```sh
 npm test
 (cd src-tauri && cargo test)
+(cd server && npm test)
 ```
 
 ## 3. Windows 版のビルド（Git Bash で）
