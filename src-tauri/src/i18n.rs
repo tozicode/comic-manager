@@ -435,6 +435,13 @@ messages! {
         "无法读取协作数据：{e}",
         "無法讀取協作資料：{e}",
     ],
+    CollabStageInvalid => [
+        "この作品で使っていない工程です",
+        "That stage is not used in this work",
+        "이 작품에서 사용하지 않는 공정입니다",
+        "这部作品没有使用该工序",
+        "這部作品沒有使用該工序",
+    ],
     RemotePortRange => [
         "ポート番号は 1024〜65535 にしてください",
         "The port number must be between 1024 and 65535",

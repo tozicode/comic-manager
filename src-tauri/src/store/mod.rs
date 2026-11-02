@@ -12,6 +12,7 @@ use serde::Serialize;
 use crate::cmc::Comic;
 use crate::i18n::{M, tr, trf};
 
+mod collab;
 mod files;
 mod localize;
 mod pages;
@@ -22,6 +23,7 @@ mod rows;
 mod schedule;
 mod tags;
 
+pub use collab::{Assignee, CollabInfo, CollabMember, CollabSummary};
 pub use pages::{PageMerge, PageSplit};
 pub use predict::{ModelStats, Prediction};
 pub use prefs::{DisplayPrefs, RemotePrefs, TimerPrefs};
@@ -163,6 +165,8 @@ pub struct BoardPage {
     pub tags: Vec<i64>,
     /// 工程の順（`Board::stages` と同じ並び）
     pub cells: Vec<Cell>,
+    /// 共同作業でこのページを担当しているメンバー（5.23）。共同作業でなければ空
+    pub assignees: Vec<Assignee>,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -171,6 +175,8 @@ pub struct Board {
     pub work: WorkInfo,
     pub stages: Vec<StageRef>,
     pub pages: Vec<BoardPage>,
+    /// 共同作業データを読んでいる作品か（5.23。［共同作業］ボタンを出すかどうか）
+    pub collab: bool,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -285,7 +291,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 8;
+const LATEST: i64 = 9;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -467,6 +473,47 @@ impl Store {
                         pending_delete INTEGER NOT NULL DEFAULT 0
                     );
                     PRAGMA user_version = 8;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+        }
+        if version < 9 && target >= 9 {
+            // 版 9：共同作業の取り込み（仕様書 5.23）。メンバーと工程の対応、取り込んだ反映、担当の写し、取り込みの状態
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE collab_member (
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        stage_ids TEXT NOT NULL DEFAULT '[]',
+                        color TEXT NOT NULL,
+                        PRIMARY KEY (work_id, name)
+                    );
+                    CREATE TABLE collab_commit (
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        revision INTEGER NOT NULL,
+                        user_name TEXT NOT NULL,
+                        comment TEXT NOT NULL DEFAULT '',
+                        committed_at INTEGER NOT NULL,
+                        files TEXT NOT NULL,
+                        applied_at INTEGER,
+                        PRIMARY KEY (work_id, revision)
+                    );
+                    CREATE TABLE collab_assign (
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        file_name TEXT NOT NULL,
+                        user_name TEXT NOT NULL,
+                        comment TEXT NOT NULL DEFAULT '',
+                        since_ms INTEGER NOT NULL,
+                        PRIMARY KEY (work_id, file_name, user_name)
+                    );
+                    CREATE TABLE collab_state (
+                        work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE,
+                        folder TEXT NOT NULL,
+                        last_read_at INTEGER,
+                        last_error TEXT
+                    );
+                    PRAGMA user_version = 9;
                     COMMIT;",
                 )
                 .map_err(db_err)?;
@@ -1168,6 +1215,7 @@ impl Store {
                     found: true,
                     tags: Vec::new(),
                     cells: Vec::new(),
+                    assignees: Vec::new(),
                 })
             })
             .and_then(|rows| rows.collect())
@@ -1197,8 +1245,10 @@ impl Store {
             .map_err(db_err)?;
 
         let page_tags = self.page_tags(work_id)?;
+        let assignees = self.collab_assignees(work_id)?;
         for page in &mut pages {
             page.tags = page_tags.iter().filter(|(p, _)| *p == page.id).map(|(_, t)| *t).collect();
+            page.assignees = assignees.iter().filter(|(f, _)| *f == page.file_name).map(|(_, a)| a.clone()).collect();
             page.cells = stages
                 .iter()
                 .map(|s| {
@@ -1216,7 +1266,8 @@ impl Store {
                 })
                 .collect();
         }
-        Ok(Board { work, stages, pages })
+        let collab = self.has_collab(work_id)?;
+        Ok(Board { work, stages, pages, collab })
     }
 
     /// 作品で使う工程（隠した工程は除く）を並び順で返す

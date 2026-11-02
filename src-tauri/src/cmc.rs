@@ -286,13 +286,22 @@ impl TempDb {
 mod tests {
     use super::*;
 
-    fn dummy_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../dummy-cmc/コミック 20261023")
+    /// 共同作業の試験データの cmc（testdata/collabo/shared。page0001.clip も入っている）
+    fn dummy_cmc() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/collabo/shared/test.cmc")
     }
 
-    fn dummy_cmc() -> PathBuf {
-        dummy_dir().join("コミック 20261023.cmc")
-    }
+    /// test.cmc は CLIP STUDIO でページを並べ替えてあり、ファイル名の順とは違う
+    const EXPECTED_ORDER: [(&str, u32, u32); 8] = [
+        ("page0001.clip", 1, 1),
+        ("page0003.clip", 2, 1),
+        ("page0005.clip", 3, 1),
+        ("page0006.clip", 4, 1),
+        ("page0007.clip", 5, 1),
+        ("page0008.clip", 6, 1),
+        ("page0004.clip", 7, 1),
+        ("page0002.clip", 8, 1),
+    ];
 
     fn summary(comic: &Comic) -> Vec<(&str, u32, u32)> {
         comic.pages.iter().map(|p| (p.file_name.as_str(), p.number, p.span)).collect()
@@ -302,20 +311,8 @@ mod tests {
     fn 並べ替え済みのページ順を連結リストから読める() {
         let comic = read_comic(&dummy_cmc()).unwrap();
         // 作品名が未設定なので cmc のファイル名になる
-        assert_eq!(comic.title, "コミック 20261023");
-        assert_eq!(
-            summary(&comic),
-            vec![
-                ("page0001.clip", 1, 1),
-                ("page0003.clip", 2, 1),
-                ("page0005.clip", 3, 1),
-                ("page0006.clip", 4, 1),
-                ("page0009.clip", 5, 1),
-                ("page0008.clip", 6, 1),
-                ("page0004.clip", 7, 1),
-                ("page0002.clip", 8, 1),
-            ]
-        );
+        assert_eq!(comic.title, "test");
+        assert_eq!(summary(&comic), EXPECTED_ORDER);
     }
 
     #[test]
