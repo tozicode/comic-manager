@@ -241,6 +241,23 @@ mod tests {
         assert_eq!((user.as_str(), admin), ("assistant", false));
     }
 
+    /// 手元に試験用の共同作業データ（dummy-cmc。git には入れていない）があるときだけ、
+    /// 管理者の作業フォルダの tclo から共有フォルダの Collabo をたどれることを確かめる
+    #[test]
+    fn 管理者の作業フォルダから共同作業データをたどる() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../dummy-cmc");
+        if !root.join("test/CollaborateLocal.tclo").is_file() {
+            return;
+        }
+        let loc = find_collabo(&root.join("test/test.cmc")).unwrap();
+        assert!(loc.dir.ends_with(Path::new("shared/test/Collabo")), "{:?}", loc.dir);
+        assert_eq!(loc.admin.as_deref(), Some("author"));
+        // 利用者の作業フォルダからも場所は分かるが、管理者ではない
+        let loc = find_collabo(&root.join("test-assistant/test/test.cmc")).unwrap();
+        assert_eq!(loc.admin, None);
+        assert!(read_collabo(&loc.dir).is_ok());
+    }
+
     #[test]
     fn 担当と反映履歴を読む() {
         let c = read_collabo(&testdata().join("shared/Collabo")).unwrap();
