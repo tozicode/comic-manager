@@ -108,6 +108,8 @@ export function MiniApp() {
   const workId = app.active?.workId ?? app.paused?.workId ?? lastWorkId();
   const forecast = useForecast(workId);
   const [picking, setPicking] = useState(false);
+  /** 計測していないときに選んだタスク。「次にやること」の枠に入れるだけで、▶ を押すまで計測は始めない */
+  const [picked, setPicked] = useState<{ pageId: number; stageId: number } | null>(null);
 
   // 開いている間は「開いていた」と覚えておき、✕ で閉じたときだけ消す（次の起動で開き直すかの目印）
   useEffect(() => {
@@ -147,19 +149,35 @@ export function MiniApp() {
 
   // 次にやること：今日選んだ案の、まだ終わっていない最初のタスク。案が無ければ着手できる最初のタスク
   const plan = workId ? loadChosenPlan(workId) : null;
+  // 自分で選んだタスクがあれば（まだ終わっていなければ）それを優先する
   const next = (() => {
     if (!f) return null;
+    const pickedTask = picked ? f.task(picked.pageId, picked.stageId) : undefined;
     const fromPlan = plan?.steps.find((s) => {
       const t = f.task(s.pageId, s.stageId);
       return t && !t.done;
     });
-    const c = fromPlan ?? f.candidates[0];
+    const c = pickedTask && !pickedTask.done ? picked : (fromPlan ?? f.candidates[0]);
     if (!c) return null;
     const p = f.board.pages.find((x) => x.id === c.pageId);
     const st = f.board.stages.find((x) => x.id === c.stageId);
     const t = f.task(c.pageId, c.stageId);
-    return p && st && t ? { page: p, stage: st, task: t } : null;
+    return p && st && t ? { page: p, stage: st, task: t, picked: c === picked } : null;
   })();
+
+  // 選んだタスク：計測中なら作業の続きなのでそのまま切り替える。計測していなければ枠に入れるだけ
+  const pick = (pageId: number, stageId: number) => {
+    if (active) {
+      app.start(pageId, stageId);
+      return;
+    }
+    app.setPaused(null);
+    setPicked({ pageId, stageId });
+  };
+  // 計測を始めたら（どの窓からでも）選びは役目を終える
+  useEffect(() => {
+    if (active) setPicked(null);
+  }, [active]);
 
   if (compact) {
     return (
@@ -167,7 +185,7 @@ export function MiniApp() {
         {active ? <span className="dot" /> : <span className="dot off" />}
         <div className="grow" data-tauri-drag-region>
           {picking && f ? (
-            <TaskPicker f={f} onPick={app.start} onClose={() => setPicking(false)} />
+            <TaskPicker f={f} onPick={pick} onClose={() => setPicking(false)} />
           ) : (
             <>
               {/* 1 行目は押すと切り替え先を選べる。窓をつかむのは 2 行目（時刻）と余白 */}
@@ -182,7 +200,9 @@ export function MiniApp() {
                         ? `${active.pageLabel} ${active.stageName}`
                         : paused
                           ? t("pausedWith", { page: paused.pageLabel })
-                          : t("notTracking")}
+                          : next
+                            ? `${t(next.picked ? "pickedTask" : "next")} ${next.page.label} ${next.stage.name}`
+                            : t("notTracking")}
                 {f && <span className="caret">▾</span>}
               </button>
               <div className="num mtime-s" data-tauri-drag-region>
@@ -210,6 +230,10 @@ export function MiniApp() {
           </button>
         ) : paused ? (
           <button className="icon-btn accent" title={t("resume")} onClick={app.resume}>
+            <PlayIcon />
+          </button>
+        ) : next ? (
+          <button className="icon-btn accent" title={t("start")} onClick={() => app.start(next.page.id, next.stage.id)}>
             <PlayIcon />
           </button>
         ) : null}
@@ -313,7 +337,7 @@ export function MiniApp() {
           ) : next ? (
             <>
               <div className="grow">
-                <div className="small-text muted">{t("next")}</div>
+                <div className="small-text muted">{t(next.picked ? "pickedTask" : "next")}</div>
                 <button className="mpick mnext" title={t("pickOther")} onClick={() => setPicking(true)}>
                   {next.page.label} {next.stage.name} <span className="caret">▾</span>
                 </button>
@@ -336,7 +360,7 @@ export function MiniApp() {
       {f && (
         <div className="mfoot">
           {picking ? (
-            <TaskPicker f={f} onPick={app.start} onClose={() => setPicking(false)} />
+            <TaskPicker f={f} onPick={pick} onClose={() => setPicking(false)} />
           ) : (
             <>
               {/* 完了にした直後は、ノルマの 2 行を通知に差し替える（窓に重ねると「別のタスクを選ぶ」を塞ぐため） */}
