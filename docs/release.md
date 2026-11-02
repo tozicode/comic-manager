@@ -101,6 +101,17 @@ curl -sL https://github.com/tozicode/comic-manager/releases/latest/download/late
 - `Otosazu_<版>_windows.zip`：`Otosazu_<版>_x64-setup.exe` と説明書の PDF
 - `Otosazu_<版>_mac.zip`：`Otosazu_<版>_universal.dmg` と説明書の PDF
 
+## 8. 公式サイト（otosazu.com、3.0.0 から）
+
+`site/` が公式サイトの中身（ビルドなしの静的 HTML）。Cloudflare Pages が GitHub の `main` を見ていて、push するたびに配り直す。
+
+- Pages の設定：Framework preset **None**、Build command
+  `mkdir -p site/guide && cp docs/guide/guide.html site/guide/index.html`、Build output directory `site`。
+  説明書はこのビルドで `docs/guide` から複製するので、`site/guide/` は git に入れない（手元で見るときは同じコマンドで複製する）
+- 画面の画像は `release/screenshots/`（git 外）から `site/img/*.webp` に幅 1600 で縮めて入れてある。撮り直したら作り直す
+- 版を上げても `site/` は直さなくてよい（版の数字を書いていない）。機能が増えたら「できること」を足す
+- 手元で見る：`.claude/launch.json` の `site`（`python -m http.server 8788 --directory site`）
+
 ## 利用者数の目安
 
 ```sh
