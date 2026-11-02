@@ -15,6 +15,7 @@ import { t } from "../i18n/settings";
 type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data" | "about";
 const SECTIONS: Section[] = ["stages", "tags", "hours", "timer", "display", "data", "about"];
 
+const SITE_URL = "https://otosazu.com/";
 const BOOTH_URL = "https://tozicode.booth.pm/items/8867379";
 const X_ACCOUNT = "tozicode";
 
@@ -1033,6 +1034,13 @@ function AboutSection() {
         <div className="muted">{t("about.tagline")}</div>
         <div className="about-version num">ver {version ?? "…"}</div>
         <dl className="about-links">
+          <dt>{t("about.site")}</dt>
+          <dd>
+            <button className="link" onClick={() => open(SITE_URL)}>
+              otosazu.com
+            </button>
+            <span className="muted small-text">{t("about.siteNote")}</span>
+          </dd>
           <dt>{t("about.download")}</dt>
           <dd>
             <button className="link" onClick={() => open(BOOTH_URL)}>
