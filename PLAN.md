@@ -7,7 +7,7 @@
 
 | 決めごと | 案 | 状態 |
 |---|---|---|
-| ドメイン | `otosazu.com` か `otosazu.app` を取り、`share.<ドメイン>` を Worker に向ける。Cloudflare にゾーンを置く（Family Quest と同じ） | 未 |
+| ドメイン | `otosazu.com` を取り、`share.otosazu.com` を Worker に向ける。Cloudflare にゾーンを置く（Family Quest と同じ） | 決定。取得待ち |
 | 保存期間 | 送信が 180 日止まった行は消す | 仕様に書いた |
 | 見せる粒度 | マスまで見せる。隠したい人はマスを隠せる | 仕様に書いた |
 | 公開停止時 | サーバの行を消す | 仕様に書いた |
@@ -15,7 +15,7 @@
 
 ドメインが決まるまでは `workers.dev` で開発し、**アプリのリリース前に必ず差し替える**（基底 URL は 1 定数）。
 
-## 1. Worker（`server/`）
+## 1. Worker（`server/`）（済）
 
 Family Quest の `../family-quest/server` を雛形にする（Hono + D1 + wrangler、vitest-pool-workers）。
 FCM まわりは持ち込まない。
@@ -43,6 +43,8 @@ FCM まわりは持ち込まない。
   - `GET /p/:id` と `GET /list`：`public/` の静的ページ（assets が返す。Worker は触らない）
   - `scheduled`：`updated_at` が 180 日より前の行を消す
 - `server/test/*.spec.ts`：登録・上書き・鍵違い・サイズ・間隔・削除・掃除
+- 分かったこと：本体モジュールは handler 以外を export できないので、定数と掃除は `src/limits.ts` に置いた。
+  `/p/<id>` → `public/p.html` の書き換えは Worker 側で `ASSETS.fetch` に `/p` を渡せば済む（assets の SPA 設定は不要）
 
 **確かめ方**
 - `npm test` が通る

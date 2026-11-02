@@ -1,0 +1,28 @@
+# Otosazu の進捗の公開（仕様書 5.22）。作品ごとの要約 1 件を預かって配るだけの Worker。
+# database_id は `wrangler d1 create otosazu-share` の出力で置き換える（README 参照）。
+name = "otosazu-share"
+main = "src/index.ts"
+compatibility_date = "2024-12-30"
+# vitest-pool-workers が要求する（本 Worker 自体は Node API を使わない）
+compatibility_flags = ["nodejs_compat"]
+
+# 自分のドメインで公開する。workers.dev をアプリに焼き込むと、中継の引っ越し＝全員のアプリ更新になる。
+# ゾーン otosazu.com が Cloudflare にある状態で deploy すると、カスタムドメインと DNS レコードが自動で作られる
+[[routes]]
+pattern = "share.otosazu.com"
+custom_domain = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "otosazu-share"
+database_id = "REPLACE_WITH_D1_ID"
+migrations_dir = "migrations"
+
+# 閲覧ページ（静的 HTML）。/p/<id> は Worker が /p に書き換えて返す（src/index.ts）
+[assets]
+directory = "public"
+binding = "ASSETS"
+
+# 送信が止まった行の掃除（毎日 03:00 UTC）
+[triggers]
+crons = ["0 3 * * *"]
