@@ -15,7 +15,7 @@ custom_domain = true
 [[d1_databases]]
 binding = "DB"
 database_name = "otosazu-share"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "9a407590-b065-40df-8117-f7da713153a9"
 migrations_dir = "migrations"
 
 # 閲覧ページ（静的 HTML）。/p/<id> は Worker が /p に書き換えて返す（src/index.ts）
