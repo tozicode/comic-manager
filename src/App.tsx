@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, isRemote, WorkSummary } from "./api";
 import { AppProvider, isMini, useApp } from "./app-context";
-import { Dialog } from "./components/Dialog";
 import { Sidebar } from "./components/Sidebar";
 import { TimerChip } from "./components/TimerChip";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { PomodoroDriver } from "./components/Pomodoro";
-import { SaveToast, Watchers } from "./components/Watchers";
+import { FinishToast, SaveToast, Watchers } from "./components/Watchers";
 import { Publisher } from "./components/Publisher";
 import { CollabWatcher } from "./components/CollabWatcher";
 import { MINI_OPEN_KEY, MiniApp } from "./MiniApp";
 import { RemoteApp } from "./RemoteApp";
-import { hours } from "./format";
 import { BoardScreen } from "./screens/BoardScreen";
 import { RecordsScreen } from "./screens/RecordsScreen";
 import { ScheduleScreen } from "./screens/ScheduleScreen";
@@ -19,7 +17,7 @@ import { SettingsScreen } from "./screens/SettingsScreen";
 import { StatsScreen } from "./screens/StatsScreen";
 import { WorksScreen } from "./screens/WorksScreen";
 import { useLang } from "./i18n";
-import { t, tn } from "./i18n/shell";
+import { t } from "./i18n/shell";
 import "./App.css";
 
 export type Screen = "works" | "board" | "schedule" | "records" | "stats" | "settings";
@@ -139,30 +137,7 @@ function Shell() {
       <CollabWatcher />
       <SaveToast />
       <UpdateNotice />
-      {app.stopped && (
-        <Dialog
-          label={t("stoppedLabel")}
-          title={t("stoppedTitle", { page: app.stopped.pageLabel, stage: app.stopped.stageName })}
-          onClose={() => app.answerStopped(false)}
-          actions={
-            <>
-              <button className="btn" onClick={() => app.answerStopped(false)}>
-                {t("notYet")}
-              </button>
-              <button className="btn primary" autoFocus onClick={() => app.answerStopped(true)}>
-                {t("markDone")}
-              </button>
-            </>
-          }
-        >
-          <p>
-            {tn("stoppedBody", {
-              now: <b className="num">{hours(app.stopped.durationMs)}</b>,
-              total: <b className="num">{hours(app.stopped.totalMs)}</b>,
-            })}
-          </p>
-        </Dialog>
-      )}
+      <FinishToast />
     </div>
   );
 }

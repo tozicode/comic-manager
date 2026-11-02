@@ -4,7 +4,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ActiveSession, api, isRemote, StopResult } from "./api";
+import { ActiveSession, api, isRemote } from "./api";
 import { setDayStartHour, setTimeFormat } from "./format";
 import { setLang } from "./i18n";
 import { setThemePref } from "./theme";
@@ -14,6 +14,11 @@ export type PausedTask = { workId: number; pageId: number; pageLabel: string; st
 
 /** 計測中に別のページが保存されたときの通知 */
 export type SaveNotice = { workId: number; pageId: number; pageLabel: string; stageId: number; stageName: string };
+
+/** ✓ で完了にした直後のタスク（取り消しの通知用）。wasDone はもともと完了だったか（取り消しても外さない） */
+export type FinishedTask = { pageId: number; pageLabel: string; stageId: number; stageName: string; wasDone: boolean };
+/** 完了の通知を出しておく長さ */
+const FINISHED_TOAST_MS = 8_000;
 
 /** データが変わったことを他の窓に知らせるイベント */
 const CHANGED_EVENT = "otosazu://changed";
@@ -45,15 +50,18 @@ type AppContextValue = {
   start: (pageId: number, stageId: number) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
-  /** 止めて「完了しましたか？」を聞く */
+  /** 計測をやめる（一時停止中のタスクも忘れる）。完了にはしない */
   stop: () => Promise<void>;
+  /** 計測を止めて、そのタスクを完了にする（ミニ窓・右上タイマー・遠隔の画面の ✓） */
+  finish: () => Promise<void>;
   /** 止め忘れの確認などで、止めたタスクを一時停止中として覚えておく */
   setPaused: (task: PausedTask | null) => void;
   /** 計測中の記録が外から止められたとき（止め忘れの確認）に呼ぶ */
   reloadActive: () => Promise<void>;
-  /** 止めた直後の完了確認（表示中のみ） */
-  stopped: StopResult | null;
-  answerStopped: (done: boolean) => Promise<void>;
+  /** ✓ で完了にした直後のタスク（通知を出している間だけ） */
+  finished: FinishedTask | null;
+  /** 完了にしたのを取り消す（通知の［取り消す］） */
+  undoFinish: () => Promise<void>;
   saveNotice: SaveNotice | null;
   notifySave: (notice: SaveNotice) => void;
   clearSaveNotice: () => void;
@@ -89,7 +97,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [paused, setPausedState] = useState<PausedTask | null>(loadPaused);
   const [now, setNow] = useState(Date.now());
   const [version, setVersion] = useState(0);
-  const [stopped, setStopped] = useState<StopResult | null>(null);
+  const [finished, setFinished] = useState<FinishedTask | null>(null);
   const [saveNotice, setSaveNotice] = useState<SaveNotice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -197,6 +205,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActive(await api.startTimer(pageId, stageId));
       setPaused(null);
       setSaveNotice(null);
+      setFinished(null);
       refresh();
     } catch (e) {
       showError(e);
@@ -227,27 +236,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const stop = async () => {
     try {
-      const result = await api.stopTimer();
+      await api.stopTimer();
       setActive(null);
       setPaused(null);
       refresh();
-      if (result && !result.alreadyDone) setStopped(result);
     } catch (e) {
       showError(e);
     }
   };
 
-  const answerStopped = async (done: boolean) => {
-    const result = stopped;
-    setStopped(null);
-    if (!result || !done) return;
+  const finish = async () => {
+    if (!active) return;
     try {
-      await api.setTaskDone(result.pageId, result.stageId, true);
+      const result = await api.stopTimer();
+      setActive(null);
+      setPaused(null);
+      if (result) {
+        if (!result.alreadyDone) await api.setTaskDone(result.pageId, result.stageId, true);
+        setFinished({
+          pageId: result.pageId,
+          pageLabel: result.pageLabel,
+          stageId: result.stageId,
+          stageName: result.stageName,
+          wasDone: result.alreadyDone,
+        });
+      }
       refresh();
     } catch (e) {
       showError(e);
     }
   };
+
+  const undoFinish = async () => {
+    const task = finished;
+    setFinished(null);
+    if (!task || task.wasDone) return;
+    try {
+      await api.setTaskDone(task.pageId, task.stageId, false);
+      refresh();
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  // 完了の通知は押さなくても消える。次の計測を始めたときも消す（start の中）
+  useEffect(() => {
+    if (!finished) return;
+    const timer = setTimeout(() => setFinished(null), FINISHED_TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [finished]);
 
   // ショートカットで一時停止・再開する（受け取るのはメインの窓だけ。別端末のブラウザには届かない）
   const latest = useRef({ active, paused, pause, resume });
@@ -279,10 +316,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pause,
         resume,
         stop,
+        finish,
         setPaused,
         reloadActive,
-        stopped,
-        answerStopped,
+        finished,
+        undoFinish,
         saveNotice,
         notifySave: (notice) => {
           setSaveNotice(notice);

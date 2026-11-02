@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import { useApp } from "./app-context";
 import { usePomodoro } from "./components/Pomodoro";
-import { SaveToast } from "./components/Watchers";
+import { FinishToast, SaveToast } from "./components/Watchers";
 import { Thumb, spreadSide } from "./components/Thumb";
 import { Forecast, loadChosenPlan, useForecast } from "./forecast";
 import { clock, estimate, hours } from "./format";
@@ -50,6 +50,11 @@ const PauseIcon = () => (
 const StopIcon = () => (
   <svg viewBox="0 0 10 10">
     <rect x="1.5" y="1.5" width="7" height="7" fill="currentColor" />
+  </svg>
+);
+const CheckIcon = () => (
+  <svg viewBox="0 0 10 10">
+    <path d="M1.5 5.5 L4 8 L8.5 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 const PlayIcon = () => (
@@ -186,9 +191,14 @@ export function MiniApp() {
             ☕
           </button>
         ) : active ? (
-          <button className="icon-btn accent" title={t("pause")} onClick={app.pause}>
-            <PauseIcon />
-          </button>
+          <>
+            <button className="icon-btn accent" title={t("pause")} onClick={app.pause}>
+              <PauseIcon />
+            </button>
+            <button className="icon-btn sec" title={t("markDone")} onClick={app.finish}>
+              <CheckIcon />
+            </button>
+          </>
         ) : paused ? (
           <button className="icon-btn accent" title={t("resume")} onClick={app.resume}>
             <PlayIcon />
@@ -222,24 +232,7 @@ export function MiniApp() {
         </span>
       </div>
 
-      {app.stopped ? (
-        <div className="mbody column">
-          <b>
-            {t("stoppedTitle", { page: app.stopped.pageLabel, stage: app.stopped.stageName })}
-          </b>
-          <span className="muted small-text">
-            {t("stoppedBody", { now: hours(app.stopped.durationMs), total: hours(app.stopped.totalMs) })}
-          </span>
-          <div className="row tight" style={{ justifyContent: "flex-end" }}>
-            <button className="btn small" onClick={() => app.answerStopped(false)}>
-              {t("notYet")}
-            </button>
-            <button className="btn small primary" onClick={() => app.answerStopped(true)}>
-              {t("markDone")}
-            </button>
-          </div>
-        </div>
-      ) : due && p ? (
+      {due && p ? (
         <div className="mbody column">
           <b>{t("pomoDue", { min: Math.round(p.alertAtMs / 60_000) })}</b>
           <span className="muted small-text">
@@ -282,8 +275,8 @@ export function MiniApp() {
             <button className="icon-btn accent" title={t("pause")} onClick={app.pause}>
               <PauseIcon />
             </button>
-            <button className="icon-btn sec" title={t("stop")} onClick={app.stop}>
-              <StopIcon />
+            <button className="icon-btn sec" title={t("markDone")} onClick={app.finish}>
+              <CheckIcon />
             </button>
           </div>
         </div>
@@ -331,7 +324,7 @@ export function MiniApp() {
         </div>
       )}
 
-      {f && !app.stopped && (
+      {f && (
         <div className="mfoot">
           {picking ? (
             <TaskPicker f={f} onPick={app.start} onClose={() => setPicking(false)} />
@@ -359,6 +352,7 @@ export function MiniApp() {
         </div>
       )}
       <SaveToast />
+      <FinishToast />
     </div>
   );
 }

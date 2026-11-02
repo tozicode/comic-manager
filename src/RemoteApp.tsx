@@ -101,7 +101,7 @@ export function RemoteApp() {
   const next = f?.candidates[0];
   const subject = f ? toSubject(f, picked ?? (next ? { pageId: next.pageId, stageId: next.stageId } : null)) : null;
   // 計測中・一時停止中は、自分で選んだときだけタスクの札を出す（タイマーの札が主役なので）
-  const showTask = !app.stopped && subject && (picked !== null || (!active && !paused));
+  const showTask = subject && (picked !== null || (!active && !paused));
 
   return (
     <div className="remote">
@@ -132,34 +132,31 @@ export function RemoteApp() {
         </div>
       )}
 
-      {/* 計測の札：止めた直後の確認 → 計測中 → 一時停止中 の順に見せる */}
-      {app.stopped ? (
+      {/* 完了にした直後の通知（取り消せる） */}
+      {app.finished && (
         <section className="rcard">
-          <div className="rtask">{t("stoppedTitle", { page: app.stopped.pageLabel, stage: app.stopped.stageName })}</div>
-          <div className="muted small-text">
-            {t("stoppedBody", { now: hours(app.stopped.durationMs), total: hours(app.stopped.totalMs) })}
-          </div>
+          <div className="rtask">{t("finishedTitle", { page: app.finished.pageLabel, stage: app.finished.stageName })}</div>
           <div className="ractions">
-            <button className="rbtn" onClick={() => app.answerStopped(false)}>
-              {t("notYet")}
-            </button>
-            <button className="rbtn primary" onClick={() => app.answerStopped(true)}>
-              {t("markDone")}
+            <button className="rbtn" onClick={app.undoFinish}>
+              {t("undo")}
             </button>
           </div>
         </section>
-      ) : active ? (
+      )}
+
+      {/* 計測の札：計測中 → 一時停止中 の順に見せる */}
+      {active ? (
         <section className="rcard">
           <div className="rtask">
             <b>{active.pageLabel}</b> <span style={{ color: active.stageColor }}>●</span> {active.stageName}
           </div>
           <div className="rclock num">{clock(now - active.startedAt)}</div>
           <div className="ractions">
-            <button className="rbtn" onClick={app.pause}>
+            <button className="rbtn primary" onClick={app.pause}>
               {t("pause")}
             </button>
-            <button className="rbtn primary" onClick={app.stop}>
-              {t("stop")}
+            <button className="rbtn" onClick={app.finish}>
+              {t("markDone")}
             </button>
           </div>
         </section>
@@ -184,7 +181,6 @@ export function RemoteApp() {
       {showTask && subject ? (
         <TaskCard subject={subject} picked={picked !== null} tracking={!!active} onStart={start} />
       ) : (
-        !app.stopped &&
         !active &&
         !paused && <section className="rcard muted small-text">{works === null ? tr("loading") : f ? t("noTasks") : tr("noWorks")}</section>
       )}

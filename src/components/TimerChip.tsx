@@ -15,6 +15,11 @@ const StopIcon = () => (
     <rect x="1.5" y="1.5" width="7" height="7" fill="currentColor" />
   </svg>
 );
+const CheckIcon = () => (
+  <svg viewBox="0 0 10 10">
+    <path d="M1.5 5.5 L4 8 L8.5 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 const PlayIcon = () => (
   <svg viewBox="0 0 10 10">
     <path d="M2 1 L9 5 L2 9 Z" fill="currentColor" />
@@ -23,7 +28,7 @@ const PlayIcon = () => (
 
 /** 右上に常に出す計測中のタイマー */
 export function TimerChip({ onOpenWork }: { onOpenWork: (workId: number) => void }) {
-  const { active, paused, now, pause, resume, stop } = useApp();
+  const { active, paused, now, pause, resume, stop, finish } = useApp();
   const pomo = usePomodoro();
   const p = pomo.pomo;
 
@@ -72,8 +77,8 @@ export function TimerChip({ onOpenWork }: { onOpenWork: (workId: number) => void
         <button className="icon-btn" title={t("pause")} onClick={pause}>
           <PauseIcon />
         </button>
-        <button className="icon-btn" title={t("stop")} onClick={stop}>
-          <StopIcon />
+        <button className="icon-btn" title={t("markDone")} onClick={finish}>
+          <CheckIcon />
         </button>
       </div>
     );

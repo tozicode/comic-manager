@@ -189,3 +189,22 @@ export function SaveToast() {
     </div>
   );
 }
+
+/** ✓ で完了にした直後の通知。押さなくても消え、［取り消す］で完了を外せる */
+export function FinishToast() {
+  const app = useApp();
+  const f = app.finished;
+  if (!f) return null;
+  return (
+    <div className="toast" role="status">
+      <b>{t("finishedTitle", { page: f.pageLabel, stage: f.stageName })}</b>
+      {!f.wasDone && (
+        <div className="actions">
+          <button className="btn small" onClick={app.undoFinish}>
+            {t("undo")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
