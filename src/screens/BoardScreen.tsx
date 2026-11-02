@@ -1,6 +1,6 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup, isRemote } from "../api";
+import { api, BoardPage, CollabInfo, PageMerge, PageSplit, PublishPrefs, StageRef, TagGroup, isRemote } from "../api";
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { AiDialog } from "../components/AiDialog";
@@ -8,6 +8,7 @@ import { Dialog } from "../components/Dialog";
 import { ShareDialog } from "../components/ShareDialog";
 import { PublishDialog } from "../components/PublishDialog";
 import { CollabDialog, initial } from "../components/CollabDialog";
+import { MenuButton } from "../components/MenuButton";
 import { useRelink } from "../components/Relink";
 import { TagPopover } from "../components/TagPopover";
 import { Thumb, spreadSide } from "../components/Thumb";
@@ -16,9 +17,6 @@ import { planName } from "../schedule";
 import { clock, dayKey, dayLabel, estimate, fromInputs, hours, startOfDay, time } from "../format";
 import { t, tn } from "../i18n/board";
 import { kindKey, unitText } from "../i18n/common";
-import { t as ta } from "../i18n/ai";
-import { t as ts } from "../i18n/share";
-import { t as tp } from "../i18n/publish";
 import { t as tc } from "../i18n/collab";
 
 /** 同期で見つかった見開きの変化（1 件ずつ確認する） */
@@ -71,6 +69,9 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [publishing, setPublishing] = useState(false);
   /** 共同作業の取り込みのダイアログ（5.23） */
   const [collabOpen, setCollabOpen] = useState(false);
+  /** 上段の状態の行に出す、公開と共同作業の様子 */
+  const [publishPrefs, setPublishPrefs] = useState<PublishPrefs | null>(null);
+  const [collabInfo, setCollabInfo] = useState<CollabInfo | null>(null);
   /** イラストのファイル（または行）のドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
   const dragging = useRef<number | null>(null);
@@ -85,8 +86,21 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     api.listTags().then(setTags).catch(app.showError);
   }, [app.version, app.showError]);
 
-  // 共同作業の作品は、ボードを開いている間 60 秒ごとに共同作業データを読み直す（5.23）
+  // 上段の状態の行：公開中かどうかと、共同作業のメンバー数・最後に読めた時刻（遠隔の画面では公開の設定は読めない）
   const isCollab = forecast?.board.collab ?? false;
+  useEffect(() => {
+    if (isRemote) return;
+    api.getPublishPrefs(workId).then(setPublishPrefs).catch(() => setPublishPrefs(null));
+  }, [workId, app.version]);
+  useEffect(() => {
+    if (!isCollab) {
+      setCollabInfo(null);
+      return;
+    }
+    api.getCollabInfo(workId).then(setCollabInfo).catch(() => setCollabInfo(null));
+  }, [workId, isCollab, app.version]);
+
+  // 共同作業の作品は、ボードを開いている間 60 秒ごとに共同作業データを読み直す（5.23）
   useEffect(() => {
     if (!isCollab) return;
     const timer = setInterval(async () => {
@@ -276,45 +290,78 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             : isManual
               ? t("unitCount", { n: pageCount, unit: unitText(board.work, pageCount) })
               : t("cmcPageCount", { n: pageCount })}
-        </div>
-        <div className="row tight">
-          {isFiles ? (
-            <button className="btn small ghost" onClick={addFiles}>
-              {t("addFiles")}
-            </button>
-          ) : isManual ? (
-            <button className="btn small ghost" onClick={() => setAddingRows("")}>
-              {t("addRows", { unit })}
-            </button>
-          ) : (
+          {/* 状態の行：共同作業と公開は操作ではなく状態なので、ここに出してクリックで設定を開く（5.22・5.23） */}
+          {board.collab && (
             <>
-              <label className="row tight small-text" title={t("splitSpreadsHint")} style={{ marginRight: 6 }}>
-                <input type="checkbox" checked={board.work.splitSpreads} onChange={(e) => setSplitting(e.target.checked)} />
-                {t("splitSpreads")}
-              </label>
-              <button className="btn small ghost" onClick={startRelink} title={t("changeLocationHint")}>
-                {t("changeLocation")}
+              {t("sep")}
+              <button className="status-link" onClick={() => setCollabOpen(true)} disabled={isRemote}>
+                {t("statusCollab", { n: collabInfo?.members.length ?? 0 })}
+                {collabInfo?.lastError
+                  ? t("statusCollabError")
+                  : collabInfo?.lastReadAt
+                    ? t("statusCollabRead", { time: time(collabInfo.lastReadAt) })
+                    : ""}
               </button>
             </>
           )}
-          <button className="btn small ghost" onClick={() => setSharing(true)}>
-            {ts("button")}
-          </button>
-          <button className="btn small ghost" onClick={() => setAsking(true)}>
-            {ta("button")}
-          </button>
-          <button className="btn small ghost" onClick={() => setPublishing(true)}>
-            {tp("button")}
-          </button>
-          {board.collab && !isRemote && (
-            <button className="btn small ghost" onClick={() => setCollabOpen(true)}>
-              {tc("button")}
+          {publishPrefs?.enabled && (
+            <>
+              {t("sep")}
+              <button className={`status-link${publishPrefs.lastError ? " error" : ""}`} onClick={() => setPublishing(true)}>
+                {publishPrefs.lastError || !publishPrefs.lastSentAt
+                  ? t("statusPublishError")
+                  : t("statusPublished", { time: time(publishPrefs.lastSentAt) })}
+              </button>
+            </>
+          )}
+        </div>
+        <div className="row tight">
+          {isFiles && (
+            <button className="btn small ghost" onClick={addFiles}>
+              {t("addFiles")}
             </button>
           )}
-          {!isManual && (
-            <button className="btn small ghost" onClick={() => sync(true)}>
-              {isFiles ? t("reload") : t("reloadCmc")}
+          {isManual && (
+            <button className="btn small ghost" onClick={() => setAddingRows("")}>
+              {t("addRows", { unit })}
             </button>
+          )}
+          <MenuButton
+            label={t("shareMenu")}
+            alignRight
+            items={[
+              { label: t("shareImage"), onClick: () => setSharing(true) },
+              { label: t("shareAi"), onClick: () => setAsking(true) },
+              // 公開の設定は鍵を扱うので、遠隔の画面からは開けない
+              ...(isRemote ? [] : [{ label: t("shareUrl"), onClick: () => setPublishing(true) }]),
+            ]}
+          />
+          {!isManual && !isRemote && (
+            <MenuButton
+              label="⋯"
+              title={t("moreMenu")}
+              alignRight
+              className="more"
+              items={[
+                ...(isFiles
+                  ? []
+                  : [
+                      {
+                        label: (
+                          <label className="row tight">
+                            <input type="checkbox" checked={board.work.splitSpreads} readOnly />
+                            {t("splitSpreads")}
+                          </label>
+                        ),
+                        hint: t("splitSpreadsHint"),
+                        onClick: () => setSplitting(!board.work.splitSpreads),
+                      },
+                      { label: t("changeLocation"), hint: t("changeLocationHint"), onClick: startRelink },
+                    ]),
+                { label: isFiles ? t("reload") : t("reloadCmc"), onClick: () => sync(true) },
+                ...(board.collab ? [{ label: t("collabSettings"), onClick: () => setCollabOpen(true) }] : []),
+              ]}
+            />
           )}
         </div>
       </div>

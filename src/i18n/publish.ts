@@ -3,7 +3,6 @@ import { defineMessages } from ".";
 
 export const { t } = defineMessages({
   ja: {
-    button: "公開",
     title: "主催者や編集者に進み具合を見せる",
     intro:
       "この作品の進み具合の要約をインターネット上の預かり場所に置き、閲覧 URL を知っている人がブラウザで見られるようにします。送るのは工程ごとの進み具合・締切・完成見込み・作業時間だけで、原稿の画像・メモ・タグ・作業記録の一覧は送りません。",
@@ -27,7 +26,6 @@ export const { t } = defineMessages({
     close: "閉じる",
   },
   en: {
-    button: "Publish",
     title: "Show progress to an organizer or editor",
     intro:
       "A summary of this work's progress is stored online so anyone with the viewing URL can see it in a browser. Only per-stage progress, deadlines, the estimated finish and working time are sent. Page images, memos, tags and the list of work sessions are not.",
@@ -51,7 +49,6 @@ export const { t } = defineMessages({
     close: "Close",
   },
   ko: {
-    button: "공개",
     title: "주최자나 편집자에게 진행 상황 보여주기",
     intro:
       "이 작품의 진행 상황 요약을 인터넷상의 보관 장소에 두고, 열람 URL을 아는 사람이 브라우저로 볼 수 있게 합니다. 보내는 것은 공정별 진행률·마감·완성 예상·작업 시간뿐이며, 원고 이미지·메모·태그·작업 기록 목록은 보내지 않습니다.",
@@ -75,7 +72,6 @@ export const { t } = defineMessages({
     close: "닫기",
   },
   "zh-Hans": {
-    button: "公开",
     title: "向主办者或编辑展示进度",
     intro:
       "把这部作品的进度摘要存放在网上，知道查看 URL 的人即可在浏览器中查看。只发送各工序的进度、截止日期、预计完成时间和工作时间，不发送原稿图像、备注、标签和工作记录列表。",
@@ -99,7 +95,6 @@ export const { t } = defineMessages({
     close: "关闭",
   },
   "zh-Hant": {
-    button: "公開",
     title: "向主辦者或編輯展示進度",
     intro:
       "把這部作品的進度摘要存放在網路上，知道檢視 URL 的人即可在瀏覽器中檢視。只傳送各工序的進度、截止日期、預計完成時間和工作時間，不傳送原稿圖片、備註、標籤和工作記錄清單。",

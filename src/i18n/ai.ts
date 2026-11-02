@@ -5,7 +5,6 @@ const s = (n: number) => (n === 1 ? "" : "s");
 
 export const { t } = defineMessages({
   ja: {
-    button: "AI に相談",
     title: "AI に相談する",
     hint: "チャット AI（ChatGPT・Claude・Gemini など）の入力欄に貼り付けると、いまの進み具合をもとに相談できます。アプリからはどこにも送りません。",
     purpose: "相談したいこと",
@@ -103,7 +102,6 @@ export const { t } = defineMessages({
     askRule: "数字はこの文にあるものを使ってください。足りない情報があるときは、推測せずに私に聞き返してください。",
   },
   en: {
-    button: "Ask AI",
     title: "Ask an AI",
     hint: "Paste this into a chat AI (ChatGPT, Claude, Gemini, etc.) to talk about your progress. Otosazu doesn't send it anywhere.",
     purpose: "What do you want to ask?",
@@ -201,7 +199,6 @@ export const { t } = defineMessages({
     askRule: "Please use the numbers in this text. If something is missing, ask me instead of guessing.",
   },
   ko: {
-    button: "AI에게 상담",
     title: "AI에게 상담하기",
     hint: "채팅 AI(ChatGPT, Claude, Gemini 등)의 입력란에 붙여 넣으면 지금의 진행 상황을 바탕으로 상담할 수 있습니다. 앱에서는 어디에도 보내지 않습니다.",
     purpose: "상담하고 싶은 것",
@@ -299,7 +296,6 @@ export const { t } = defineMessages({
     askRule: "숫자는 이 글에 있는 것을 써 주세요. 부족한 정보가 있으면 추측하지 말고 저에게 다시 물어봐 주세요.",
   },
   "zh-Hans": {
-    button: "咨询 AI",
     title: "咨询 AI",
     hint: "粘贴到聊天 AI（ChatGPT、Claude、Gemini 等）的输入框中，就能根据当前进度进行咨询。应用不会把它发送到任何地方。",
     purpose: "想咨询的内容",
@@ -396,7 +392,6 @@ export const { t } = defineMessages({
     askRule: "请使用本文中的数字。如果缺少信息，请不要猜测，直接问我。",
   },
   "zh-Hant": {
-    button: "諮詢 AI",
     title: "諮詢 AI",
     hint: "貼到聊天 AI（ChatGPT、Claude、Gemini 等）的輸入框中，就能根據目前進度進行諮詢。應用程式不會把它傳送到任何地方。",
     purpose: "想諮詢的內容",

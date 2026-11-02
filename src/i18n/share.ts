@@ -3,7 +3,6 @@ import { defineMessages } from ".";
 
 export const { t } = defineMessages({
   ja: {
-    button: "進捗を共有",
     title: "進捗を共有する",
     showTitle: "作品名を出す",
     showTime: "作業時間を出す",
@@ -45,7 +44,6 @@ export const { t } = defineMessages({
     postJoin: "",
   },
   en: {
-    button: "Share progress",
     title: "Share your progress",
     showTitle: "Show the title",
     showTime: "Show working time",
@@ -87,7 +85,6 @@ export const { t } = defineMessages({
     postJoin: " ",
   },
   ko: {
-    button: "진행 상황 공유",
     title: "진행 상황 공유하기",
     showTitle: "작품명 표시",
     showTime: "작업 시간 표시",
@@ -129,7 +126,6 @@ export const { t } = defineMessages({
     postJoin: " ",
   },
   "zh-Hans": {
-    button: "分享进度",
     title: "分享进度",
     showTitle: "显示作品名",
     showTime: "显示工作时间",
@@ -171,7 +167,6 @@ export const { t } = defineMessages({
     postJoin: "",
   },
   "zh-Hant": {
-    button: "分享進度",
     title: "分享進度",
     showTitle: "顯示作品名",
     showTime: "顯示工作時間",

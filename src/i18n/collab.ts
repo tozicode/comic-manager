@@ -3,7 +3,6 @@ import { defineMessages } from ".";
 
 export const { t } = defineMessages({
   ja: {
-    button: "共同作業",
     title: "アシスタントの担当と反映を取り込む",
     intro:
       "CLIP STUDIO PAINT EX の共同作業データを読み、誰がどのページを担当し、いつ反映したかをボードに映します。読むだけで、共同作業データには何も書きません。",
@@ -33,7 +32,6 @@ export const { t } = defineMessages({
     close: "閉じる",
   },
   en: {
-    button: "Group work",
     title: "Import assistants' assignments and submissions",
     intro:
       "Reads CLIP STUDIO PAINT EX group work data to show who is assigned to which page and when they submitted. It only reads; nothing is written to the group work data.",
@@ -63,7 +61,6 @@ export const { t } = defineMessages({
     close: "Close",
   },
   ko: {
-    button: "공동 작업",
     title: "어시스턴트의 담당과 반영 가져오기",
     intro:
       "CLIP STUDIO PAINT EX의 공동 작업 데이터를 읽어, 누가 어느 페이지를 담당하고 언제 반영했는지 보드에 표시합니다. 읽기만 하며 공동 작업 데이터에는 아무것도 쓰지 않습니다.",
@@ -93,7 +90,6 @@ export const { t } = defineMessages({
     close: "닫기",
   },
   "zh-Hans": {
-    button: "协作",
     title: "导入助手的分工和提交",
     intro:
       "读取 CLIP STUDIO PAINT EX 的协作数据，在看板上显示谁负责哪一页、何时提交。只读取，不会向协作数据写入任何内容。",
@@ -122,7 +118,6 @@ export const { t } = defineMessages({
     close: "关闭",
   },
   "zh-Hant": {
-    button: "協作",
     title: "匯入助手的分工和提交",
     intro:
       "讀取 CLIP STUDIO PAINT EX 的協作資料，在看板上顯示誰負責哪一頁、何時提交。只讀取，不會向協作資料寫入任何內容。",
