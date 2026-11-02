@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Otosazu はじめにお読みください</title>
 <style>
   /* 印刷（PDF 化）向けの説明書。npm run guide で PDF にする */
@@ -33,9 +34,29 @@
   th { background: var(--soft); white-space: nowrap; }
   .muted { color: var(--muted); }
   footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--muted); font-size: 9pt; }
+  /* 画面で読むとき（otosazu.com/guide/ とブラウザでの確認）。印刷は上の pt 指定のまま */
+  @media screen {
+    html { background: #fbf1ec; }
+    body {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 28px 20px 48px;
+      font-size: 15px;
+      line-height: 1.8;
+    }
+    h2 { font-size: 1.25em; margin-top: 32px; }
+    h3 { font-size: 1.05em; margin-top: 20px; }
+    .key, .btn { font-size: 0.9em; }
+    .box { padding: 12px 16px; }
+    table { display: block; overflow-x: auto; }
+    .site-nav { font-size: 0.9em; margin-bottom: 14px; }
+    .site-nav a { color: var(--accent); text-decoration: none; }
+  }
+  @media print { .site-nav { display: none; } }
 </style>
 </head>
 <body>
+<nav class="site-nav"><a href="/">← otosazu.com</a></nav>
 
 <header>
   <img src="../img/app-icon.svg" alt="" />

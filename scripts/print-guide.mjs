@@ -23,7 +23,13 @@ mkdirSync(join(root, "site", "guide"), { recursive: true });
 copyFileSync(join(root, "src-tauri", "icons", "source.svg"), join(root, "site", "img", "app-icon.svg"));
 writeFileSync(
   join(root, "site", "guide", "index.html"),
-  readFileSync(join(root, "docs", "guide", "guide.html"), "utf8").replace("../../src-tauri/icons/source.svg", "../img/app-icon.svg"),
+  readFileSync(join(root, "docs", "guide", "guide.html"), "utf8")
+    .replace("../../src-tauri/icons/source.svg", "../img/app-icon.svg")
+    // サイトでは表紙へ戻るリンクを先頭に置く（印刷には出ない）
+    .replace("<body>
+", '<body>
+<nav class="site-nav"><a href="/">← otosazu.com</a></nav>
+'),
 );
 const out = join(root, "release", "Otosazu_はじめにお読みください.pdf");
 mkdirSync(join(root, "release"), { recursive: true });
