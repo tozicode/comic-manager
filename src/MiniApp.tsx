@@ -101,6 +101,18 @@ function TaskPicker({ f, onPick, onClose }: { f: Forecast; onPick: (pageId: numb
   );
 }
 
+/** 工程の色の ●（ページ名と工程名の間に置く） */
+function StageDot({ color }: { color: string }) {
+  return <span style={{ color }}>●</span>;
+}
+
+/** ミニ窓用のページのサムネ。ファイルを持たない作品やページが見つからないときは出さない */
+function PageThumb({ f, pageId }: { f: Forecast; pageId: number }) {
+  const page = f.board.pages.find((x) => x.id === pageId);
+  if (!page || f.board.work.kind === "manual") return null;
+  return <Thumb path={page.path} spread={page.span === 2} half={spreadSide(page, f.board.work)} free={f.board.work.kind === "files"} width={40} />;
+}
+
 export function MiniApp() {
   const app = useApp();
   const [compact, setCompact] = useState(() => loadFlag(COMPACT_KEY, false));
@@ -145,7 +157,7 @@ export function MiniApp() {
   const breakOver = !active && !!paused && p?.phase === "breakOver";
   const breakLabel = p && onBreak ? t(p.long ? "pomoLongBreak" : "pomoBreak", { time: pomoClock(remainingMs(p, pomo.now)) }) : "";
   const task = active && f ? f.task(active.pageId, active.stageId) : undefined;
-  const page = active && f ? f.board.pages.find((p) => p.id === active.pageId) : undefined;
+  const pausedColor = paused && f ? (f.board.stages.find((x) => x.id === paused.stageId)?.color ?? "") : "";
 
   // 次にやること：今日選んだ案の、まだ終わっていない最初のタスク。案が無ければ着手できる最初のタスク
   const plan = workId ? loadChosenPlan(workId) : null;
@@ -197,11 +209,11 @@ export function MiniApp() {
                     : breakOver
                       ? t("pomoBreakOver")
                       : active
-                        ? `${active.pageLabel} ${active.stageName}`
+                        ? <>{active.pageLabel} <StageDot color={active.stageColor} /> {active.stageName}</>
                         : paused
-                          ? t("pausedWith", { page: paused.pageLabel })
+                          ? <>{t("pausedWith", { page: paused.pageLabel })} {pausedColor && <StageDot color={pausedColor} />} {paused.stageName}</>
                           : next
-                            ? `${t(next.picked ? "pickedTask" : "next")} ${next.page.label} ${next.stage.name}`
+                            ? <>{t(next.picked ? "pickedTask" : "next")} {next.page.label} <StageDot color={next.stage.color} /> {next.stage.name}</>
                             : t("notTracking")}
                 {f && <span className="caret">▾</span>}
               </button>
@@ -282,18 +294,10 @@ export function MiniApp() {
         </div>
       ) : active ? (
         <div className="mbody">
-          {f && page && f.board.work.kind !== "manual" && (
-            <Thumb
-              path={page.path}
-              spread={page.span === 2}
-              half={spreadSide(page, f.board.work)}
-              free={f.board.work.kind === "files"}
-              width={40}
-            />
-          )}
+          {f && <PageThumb f={f} pageId={active.pageId} />}
           <div className="grow">
             <button className="mpick small-text" title={t("pickOther")} onClick={() => setPicking(true)}>
-              <b>{active.pageLabel}</b> · <span style={{ color: active.stageColor }}>●</span> {active.stageName} <span className="caret">▾</span>
+              <b>{active.pageLabel}</b> · <StageDot color={active.stageColor} /> {active.stageName} <span className="caret">▾</span>
             </button>
             <div className="mtime num">{clock(now - active.startedAt)}</div>
             {task && (
@@ -317,12 +321,13 @@ export function MiniApp() {
         <div className="mbody">
           {paused ? (
             <>
+              {f && <PageThumb f={f} pageId={paused.pageId} />}
               <div className="grow">
                 <div className={`small-text${onBreak || breakOver ? " mbreak" : " muted"}`}>
                   {onBreak ? breakLabel : breakOver ? t("pomoBreakOver") : t("paused")}
                 </div>
                 <div className="mnext">
-                  {paused.pageLabel} {paused.stageName}
+                  {paused.pageLabel} {pausedColor && <StageDot color={pausedColor} />} {paused.stageName}
                 </div>
               </div>
               <div className="mctrl">
@@ -336,10 +341,11 @@ export function MiniApp() {
             </>
           ) : next ? (
             <>
+              {f && <PageThumb f={f} pageId={next.page.id} />}
               <div className="grow">
                 <div className="small-text muted">{t(next.picked ? "pickedTask" : "next")}</div>
                 <button className="mpick mnext" title={t("pickOther")} onClick={() => setPicking(true)}>
-                  {next.page.label} {next.stage.name} <span className="caret">▾</span>
+                  {next.page.label} <StageDot color={next.stage.color} /> {next.stage.name} <span className="caret">▾</span>
                 </button>
                 <div className="muted tiny">
                   {next.task.spentMs > 0
