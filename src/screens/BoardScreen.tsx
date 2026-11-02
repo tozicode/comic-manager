@@ -1,6 +1,6 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup } from "../api";
+import { api, BoardPage, PageMerge, PageSplit, StageRef, TagGroup, isRemote } from "../api";
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { AiDialog } from "../components/AiDialog";
@@ -306,7 +306,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           <button className="btn small ghost" onClick={() => setPublishing(true)}>
             {tp("button")}
           </button>
-          {board.collab && (
+          {board.collab && !isRemote && (
             <button className="btn small ghost" onClick={() => setCollabOpen(true)}>
               {tc("button")}
             </button>

@@ -91,7 +91,8 @@ export function buildSnapshot(forecast: Forecast, extra: SnapshotExtra, hide: Hi
     who: showCells && members.length > 0 ? who : null,
     progress: data.progress,
     todayProgress: data.todayProgress,
-    completed: prediction.remainingMs === 0,
+    // 作家の残りが 0 でも、メンバー担当のマスが残っていれば完成ではない（5.23）
+    completed: prediction.tasks.every((t) => t.done),
     deadlines: forecast.deadlines.map((d) => ({ name: d.name, date: dayKey(d.date), selected: d.id === selected })),
     finish:
       hidden.has("finish") || (!finish.low && !finish.mid && !finish.high)

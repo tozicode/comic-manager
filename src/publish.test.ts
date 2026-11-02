@@ -188,6 +188,15 @@ describe("buildSnapshot（共同作業）", () => {
       [-1, -1],
     ]);
     expect(JSON.stringify(s)).not.toContain("assistant");
+    // 作家のぶんが終わっていても、メンバー担当のマスが残っていれば完成ではない
+    const authorDone = board([
+      { ...page(1, 1, [[true, DAY, 0], [false, null, 0]]), assignees: [{ name: "assistant", color: "#b5651d", comment: "", stageIds: [2] }] },
+    ]);
+    const pred = prediction(authorDone, 0);
+    pred.tasks[1].assigned = true;
+    const s2 = buildSnapshot(computeForecast(authorDone, pred, schedule([], null), [], NOW), extra, []);
+    expect(s2.completed).toBe(false);
+    expect(s2.progress).toBeCloseTo(0.5);
     // マスを隠すと担当も送らない
     expect(buildSnapshot(f, extra, ["cells"]).who).toBeNull();
   });

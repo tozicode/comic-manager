@@ -45,7 +45,8 @@ export function aiText(input: AiInput, opts: AiOptions): string {
   const rowWord = t(k("row"), { unit });
   const pages = board.pages.filter((p) => !p.missing);
   const totalCount = pages.reduce((n, p) => n + p.span, 0);
-  const completed = prediction.remainingMs <= 0;
+  // 作家の残りが 0 でも、メンバー担当のマスが残っていれば完成ではない（5.23）
+  const completed = prediction.tasks.every((t) => t.done);
   const out: string[] = [];
 
   // 前置き

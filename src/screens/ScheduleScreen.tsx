@@ -180,7 +180,10 @@ function FinishTab({
       <div className="card">
         <div className="section-title">{t("finishTitle")}</div>
         {prediction.remainingMs === 0 ? (
-          <div className="big">{t("completed")}</div>
+          <>
+            <div className="big">{t(forecast.assignedCount > 0 ? "authorDone" : "completed")}</div>
+            {forecast.assignedCount > 0 && <p className="range">{t("waitingCells", { n: forecast.assignedCount })}</p>}
+          </>
         ) : (
           <>
             <div className="result3">
@@ -446,7 +449,14 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
     app.refresh();
   };
 
-  if (prediction.remainingMs === 0) return <div className="card pad big">{t("completed")}</div>;
+  if (prediction.remainingMs === 0) {
+    return (
+      <div className="card pad big">
+        {t(forecast.assignedCount > 0 ? "authorDone" : "completed")}
+        {forecast.assignedCount > 0 && <p className="range">{t("waitingCells", { n: forecast.assignedCount })}</p>}
+      </div>
+    );
+  }
 
   const daysOffLeft = deadline
     ? schedule.daysOff.filter((d) => d >= dayKey(forecast.today) && d <= dayKey(deadline.date)).length
