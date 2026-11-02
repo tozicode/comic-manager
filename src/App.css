@@ -1741,6 +1741,36 @@ table.rec {
   display: flex;
   gap: 6px;
 }
+/* ページ名・次のタスクの文字。押すと切り替え先を選べる */
+.miniwin .mpick {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.miniwin .mpick:disabled {
+  cursor: default;
+}
+.miniwin .mpick .caret {
+  color: var(--faint);
+  font-size: 10px;
+}
+.miniwin .mpick:not(:disabled):hover,
+.miniwin .mpick:not(:disabled):hover .caret {
+  color: var(--accent);
+}
+.miniwin.compact select {
+  width: 100%;
+  font-size: 12px;
+}
 .miniwin .mfoot {
   padding: 6px 14px 8px;
   border-top: 1px solid var(--border);
