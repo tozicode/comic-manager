@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 
 import { MAX_BODY_BYTES, MIN_INTERVAL_MS, sweep } from './limits';
 
@@ -31,6 +32,18 @@ interface PutBody {
  * サーバは要約の中身を理解しない。やることは「鍵を確かめて預かり、配る」だけ。
  */
 const app = new Hono<{ Bindings: Env }>();
+
+// アプリ（Tauri の WebView。オリジンは tauri://localhost や http://localhost:1420）からの PUT / DELETE と、
+// 別の場所に置かれた閲覧ページからの GET を通すため、/p/ 以下は CORS を開ける。守りは鍵で足りる
+app.use(
+  '/p/*',
+  cors({
+    origin: '*',
+    allowMethods: ['GET', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Authorization', 'Content-Type', READ_HEADER],
+    maxAge: 86400,
+  }),
+);
 
 /** 鍵は高エントロピー（アプリが乱数で作る）なので SHA-256 で足りる。低速 KDF は要らない */
 async function sha256Hex(input: string): Promise<string> {

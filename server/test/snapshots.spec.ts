@@ -92,6 +92,23 @@ describe('進捗の公開', () => {
     expect((await put(ID, {}, { write: 'y'.repeat(32) })).status).toBe(201);
   });
 
+  it('アプリの WebView から送れるよう CORS を返す', async () => {
+    const pre = await SELF.fetch(`${base}/p/${ID}`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://tauri.localhost',
+        'Access-Control-Request-Method': 'PUT',
+        'Access-Control-Request-Headers': 'authorization,content-type',
+      },
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(pre.headers.get('Access-Control-Allow-Methods')).toContain('PUT');
+    expect(pre.headers.get('Access-Control-Allow-Headers')?.toLowerCase()).toContain('authorization');
+    const res = await put(ID, {});
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  });
+
   it('掃除は送信が止まった行だけ消す', async () => {
     const old = 'a'.repeat(32);
     await put(old, {});
