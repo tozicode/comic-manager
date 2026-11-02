@@ -105,9 +105,9 @@ curl -sL https://github.com/tozicode/comic-manager/releases/latest/download/late
 
 `site/` が公式サイトの中身（ビルドなしの静的 HTML）。Cloudflare Pages が GitHub の `main` を見ていて、push するたびに配り直す。
 
-- Pages の設定：Framework preset **None**、Build command
-  `mkdir -p site/guide && cp docs/guide/guide.html site/guide/index.html`、Build output directory `site`。
-  説明書はこのビルドで `docs/guide` から複製するので、`site/guide/` は git に入れない（手元で見るときは同じコマンドで複製する）
+- Pages の設定：Framework preset **None**、Build command は空、Build output directory `site`
+- 説明書 `site/guide/index.html` は `docs/guide/guide.html` の複製で、`npm run guide`（PDF を作るとき）が一緒に作り直す。
+  説明書を直したら `npm run guide` を実行して、`site/guide/` も一緒にコミットする
 - 画面の画像は `release/screenshots/`（git 外）から `site/img/*.webp` に幅 1600 で縮めて入れてある。撮り直したら作り直す
 - 版を上げても `site/` は直さなくてよい（版の数字を書いていない）。機能が増えたら「できること」を足す
 - 手元で見る：`.claude/launch.json` の `site`（`python -m http.server 8788 --directory site`）

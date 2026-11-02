@@ -18,6 +18,3 @@ src-tauri/gen/schemas/
 
 # 配布物（インストーラー・説明書の PDF・zip）
 release/
-
-# 公式サイト：説明書は Pages のビルドで docs/guide から複製する（docs/release.md の 8 を参照）
-site/guide/

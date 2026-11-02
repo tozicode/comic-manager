@@ -1,7 +1,8 @@
-// 知人向けの説明書（docs/guide/guide.html）を Microsoft Edge で PDF にして release/ に置く
+// 知人向けの説明書（docs/guide/guide.html）を Microsoft Edge で PDF にして release/ に置く。
+// あわせて公式サイト（site/guide/index.html。otosazu.com/guide/）にも同じものを複製する
 // 使い方: npm run guide
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -16,6 +17,9 @@ if (!edge) {
 }
 
 const root = resolve(import.meta.dirname, "..");
+// 公式サイトの説明書は docs/guide の複製。Pages はこのフォルダをそのまま配る
+mkdirSync(join(root, "site", "guide"), { recursive: true });
+copyFileSync(join(root, "docs", "guide", "guide.html"), join(root, "site", "guide", "index.html"));
 const out = join(root, "release", "Otosazu_はじめにお読みください.pdf");
 mkdirSync(join(root, "release"), { recursive: true });
 if (existsSync(out)) rmSync(out);
