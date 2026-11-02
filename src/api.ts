@@ -239,6 +239,24 @@ export type SyncResult = { added: number; missing: number; merges: PageMerge[]; 
 /** 遠隔の画面（別端末のブラウザ）の設定（5.17） */
 export type RemotePrefs = { enabled: boolean; bind: string; port: number; token: string };
 
+/** 進捗の公開で隠せる項目（docs/snapshot-format.md） */
+export type HideKey = "title" | "time" | "finish" | "cells";
+/** 作品ごとの進捗の公開の設定（5.22）。鍵を含むので遠隔の画面からは読めない */
+export type PublishPrefs = {
+  workId: number;
+  enabled: boolean;
+  publishId: string;
+  writeKey: string;
+  readKey: string;
+  hide: HideKey[];
+  /** 最後に送れた時刻。一度も送れていなければ null */
+  lastSentAt: number | null;
+  /** 最後の送信の失敗。送れたら null */
+  lastError: string | null;
+  /** オフにしたがサーバの行をまだ消せていない */
+  pendingDelete: boolean;
+};
+
 export type TimerPrefs = {
   idleMinutes: number;
   shortcut: string;
@@ -362,6 +380,14 @@ export const api = {
   getRemotePrefs: () => call<RemotePrefs>("get_remote_prefs"),
   setRemotePrefs: (prefs: RemotePrefs) => call<RemotePrefs>("set_remote_prefs", { prefs }),
   newRemoteToken: () => call<RemotePrefs>("new_remote_token"),
+  // 進捗の公開（5.22）
+  getPublishPrefs: (workId: number) => call<PublishPrefs>("get_publish_prefs", { workId }),
+  setPublishPrefs: (workId: number, enabled: boolean, hide: HideKey[]) =>
+    call<PublishPrefs>("set_publish_prefs", { workId, enabled, hide }),
+  newPublishReadKey: (workId: number) => call<PublishPrefs>("new_publish_read_key", { workId }),
+  markPublished: (workId: number, error: string | null) => call<void>("mark_published", { workId, error }),
+  markUnpublished: (workId: number) => call<void>("mark_unpublished", { workId }),
+  listPublishing: () => call<PublishPrefs[]>("list_publishing"),
   /** この PC が持っているアドレス（待ち受ける先を選ぶのに使う） */
   localAddresses: () => call<string[]>("local_addresses"),
 };

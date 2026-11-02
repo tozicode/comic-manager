@@ -32,5 +32,7 @@ export default defineConfig(() => ({
   // テストは日本語の表記で書いているので、言語を日本語にしてから走らせる
   test: {
     setupFiles: ["src/test-setup.ts"],
+    // server/ の Worker のテストは server/ 側の vitest（vitest-pool-workers）で走らせる
+    exclude: ["**/node_modules/**", "server/**"],
   },
 }));

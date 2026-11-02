@@ -94,7 +94,7 @@ FCM まわりは持ち込まない。
 
 **確かめ方**：`cargo test`
 
-## 4. アプリ：要約を作って送る（TypeScript）
+## 4. アプリ：要約を作って送る（TypeScript）（済）
 
 - `src/publish.ts`
   - `snapshot(board, sessions, forecast, prefs, deadlines): Snapshot`：`shareData()` と `Forecast` から 5.22 の JSON を組む。
@@ -112,7 +112,13 @@ FCM まわりは持ち込まない。
 
 **確かめ方**
 - `npm test`（`publish.test.ts`：隠す項目・見開き・消えたページ・締切なし・見込みなし）
-- `tauri dev` を `OTOSAZU_DB` で起動し、`wrangler dev` に向けて実際に送る → 閲覧ページで見える → オフにすると 404
+- `tauri dev` を `OTOSAZU_DB` で起動し、`VITE_PUBLISH_BASE=http://127.0.0.1:8787` で `wrangler dev` に向けて実際に送った →
+  閲覧ページで見えた（実データの複製で確認）。ダイアログの操作は手で確かめる（下の「手で確かめること」）
+- 分かったこと：アプリの WebView は別オリジンなので、Worker が CORS（OPTIONS と `Access-Control-Allow-Origin`）を返さないと
+  fetch が「Failed to fetch」で落ちる。`/p/*` に `hono/cors` を当てた
+- 作品を消したときのサーバの行は、180 日の掃除に任せる（消す前に DELETE を送る仕組みは入れない。消す操作を遅くしたくない）
+- 手で確かめること（2.6.0 を出す前）：ボードの［公開］→ オンにして閲覧 URL が出る → QR → ［URL を作り直す］で古い URL が 403 →
+  オフにして 404 → オフラインでオンにしたとき失敗の文が出て、つながってから自動で送り直す
 
 ## 5. 説明書・配布
 

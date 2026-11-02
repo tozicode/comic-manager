@@ -6,6 +6,7 @@ import type { Screen } from "../App";
 import { AiDialog } from "../components/AiDialog";
 import { Dialog } from "../components/Dialog";
 import { ShareDialog } from "../components/ShareDialog";
+import { PublishDialog } from "../components/PublishDialog";
 import { useRelink } from "../components/Relink";
 import { TagPopover } from "../components/TagPopover";
 import { Thumb, spreadSide } from "../components/Thumb";
@@ -16,6 +17,7 @@ import { t, tn } from "../i18n/board";
 import { kindKey, unitText } from "../i18n/common";
 import { t as ta } from "../i18n/ai";
 import { t as ts } from "../i18n/share";
+import { t as tp } from "../i18n/publish";
 
 /** 同期で見つかった見開きの変化（1 件ずつ確認する） */
 type SpreadChange = { kind: "merge"; m: PageMerge } | { kind: "split"; s: PageSplit };
@@ -61,6 +63,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [sharing, setSharing] = useState(false);
   /** AI に相談する文のダイアログ（5.21） */
   const [asking, setAsking] = useState(false);
+  /** 進捗の公開のダイアログ（5.22） */
+  const [publishing, setPublishing] = useState(false);
   /** イラストのファイル（または行）のドラッグ中の並び（離したら保存する） */
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
   const dragging = useRef<number | null>(null);
@@ -276,6 +280,9 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           </button>
           <button className="btn small ghost" onClick={() => setAsking(true)}>
             {ta("button")}
+          </button>
+          <button className="btn small ghost" onClick={() => setPublishing(true)}>
+            {tp("button")}
           </button>
           {!isManual && (
             <button className="btn small ghost" onClick={() => sync(true)}>
@@ -691,6 +698,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
       )}
       {sharing && <ShareDialog workId={workId} onClose={() => setSharing(false)} />}
       {asking && <AiDialog workId={workId} onClose={() => setAsking(false)} />}
+      {publishing && <PublishDialog workId={workId} onClose={() => setPublishing(false)} />}
       {addingRows !== null && (
         <Dialog
           title={t("addRowsTitle", { unit })}

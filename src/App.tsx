@@ -7,6 +7,7 @@ import { TimerChip } from "./components/TimerChip";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { PomodoroDriver } from "./components/Pomodoro";
 import { SaveToast, Watchers } from "./components/Watchers";
+import { Publisher } from "./components/Publisher";
 import { MiniApp } from "./MiniApp";
 import { RemoteApp } from "./RemoteApp";
 import { hours } from "./format";
@@ -123,6 +124,7 @@ function Shell() {
       </div>
 
       <Watchers />
+      <Publisher />
       <SaveToast />
       <UpdateNotice />
       {app.stopped && (
