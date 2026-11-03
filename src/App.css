@@ -2026,6 +2026,19 @@ button.lost:hover {
 .board tr:hover .mini.remove {
   visibility: visible;
 }
+/* ページの全工程を完了にする／外す。× と同じく行に乗せたときだけ出す（× がある行では × の左） */
+.pcell .mini.alldone {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  visibility: hidden;
+}
+.pcell .mini.alldone.beside {
+  right: 30px;
+}
+.board tr:hover .mini.alldone {
+  visibility: visible;
+}
 
 /* 工程が多くても、マスが潰れて文字が縦に並ばないように */
 .board .cell {

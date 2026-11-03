@@ -179,6 +179,20 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     }
   };
 
+  // ページの全工程をまとめて完了にする／外す（扉や白紙など、作業が要らないページ用）。
+  // 前の工程が終わっていなくても付ける。計測中のマスだけは触らない（止めるかどうかは本人が決める）
+  const allDone = (page: BoardPage) => page.cells.every((c) => c.done);
+  const setPagesDone = (pages: BoardPage[], done: boolean) =>
+    run(async () => {
+      for (const page of pages) {
+        for (const [i, stage] of board.stages.entries()) {
+          if (page.cells[i].done === done) continue;
+          if (app.active && app.active.pageId === page.id && app.active.stageId === stage.id) continue;
+          await api.setTaskDone(page.id, stage.id, done);
+        }
+      }
+    });
+
   // 後から足す記録：今日なら「今から N 分前〜今」、ほかの日は 12:00 から N 分（時刻は作業記録の画面で直せる）
   const saveLog = async () => {
     if (!logging) return;
@@ -431,6 +445,19 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             />
           )}
         </div>
+        {selected.length > 0 && (
+          <MenuButton
+            label={t(kindKey(kind, "bulkDone"), { n: selected.length, unit: unitText(board.work, selected.length) })}
+            items={[
+              {
+                label: t("pageAllDone"),
+                hint: t("pageAllDoneHint"),
+                onClick: () => setPagesDone(board.pages.filter((p) => selected.includes(p.id)), true),
+              },
+              { label: t("pageAllUndone"), onClick: () => setPagesDone(board.pages.filter((p) => selected.includes(p.id)), false) },
+            ]}
+          />
+        )}
         <div className="legend">
           <span>
             <i style={{ border: "1px dashed var(--faint)" }} />
@@ -553,6 +580,13 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                       </button>
                     </div>
                   </div>
+                  <button
+                    className={`mini alldone${hasRows ? " beside" : ""}`}
+                    title={allDone(page) ? t("pageAllUndone") : t("pageAllDoneHint")}
+                    onClick={() => setPagesDone([page], !allDone(page))}
+                  >
+                    {allDone(page) ? "↶" : "✓"}
+                  </button>
                   {hasRows && (
                     <button
                       className="mini remove"
