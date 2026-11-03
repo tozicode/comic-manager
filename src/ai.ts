@@ -46,7 +46,7 @@ export function aiText(input: AiInput, opts: AiOptions): string {
   const pages = board.pages.filter((p) => !p.missing);
   const totalCount = pages.reduce((n, p) => n + p.span, 0);
   // 作家の残りが 0 でも、メンバー担当のマスが残っていれば完成ではない（5.23）
-  const completed = prediction.tasks.every((t) => t.done);
+  const completed = prediction.tasks.every((t) => t.done || t.excluded);
   const out: string[] = [];
 
   // 前置き
@@ -128,13 +128,16 @@ export function aiText(input: AiInput, opts: AiOptions): string {
     table(
       [t("colStage"), t("colDone"), t("colSpent"), t("colBase", { row: rowWord }), t("colLeft")],
       board.stages.map((stage, i) => {
-        const done = pages.reduce((n, p) => n + (p.cells[i].done ? p.span : 0), 0);
+        // 対象外のマスは分母にも完了にも入れない
+        const counted = pages.filter((p) => !p.cells[i].excluded);
+        const done = counted.reduce((n, p) => n + (p.cells[i].done ? p.span : 0), 0);
+        const total = counted.reduce((n, p) => n + p.span, 0);
         const spentMs = pages.reduce((n, p) => n + p.cells[i].totalMs, 0);
         const base = prediction.stages.find((s) => s.stageId === stage.id);
-        const leftMs = prediction.tasks.filter((x) => x.stageId === stage.id && !x.done).reduce((n, x) => n + x.remainingMs, 0);
+        const leftMs = prediction.tasks.filter((x) => x.stageId === stage.id && !x.done && !x.excluded).reduce((n, x) => n + x.remainingMs, 0);
         return [
           stage.name,
-          `${done} / ${totalCount}`,
+          `${done} / ${total}`,
           spent(spentMs),
           !base ? "-" : base.fromHint ? t("baseHint", { time: est(base.baseMs) }) : t("baseSamples", { time: est(base.baseMs), n: base.samples }),
           est(leftMs),

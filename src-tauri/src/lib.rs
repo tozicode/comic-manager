@@ -273,6 +273,11 @@ fn set_task_done(state: State<AppState>, page_id: i64, stage_id: i64, done: bool
     with_store(&state, |s| s.set_task_done(page_id, stage_id, done, now_ms()))
 }
 
+#[tauri::command]
+fn set_task_excluded(state: State<AppState>, page_id: i64, stage_id: i64, excluded: bool) -> Cmd<()> {
+    with_store(&state, |s| s.set_task_excluded(page_id, stage_id, excluded))
+}
+
 /// ページのサムネイルを data URL で返す（重いので、Tauri からは別のスレッドで呼ばせる）
 #[tauri::command]
 async fn load_thumbnail(state: State<'_, AppState>, path: String) -> Cmd<String> {
@@ -765,6 +770,7 @@ fn dispatch(app: &AppHandle, name: &str, args: &serde_json::Value) -> Result<ser
         "list_works" => out(list_works(state)),
         "get_board" => out(get_board(state, arg(args, "workId")?)),
         "set_task_done" => out(set_task_done(state, arg(args, "pageId")?, arg(args, "stageId")?, arg(args, "done")?)),
+        "set_task_excluded" => out(set_task_excluded(state, arg(args, "pageId")?, arg(args, "stageId")?, arg(args, "excluded")?)),
         "get_active_session" => out(get_active_session(state)),
         "start_timer" => out(start_timer(state, arg(args, "pageId")?, arg(args, "stageId")?)),
         "stop_timer" => out(stop_timer(state)),
@@ -828,6 +834,7 @@ pub fn run() {
             set_collab_member,
             get_board,
             set_task_done,
+            set_task_excluded,
             load_thumbnail,
             get_active_session,
             start_timer,

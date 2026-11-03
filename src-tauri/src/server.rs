@@ -30,6 +30,7 @@ const ALLOWED: &[&str] = &[
     "start_timer",
     "stop_timer",
     "set_task_done",
+    "set_task_excluded",
     "get_prediction",
     "get_schedule",
     "list_spans",
@@ -41,7 +42,7 @@ const ALLOWED: &[&str] = &[
 ];
 
 /// 記録が変わるコマンド。終わったらアプリの窓に知らせて読み直させる
-const CHANGING: &[&str] = &["start_timer", "stop_timer", "set_task_done"];
+const CHANGING: &[&str] = &["start_timer", "stop_timer", "set_task_done", "set_task_excluded"];
 
 /// データが変わったことを知らせるイベント（画面側の app-context.tsx と同じ）
 const CHANGED_EVENT: &str = "otosazu://changed";

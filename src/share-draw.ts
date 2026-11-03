@@ -16,6 +16,8 @@ const MUTED = "#8a6f66";
 const ACCENT = "#c8553d";
 const TRACK = "#e8b9ac";
 const EMPTY = "#efe3dd";
+/** 対象外のマス（工程の色の代わりにグレー） */
+const EXCLUDED = "#c9bdb8";
 
 export type ShareInfo = {
   /** 隠すときは null */
@@ -143,6 +145,7 @@ export function drawShare(canvas: HTMLCanvasElement, data: ShareData, info: Shar
     ["before", t("legendBefore")],
     ["today", t("legendToday")],
     ["touched", t("legendTouched")],
+    ["excluded", t("legendExcluded")],
   ] as const) {
     drawCell(ctx, lx, ly - 15, 18, 18, state, legendColor);
     ctx.font = font(18);
@@ -174,7 +177,7 @@ function drawCell(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
       ctx.fill();
       ctx.globalAlpha = 0.35;
     }
-    ctx.fillStyle = state === "open" ? EMPTY : color;
+    ctx.fillStyle = state === "open" ? EMPTY : state === "excluded" ? EXCLUDED : color;
     ctx.fill();
   }
   ctx.restore();

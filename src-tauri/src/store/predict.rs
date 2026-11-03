@@ -44,6 +44,8 @@ pub struct TaskPrediction {
     pub done: bool,
     /// 共同作業のメンバーが担当しているマス（5.23）。作家の残りには入れない（remaining_ms は 0）
     pub assigned: bool,
+    /// 作業が要らないマス（対象外）。残りにも分母にも入れない（remaining_ms は 0）
+    pub excluded: bool,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -194,7 +196,7 @@ impl Store {
                 let predicted = model.bases.get(&cell.stage_id).map(|b| b.base_ms as f64).unwrap_or(0.0) * model.factor(page.id);
                 // メンバー担当のマスは、その人が描くので作家の残りには入れない
                 let assigned = page.assignees.iter().any(|a| a.stage_ids.contains(&cell.stage_id));
-                let remaining = if cell.done || assigned {
+                let remaining = if cell.done || assigned || cell.excluded {
                     0.0
                 } else {
                     (predicted - cell.total_ms as f64).max(predicted * 0.1)
@@ -207,12 +209,13 @@ impl Store {
                     remaining_ms: remaining.round() as i64,
                     done: cell.done,
                     assigned,
+                    excluded: cell.excluded,
                 });
             }
         }
 
         let mut bases = model.bases;
-        let open: Vec<&TaskPrediction> = tasks.iter().filter(|t| !t.done && !t.assigned).collect();
+        let open: Vec<&TaskPrediction> = tasks.iter().filter(|t| !t.done && !t.assigned && !t.excluded).collect();
         let remaining: i64 = open.iter().map(|t| t.remaining_ms).sum();
         let open_stages: Vec<i64> = board.stages.iter().map(|s| s.id).filter(|id| open.iter().any(|t| t.stage_id == *id)).collect();
         let n_samples: i64 = open_stages.iter().map(|id| bases[id].samples).sum();
@@ -409,6 +412,25 @@ mod tests {
         assert!((117 * MIN..137 * MIN).contains(&t.predicted_ms), "{}", t.predicted_ms / MIN);
         // 下書きは全部完了しているので残りに入らない
         assert!(p.tasks.iter().filter(|t| t.stage_id == st[0]).all(|t| t.done && t.remaining_ms == 0));
+    }
+
+    #[test]
+    fn 対象外のマスは残りに入れず_計測も始められない() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let pages: Vec<i64> = store.board(id, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        // p1 のペン入れ（目安 90 分）を対象外にする
+        store.set_task_excluded(pages[0], st[1], true).unwrap();
+        let p = store.prediction(id, 0).unwrap();
+        let t = p.tasks.iter().find(|t| t.page_id == pages[0] && t.stage_id == st[1]).unwrap();
+        assert!(t.excluded && !t.done && t.remaining_ms == 0);
+        assert_eq!(p.remaining_ms, 4 * 210 * MIN - 90 * MIN);
+        assert!(store.board(id, 0).unwrap().pages[0].cells[1].excluded);
+        // 対象外のマスでは計測を始められない。戻せば始められる
+        assert!(store.start_timer(pages[0], st[1], 0).is_err());
+        store.set_task_excluded(pages[0], st[1], false).unwrap();
+        assert!(store.start_timer(pages[0], st[1], 0).is_ok());
+        assert_eq!(store.prediction(id, 0).unwrap().remaining_ms, 4 * 210 * MIN);
     }
 
     #[test]

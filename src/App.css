@@ -6,6 +6,8 @@
   --text: #2b2723;
   --muted: #7a7169;
   --faint: #b3aaa1;
+  /* 対象外のマス（作業が要らない）のグレー */
+  --excluded: #b8aea8;
   --border: #e2dcd3;
   --accent: #c8553d;
   --accent-soft: #f6e0d8;
@@ -82,6 +84,7 @@
   --text: #ece6de;
   --muted: #a39a90;
   --faint: #6b635b;
+  --excluded: #5a534e;
   --border: #3a3530;
   --accent: #e06a50;
   --accent-soft: #4a2a22;
@@ -858,6 +861,19 @@ table.board {
 .cell.done {
   color: #fff;
   font-weight: 700;
+}
+/* 対象外のマス（作業が要らない）。工程の色の代わりにグレーで塗る */
+.cell.excluded {
+  background: var(--excluded);
+  color: #fff;
+  font-weight: 700;
+}
+.board tr.excluded td {
+  opacity: 0.55;
+}
+.tag.excluded {
+  background: var(--excluded);
+  color: #fff;
 }
 .cell.running {
   outline: 2px solid var(--accent);
@@ -2026,17 +2042,17 @@ button.lost:hover {
 .board tr:hover .mini.remove {
   visibility: visible;
 }
-/* ページの全工程を完了にする／外す。× と同じく行に乗せたときだけ出す（× がある行では × の左） */
-.pcell .mini.alldone {
+/* ページの全工程を対象外にする／戻す。× と同じく行に乗せたときだけ出す（× がある行では × の左） */
+.pcell .mini.exclude {
   position: absolute;
   top: 6px;
   right: 6px;
   visibility: hidden;
 }
-.pcell .mini.alldone.beside {
+.pcell .mini.exclude.beside {
   right: 30px;
 }
-.board tr:hover .mini.alldone {
+.board tr:hover .mini.exclude {
   visibility: visible;
 }
 
@@ -2315,6 +2331,11 @@ button.lost:hover {
 .remote .rcell.done {
   border-color: transparent;
   color: var(--accent-text);
+}
+.remote .rcell.excluded {
+  border-color: transparent;
+  background: var(--excluded);
+  color: #fff;
 }
 .remote .rcell.on {
   outline: 2px solid var(--accent);

@@ -11,7 +11,7 @@ import { SessionLike, shareData } from "./share";
 export const PUBLISH_BASE: string = import.meta.env.VITE_PUBLISH_BASE ?? "https://share.otosazu.com";
 
 /** 要約の版。形を変えたら上げる（閲覧ページは知らない版でも進み具合と最終更新だけは出す） */
-export const SNAPSHOT_VERSION = 2;
+export const SNAPSHOT_VERSION = 3;
 
 export type Snapshot = {
   v: number;
@@ -19,7 +19,7 @@ export type Snapshot = {
   app: string;
   work: { title: string | null; kind: Board["work"]["kind"]; unit: string; rows: number };
   stages: { name: string; color: string }[];
-  /** 行 × 工程。0 未着手 / 1 作業中 / 2 完了。隠すときは null */
+  /** 行 × 工程。0 未着手 / 1 作業中 / 2 完了 / 3 対象外（版 3。分母に入れない）。隠すときは null */
   cells: number[][] | null;
   spans: number[] | null;
   labels: string[] | null;
@@ -48,7 +48,7 @@ export type SnapshotExtra = {
   now: number;
 };
 
-const CELL_CODE = { open: 0, touched: 1, before: 2, today: 2 } as const;
+const CELL_CODE = { open: 0, touched: 1, before: 2, today: 2, excluded: 3 } as const;
 
 /** メンバーの印に使う頭文字（1 文字。CollabDialog と同じ） */
 const initial = (name: string) => (Array.from(name.trim())[0] ?? "?").toUpperCase();
@@ -91,8 +91,8 @@ export function buildSnapshot(forecast: Forecast, extra: SnapshotExtra, hide: Hi
     who: showCells && members.length > 0 ? who : null,
     progress: data.progress,
     todayProgress: data.todayProgress,
-    // 作家の残りが 0 でも、メンバー担当のマスが残っていれば完成ではない（5.23）
-    completed: prediction.tasks.every((t) => t.done),
+    // 作家の残りが 0 でも、メンバー担当のマスが残っていれば完成ではない（5.23）。対象外のマスは終わったものとみなす
+    completed: prediction.tasks.every((t) => t.done || t.excluded),
     deadlines: forecast.deadlines.map((d) => ({ name: d.name, date: dayKey(d.date), selected: d.id === selected })),
     finish:
       hidden.has("finish") || (!finish.low && !finish.mid && !finish.high)

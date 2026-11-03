@@ -211,6 +211,13 @@ messages! {
         "无法开始计时",
         "無法開始計時",
     ],
+    TaskExcluded => [
+        "このマスは対象外です。計測するには、先に対象に戻してください",
+        "This cell is excluded. Restore it before tracking",
+        "이 칸은 대상 외입니다. 측정하려면 먼저 대상으로 되돌리세요",
+        "此格已排除。要计时，请先恢复为对象",
+        "此格已排除。要計時，請先恢復為對象",
+    ],
     PageOrStageNotFound => [
         "ページか工程が見つかりませんでした",
         "Page or stage not found",

@@ -5,7 +5,7 @@
 // 上の札はつねに「いま注目しているタスク」を出す。主語は 選んだマス ?? 次にやること。
 // デスクトップのボードと違い、マスを押しただけでは計測を始めない（指は誤って触れやすいため）。
 import { useEffect, useState } from "react";
-import { api, BoardPage, Cell, StageRef, WorkSummary } from "./api";
+import { api, BoardPage, Cell, cellPassed, StageRef, WorkSummary } from "./api";
 import { useApp } from "./app-context";
 import { Thumb, spreadSide } from "./components/Thumb";
 import { Forecast, useForecast } from "./forecast";
@@ -58,7 +58,7 @@ function toSubject(f: Forecast, ref: Picked | null): Subject | null {
     page,
     stage,
     cell: page.cells[index],
-    waiting: index > 0 && !page.cells[index - 1].done,
+    waiting: index > 0 && !cellPassed(page.cells[index - 1]),
     remainingMs: task?.remainingMs ?? 0,
     spentMs: task?.spentMs ?? 0,
   };
@@ -239,14 +239,16 @@ function TaskCard({ subject, picked, tracking, onStart }: TaskCardProps) {
         <b>{page.label}</b> <span style={{ color: stage.color }}>●</span> {stage.name}
       </div>
       <div className="muted small-text">
-        {cell.done
-          ? tr("doneTotal", { time: hours(cell.totalMs) })
-          : subject.spentMs > 0
+        {cell.excluded
+          ? tr("excluded")
+          : cell.done
+            ? tr("doneTotal", { time: hours(cell.totalMs) })
+            : subject.spentMs > 0
             ? t("continuedLeft", { time: estimate(subject.remainingMs) })
             : t("remaining", { time: estimate(subject.remainingMs) })}
-        {!cell.done && subject.waiting && ` ・ ${tr("waiting")}`}
+        {!cell.done && !cell.excluded && subject.waiting && ` ・ ${tr("waiting")}`}
       </div>
-      {!cell.done && (
+      {!cell.done && !cell.excluded && (
         <div className="ractions">
           <button className="rbtn primary wide" onClick={() => onStart(page.id, stage.id)}>
             {tracking ? tr("switchTo") : t("start")}
@@ -279,14 +281,14 @@ function RemoteRow({ page, forecast, picked, onTap }: RowProps) {
         const cell = page.cells[i];
         const task = f.task(page.id, stage.id);
         // 前の工程が終わっていなくても計測はできる（2.2.0 から）。待ちは色を薄くして分かるようにする
-        const waiting = i > 0 && !page.cells[i - 1].done;
+        const waiting = i > 0 && !cellPassed(page.cells[i - 1]);
         const on = picked?.pageId === page.id && picked.stageId === stage.id;
-        const label = cell.done ? "✓" : cell.totalMs > 0 ? hours(cell.totalMs) : task ? estimate(task.remainingMs) : "–";
+        const label = cell.excluded ? "⊘" : cell.done ? "✓" : cell.totalMs > 0 ? hours(cell.totalMs) : task ? estimate(task.remainingMs) : "–";
         return (
           <button
             key={stage.id}
-            className={`rcell${cell.done ? " done" : ""}${waiting ? " waiting" : ""}${on ? " on" : ""}`}
-            style={cell.done ? { background: stage.color } : undefined}
+            className={`rcell${cell.excluded ? " excluded" : cell.done ? " done" : ""}${waiting ? " waiting" : ""}${on ? " on" : ""}`}
+            style={cell.done && !cell.excluded ? { background: stage.color } : undefined}
             title={tr("tapToPick")}
             aria-pressed={on}
             onClick={() => onTap(page.id, stage.id)}

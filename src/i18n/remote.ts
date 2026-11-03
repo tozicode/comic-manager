@@ -13,6 +13,7 @@ export const { t } = defineMessages({
     doneTotal: "完了 ・ 合計 {time}",
     tapToPick: "押すと上に出る（まだ計測は始まらない）",
     waiting: "前の工程待ち",
+    excluded: "対象外",
     offline: "つながりません。PC でアプリが動いているか確かめてください",
   },
   en: {
@@ -25,6 +26,7 @@ export const { t } = defineMessages({
     doneTotal: "Done · {time} in total",
     tapToPick: "Tap to show it above (tracking does not start yet)",
     waiting: "Waiting for the previous stage",
+    excluded: "Excluded",
     offline: "Cannot connect. Check that the app is running on your PC",
   },
   ko: {
@@ -37,6 +39,7 @@ export const { t } = defineMessages({
     doneTotal: "완료 · 합계 {time}",
     tapToPick: "누르면 위에 표시됩니다 (아직 측정은 시작되지 않습니다)",
     waiting: "이전 공정 대기",
+    excluded: "대상 외",
     offline: "연결할 수 없습니다. PC에서 앱이 실행 중인지 확인해 주세요",
   },
   "zh-Hans": {
@@ -49,6 +52,7 @@ export const { t } = defineMessages({
     doneTotal: "完成 · 合计 {time}",
     tapToPick: "点击后显示在上方（还不会开始计时）",
     waiting: "等待前一道工序",
+    excluded: "已排除",
     offline: "无法连接。请确认电脑上的应用正在运行",
   },
   "zh-Hant": {
@@ -61,6 +65,7 @@ export const { t } = defineMessages({
     doneTotal: "完成 · 合計 {time}",
     tapToPick: "點擊後顯示在上方（還不會開始計時）",
     waiting: "等待前一道工序",
+    excluded: "已排除",
     offline: "無法連線。請確認電腦上的應用程式正在執行",
   },
 });

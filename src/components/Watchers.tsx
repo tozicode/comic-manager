@@ -2,7 +2,7 @@
 // - PC の操作がしばらく無ければ、操作が無くなった時刻で計測を止めて「休憩していましたか？」と聞く
 // - 計測中に別のページの .clip が保存されたら「そのページを作業していますか？」と知らせる
 import { useEffect, useRef, useState } from "react";
-import { api, StopResult, TimerPrefs } from "../api";
+import { api, cellPassed, StopResult, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { hours, time } from "../format";
 import { t } from "../i18n/timer";
@@ -100,7 +100,9 @@ export function Watchers() {
         const page = board.pages.find((p) => p.id === saved[0]);
         if (!page) return;
         // 切り替え先の工程：計測中と同じ工程がそのページで着手できればそれ、だめなら最初の着手できる工程
-        const ready = board.stages.filter((_, i) => !page.cells[i].done && (i === 0 || page.cells[i - 1].done));
+        const ready = board.stages.filter(
+          (_, i) => !page.cells[i].done && !page.cells[i].excluded && (i === 0 || cellPassed(page.cells[i - 1])),
+        );
         const stage = ready.find((s) => s.id === active.stageId) ?? ready[0];
         if (!stage) return;
         appRef.current.notifySave({

@@ -104,7 +104,12 @@ export type Cell = {
   /** 完了にした時刻（ミリ秒） */
   doneAt: number | null;
   totalMs: number;
+  /** 作業が要らないマス（対象外）。進捗・予測・ノルマの分母に入れず、計測も始めない */
+  excluded: boolean;
 };
+
+/** 次の工程に進むうえで「済んだ」とみなすマス（完了か対象外） */
+export const cellPassed = (c: Cell) => c.done || c.excluded;
 
 // ----- 共同作業の取り込み（5.23） -----
 
@@ -232,6 +237,8 @@ export type TaskPrediction = {
   done: boolean;
   /** 共同作業のメンバーが担当しているマス（5.23）。作家の残りには入れない */
   assigned: boolean;
+  /** 作業が要らないマス（対象外）。残りにも分母にも入れない */
+  excluded: boolean;
 };
 
 export type Prediction = {
@@ -335,6 +342,8 @@ export const api = {
   getBoard: (workId: number) => call<Board>("get_board", { workId }),
   setTaskDone: (pageId: number, stageId: number, done: boolean) =>
     call<void>("set_task_done", { pageId, stageId, done }),
+  setTaskExcluded: (pageId: number, stageId: number, excluded: boolean) =>
+    call<void>("set_task_excluded", { pageId, stageId, excluded }),
   loadThumbnail: (path: string) => call<string>("load_thumbnail", { path }),
 
   getActiveSession: () => call<ActiveSession | null>("get_active_session"),

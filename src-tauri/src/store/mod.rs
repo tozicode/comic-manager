@@ -143,6 +143,8 @@ pub struct Cell {
     /// 完了にした時刻（ミリ秒）。共有の画像で「今日終えた」を見分けるのに使う（5.20）
     pub done_at: Option<i64>,
     pub total_ms: i64,
+    /// 作業が要らないマス（対象外）。進捗・予測・ノルマの分母に入れず、計測も始めない。完了や記録はそのまま残す
+    pub excluded: bool,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -291,7 +293,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 9;
+const LATEST: i64 = 10;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -514,6 +516,21 @@ impl Store {
                         last_error TEXT
                     );
                     PRAGMA user_version = 9;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+        }
+        if version < 10 && target >= 10 {
+            // 版 10：作業が要らないマス（対象外。仕様書 5.2）。task_done と同じ形で、ページ × 工程ごとに持つ
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE task_excluded (
+                        page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+                        stage_id INTEGER NOT NULL REFERENCES stage_def(id),
+                        PRIMARY KEY (page_id, stage_id)
+                    );
+                    PRAGMA user_version = 10;
                     COMMIT;",
                 )
                 .map_err(db_err)?;
@@ -1243,6 +1260,14 @@ impl Store {
             .query_map([work_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .and_then(|rows| rows.collect())
             .map_err(db_err)?;
+        let mut excluded = self
+            .conn
+            .prepare("SELECT t.page_id, t.stage_id FROM task_excluded t JOIN page p ON p.id = t.page_id WHERE p.work_id = ?1")
+            .map_err(db_err)?;
+        let excluded: Vec<(i64, i64)> = excluded
+            .query_map([work_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)?;
 
         let page_tags = self.page_tags(work_id)?;
         let assignees = self.collab_assignees(work_id)?;
@@ -1262,6 +1287,7 @@ impl Store {
                             .find(|(p, st, _)| *p == page.id && *st == s.id)
                             .map(|t| t.2)
                             .unwrap_or(0),
+                        excluded: excluded.contains(&(page.id, s.id)),
                     }
                 })
                 .collect();
@@ -1300,11 +1326,35 @@ impl Store {
         Ok(())
     }
 
+    /// マスを対象外にする／戻す（作業が要らないマス。仕様書 5.2）。完了の印や作業記録には触らない
+    pub fn set_task_excluded(&self, page_id: i64, stage_id: i64, excluded: bool) -> Result<()> {
+        self.check_task(page_id, stage_id)?;
+        if excluded {
+            self.conn
+                .execute("INSERT OR IGNORE INTO task_excluded (page_id, stage_id) VALUES (?1, ?2)", params![page_id, stage_id])
+                .map_err(db_err)?;
+        } else {
+            self.conn
+                .execute("DELETE FROM task_excluded WHERE page_id = ?1 AND stage_id = ?2", params![page_id, stage_id])
+                .map_err(db_err)?;
+        }
+        Ok(())
+    }
+
+    fn is_excluded(&self, page_id: i64, stage_id: i64) -> Result<bool> {
+        self.conn
+            .query_row("SELECT COUNT(*) > 0 FROM task_excluded WHERE page_id = ?1 AND stage_id = ?2", params![page_id, stage_id], |r| r.get(0))
+            .map_err(db_err)
+    }
+
     // ----- タイマー -----
 
-    /// 計測を始める。別のタスクを計測中なら、そちらはこの時点で止める
+    /// 計測を始める。別のタスクを計測中なら、そちらはこの時点で止める。対象外のマスでは始めない
     pub fn start_timer(&self, page_id: i64, stage_id: i64, now: i64) -> Result<ActiveSession> {
         self.check_task(page_id, stage_id)?;
+        if self.is_excluded(page_id, stage_id)? {
+            return Err(tr(M::TaskExcluded).into());
+        }
         self.close_open_sessions(now)?;
         self.conn
             .execute(

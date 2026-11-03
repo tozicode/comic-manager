@@ -21,7 +21,7 @@ const page = (id: number, span: number, cells: [boolean, number | null][], missi
   missing,
   found: true,
   tags: [],
-  cells: cells.map(([done, doneAt], i) => ({ stageId: stages[i].id, done, doneAt, totalMs: 0 })),
+  cells: cells.map(([done, doneAt], i) => ({ stageId: stages[i].id, done, doneAt, totalMs: 0, excluded: false })),
   assignees: [],
 });
 const board = (pages: BoardPage[]): Board => ({
@@ -73,6 +73,21 @@ describe("shareData", () => {
     ]);
     expect(d.progress).toBeCloseTo(4 / 8);
     expect(d.todayProgress).toBeCloseTo(3 / 8);
+  });
+
+  it("対象外のマスは excluded にして、分母にも完了にも数えない", () => {
+    const p1 = page(1, 1, [[false, null], [true, DAY + 1]]);
+    p1.cells[0].excluded = true;
+    const p2 = page(2, 1, [[true, DAY - 1], [false, null]]);
+    const d = shareData(board([p1, p2]), [], DAY);
+    expect(d.rows).toEqual([
+      ["excluded", "today"],
+      ["before", "open"],
+    ]);
+    // 分母は対象外を除いた 3 マス。完了 2、今日 1
+    expect(d.progress).toBeCloseTo(2 / 3);
+    expect(d.todayProgress).toBeCloseTo(1 / 3);
+    expect(d.doneToday.map((x) => [x.stage.id, x.count])).toEqual([[2, 1]]);
   });
 
   it("行が無ければ進み具合は 0", () => {

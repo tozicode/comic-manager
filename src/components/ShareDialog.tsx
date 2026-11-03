@@ -51,7 +51,7 @@ export function ShareDialog({ workId, onClose }: { workId: number; onClose: () =
       quotaMs: forecast.quotaMs,
       quotaMet: forecast.quotaMet,
       finish: opts.finish ? forecast.finish.mid : null,
-      completed: prediction.tasks.every((t) => t.done),
+      completed: prediction.tasks.every((t) => t.done || t.excluded),
       row: board.work,
     };
     return { data: shareData(board, sessions, dayStart), info };

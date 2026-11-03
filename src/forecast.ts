@@ -1,6 +1,6 @@
 // 作品の予測・スケジュールをまとめて読み込み、画面で使う形に計算するフック
 import { useEffect, useState } from "react";
-import { api, Board, Prediction, Span, TaskPrediction, WorkSchedule } from "./api";
+import { api, Board, cellPassed, Prediction, Span, TaskPrediction, WorkSchedule } from "./api";
 import { useApp } from "./app-context";
 import type { ExportedEvent, MonthInput, MonthOrder } from "./calendar";
 import { dailyTotals, dayKey, dayStartMs, startOfDay } from "./format";
@@ -153,22 +153,23 @@ export function computeForecast(
   pages.forEach((page, pageIndex) => {
     board.stages.forEach((stage, stageIndex) => {
       const t = task(page.id, stage.id);
-      // メンバー担当のマスは、その人が描くので作家のやることには入れない（5.23）
-      if (!t || t.done || t.assigned) return;
+      // メンバー担当のマスは、その人が描くので作家のやることには入れない（5.23）。対象外のマスも入れない
+      if (!t || t.done || t.assigned || t.excluded) return;
       const c = { pageId: page.id, stageId: stage.id, pageIndex, stageIndex, remainingMs: t.remainingMs, inProgress: t.spentMs > 0 };
       openTasks.push(c);
-      if (stageIndex > 0 && !page.cells[stageIndex - 1].done) return;
+      // 前の工程が対象外なら、終わったものとして飛ばす
+      if (stageIndex > 0 && !cellPassed(page.cells[stageIndex - 1])) return;
       candidates.push(c);
     });
   });
   const stageInfos: StageInfo[] = board.stages.map((s) => ({
     id: s.id,
     name: s.name,
-    openMs: prediction.tasks.filter((t) => t.stageId === s.id && !t.done && !t.assigned).reduce((n, t) => n + t.remainingMs, 0),
+    openMs: prediction.tasks.filter((t) => t.stageId === s.id && !t.done && !t.assigned && !t.excluded).reduce((n, t) => n + t.remainingMs, 0),
   }));
   const assigned = (page: Board["pages"][number], stageId: number) => page.assignees.some((a) => a.stageIds.includes(stageId));
-  const openCounts = board.stages.map((s, i) => pages.filter((p) => !p.cells[i].done && !assigned(p, s.id)).length);
-  const assignedCount = prediction.tasks.filter((t) => t.assigned && !t.done).length;
+  const openCounts = board.stages.map((s, i) => pages.filter((p) => !cellPassed(p.cells[i]) && !assigned(p, s.id)).length);
+  const assignedCount = prediction.tasks.filter((t) => t.assigned && !t.done && !t.excluded).length;
 
   return {
     board,

@@ -28,7 +28,7 @@ const page = (id: number, span: number, cells: [boolean, number | null, number][
   missing,
   found: true,
   tags: [],
-  cells: cells.map(([done, doneAt, totalMs], i) => ({ stageId: stages[i].id, done, doneAt, totalMs })),
+  cells: cells.map(([done, doneAt, totalMs], i) => ({ stageId: stages[i].id, done, doneAt, totalMs, excluded: false })),
   assignees: [],
 });
 const board = (pages: BoardPage[]): Board => ({
@@ -55,9 +55,10 @@ const prediction = (b: Board, remainingMs: number): Prediction => ({
       stageId: c.stageId,
       predictedMs: 3600_000,
       spentMs: c.totalMs,
-      remainingMs: c.done ? 0 : 3600_000,
+      remainingMs: c.done || c.excluded ? 0 : 3600_000,
       done: c.done,
       assigned: false,
+      excluded: c.excluded,
     })),
   ),
   remainingMs,
@@ -107,7 +108,7 @@ describe("buildSnapshot", () => {
       NOW,
     );
     const s = buildSnapshot(f, extra, []);
-    expect(s.v).toBe(2);
+    expect(s.v).toBe(3);
     expect(s.app).toBe("3.0.0");
     expect(s.work).toEqual({ title: "冬の新刊", kind: "comic", unit: "", rows: 3 });
     expect(s.stages).toEqual([
@@ -153,6 +154,35 @@ describe("buildSnapshot", () => {
     expect(s.progress).toBeCloseTo(0.5);
     expect(s.work.rows).toBe(3);
     expect(s.deadlines).toEqual([]);
+  });
+
+  it("対象外のマスは 3 で送って分母に入れず、候補からも外し、前の工程としては飛ばす", () => {
+    const p1 = page(1, 1, [[true, DAY, 0], [false, null, 0]]);
+    // p2 はページごと対象外（扉など）
+    const p2 = page(2, 1, [[false, null, 0], [false, null, 0]]);
+    p2.cells.forEach((c) => (c.excluded = true));
+    // p3 は下書きだけ対象外。ペン入れは下書き待ちにならず、着手できる
+    const p3 = page(3, 1, [[false, null, 0], [false, null, 0]]);
+    p3.cells[0].excluded = true;
+    const bx = board([p1, p2, p3]);
+    const f = computeForecast(bx, prediction(bx, 2 * 3600_000), schedule([], null), [], NOW);
+    expect(f.candidates.map((c) => [c.pageId, c.stageId])).toEqual([
+      [1, 2],
+      [3, 2],
+    ]);
+    expect(f.openTasks.map((c) => [c.pageId, c.stageId])).toEqual([
+      [1, 2],
+      [3, 2],
+    ]);
+    const s = buildSnapshot(f, { ...extra, sessions: [] }, []);
+    expect(s.cells).toEqual([
+      [2, 0],
+      [3, 3],
+      [3, 0],
+    ]);
+    // 分母は対象外を除いた 3 マス、完了 1
+    expect(s.progress).toBeCloseTo(1 / 3);
+    expect(s.completed).toBe(false);
   });
 
   it("全部完了した作品は completed になり、一度も作業していなければ lastWorkedOn は null", () => {

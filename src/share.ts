@@ -6,7 +6,8 @@ import { t } from "./i18n/share";
 import type { ShareInfo } from "./share-draw";
 
 /** マスの状態：これまでに終えた／今日終えた／今日手を付けたが終わっていない／未着手 */
-export type CellState = "before" | "today" | "touched" | "open";
+/** excluded は作業が要らないマス（対象外）。分母に入れず、グレーで描く */
+export type CellState = "before" | "today" | "touched" | "open" | "excluded";
 
 export type ShareData = {
   stages: StageRef[];
@@ -38,6 +39,7 @@ export function shareData(board: Board, sessions: SessionLike[], dayStart: numbe
   let today = 0;
   const rows = pages.map((page) =>
     page.cells.map((cell, i): CellState => {
+      if (cell.excluded) return "excluded";
       total += page.span;
       if (cell.done) {
         done += page.span;

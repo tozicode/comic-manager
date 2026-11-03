@@ -1,6 +1,6 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, BoardPage, CollabInfo, PageMerge, PageSplit, PublishPrefs, StageRef, TagGroup, isRemote } from "../api";
+import { api, BoardPage, CollabInfo, PageMerge, PageSplit, PublishPrefs, StageRef, TagGroup, isRemote, cellPassed } from "../api";
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { AiDialog } from "../components/AiDialog";
@@ -32,7 +32,7 @@ const HOUR = 3_600_000;
 const COLLAB_CHECK_MS = 60_000;
 
 /** セルの状態。locked = 前の工程が終わっていない */
-type CellState = "done" | "running" | "doing" | "todo" | "locked";
+type CellState = "done" | "running" | "doing" | "todo" | "locked" | "excluded";
 
 export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate: (s: Screen) => void }) {
   const app = useApp();
@@ -179,16 +179,18 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     }
   };
 
-  // ページの全工程をまとめて完了にする／外す（扉や白紙など、作業が要らないページ用）。
-  // 前の工程が終わっていなくても付ける。計測中のマスだけは触らない（止めるかどうかは本人が決める）
-  const allDone = (page: BoardPage) => page.cells.every((c) => c.done);
-  const setPagesDone = (pages: BoardPage[], done: boolean) =>
+  // マスを対象外にする／戻す（作業が要らないマス。仕様書 5.2）。計測中のマスだけは触らない
+  const isTracking = (pageId: number, stageId: number) => app.active?.pageId === pageId && app.active.stageId === stageId;
+  const setExcluded = (page: BoardPage, stage: StageRef, excluded: boolean) =>
+    run(() => api.setTaskExcluded(page.id, stage.id, excluded));
+  // ページ単位：全工程をまとめて対象外にする／戻す（扉や白紙など、ページごと作業が要らないとき）
+  const allExcluded = (page: BoardPage) => page.cells.every((c) => c.excluded);
+  const setPagesExcluded = (pages: BoardPage[], excluded: boolean) =>
     run(async () => {
       for (const page of pages) {
         for (const [i, stage] of board.stages.entries()) {
-          if (page.cells[i].done === done) continue;
-          if (app.active && app.active.pageId === page.id && app.active.stageId === stage.id) continue;
-          await api.setTaskDone(page.id, stage.id, done);
+          if (page.cells[i].excluded === excluded || isTracking(page.id, stage.id)) continue;
+          await api.setTaskExcluded(page.id, stage.id, excluded);
         }
       }
     });
@@ -277,14 +279,16 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
 
   const cellState = (page: BoardPage, i: number): CellState => {
     const cell = page.cells[i];
+    if (cell.excluded) return "excluded";
     if (cell.done) return "done";
     if (app.active?.pageId === page.id && app.active.stageId === cell.stageId) return "running";
-    if (i > 0 && !page.cells[i - 1].done) return "locked";
+    // 前の工程が対象外なら、終わったものとして飛ばす
+    if (i > 0 && !cellPassed(page.cells[i - 1])) return "locked";
     return cell.totalMs > 0 ? "doing" : "todo";
   };
 
   const ordered = hasRows ? rowOrder.map((id) => pages.find((p) => p.id === id)!).filter(Boolean) : pages;
-  const shown = filter === "open" ? ordered.filter((p) => p.cells.some((c) => !c.done)) : ordered;
+  const shown = filter === "open" ? ordered.filter((p) => p.cells.some((c) => !c.done && !c.excluded)) : ordered;
   const allChecked = shown.length > 0 && shown.every((p) => selected.includes(p.id));
 
   // まとめて付けるときは、選んだ全ページに付いているタグを「付いている」とみなす
@@ -400,15 +404,18 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         <div className="card">
           <div className="section-title">{t("stageProgress")}</div>
           {board.stages.map((s, i) => {
-            const done = pages.reduce((n, p) => n + (p.cells[i].done ? p.span : 0), 0);
+            // 対象外のマスは分母にも完了にも入れない
+            const counted = pages.filter((p) => !p.cells[i].excluded);
+            const done = counted.reduce((n, p) => n + (p.cells[i].done ? p.span : 0), 0);
+            const total = counted.reduce((n, p) => n + p.span, 0);
             return (
               <div key={s.id} className="stage-prog">
                 <span>{s.name}</span>
                 <div className="bar">
-                  <span style={{ width: `${pageCount ? (done / pageCount) * 100 : 0}%`, background: s.color }} />
+                  <span style={{ width: `${total ? (done / total) * 100 : 0}%`, background: s.color }} />
                 </div>
                 <span className="num muted">
-                  {done}/{pageCount}
+                  {done}/{total}
                 </span>
               </div>
             );
@@ -447,14 +454,14 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         </div>
         {selected.length > 0 && (
           <MenuButton
-            label={t(kindKey(kind, "bulkDone"), { n: selected.length, unit: unitText(board.work, selected.length) })}
+            label={t(kindKey(kind, "bulkExclude"), { n: selected.length, unit: unitText(board.work, selected.length) })}
             items={[
               {
-                label: t("pageAllDone"),
-                hint: t("pageAllDoneHint"),
-                onClick: () => setPagesDone(board.pages.filter((p) => selected.includes(p.id)), true),
+                label: t("pageExclude"),
+                hint: t("pageExcludeHint"),
+                onClick: () => setPagesExcluded(board.pages.filter((p) => selected.includes(p.id)), true),
               },
-              { label: t("pageAllUndone"), onClick: () => setPagesDone(board.pages.filter((p) => selected.includes(p.id)), false) },
+              { label: t("pageRestore"), onClick: () => setPagesExcluded(board.pages.filter((p) => selected.includes(p.id)), false) },
             ]}
           />
         )}
@@ -502,7 +509,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           {shown.map((page) => (
             <tr
               key={page.id}
-              className={`${selected.includes(page.id) ? "selected" : ""}${dragOrder && dragging.current === page.id ? " dragging" : ""}`}
+              className={`${selected.includes(page.id) ? "selected" : ""}${allExcluded(page) ? " excluded" : ""}${dragOrder && dragging.current === page.id ? " dragging" : ""}`}
               onDragOver={hasRows ? (e) => onRowDragOver(e, page.id) : undefined}
               onDrop={(e) => e.preventDefault()}
             >
@@ -555,6 +562,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                         <span className="lost">{t("notFound")}</span>
                       ))}
                     <div className="tags">
+                      {allExcluded(page) && <span className="tag excluded">{t("excludedTag")}</span>}
                       {page.tags.map((id) => {
                         const t = tagName(id);
                         return (
@@ -581,11 +589,11 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                     </div>
                   </div>
                   <button
-                    className={`mini alldone${hasRows ? " beside" : ""}`}
-                    title={allDone(page) ? t("pageAllUndoneTip") : t("pageAllDoneTip")}
-                    onClick={() => setPagesDone([page], !allDone(page))}
+                    className={`mini exclude${hasRows ? " beside" : ""}`}
+                    title={allExcluded(page) ? t("pageRestoreTip") : t("pageExcludeTip")}
+                    onClick={() => setPagesExcluded([page], !allExcluded(page))}
                   >
-                    {allDone(page) ? "↶" : "✓"}
+                    {allExcluded(page) ? "↶" : "⊘"}
                   </button>
                   {hasRows && (
                     <button
@@ -631,6 +639,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                     onPause={app.pause}
                     onDone={() => run(() => api.setTaskDone(page.id, stage.id, true))}
                     onUndo={() => setUndo({ page, stage })}
+                    onExclude={() => setExcluded(page, stage, true)}
+                    onRestore={() => setExcluded(page, stage, false)}
                     onLog={() => setLogging({ page, stage, date: dayKey(startOfDay(Date.now())), minutes: "30", done: false })}
                   />
                 </td>
@@ -1128,9 +1138,27 @@ type CellProps = {
   onUndo: () => void;
   /** 計測し忘れた記録を後から足す */
   onLog: () => void;
+  /** このマスを対象外にする／戻す（作業が要らないとき） */
+  onExclude: () => void;
+  onRestore: () => void;
 };
 
-function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onPause, onDone, onUndo, onLog }: CellProps) {
+function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onPause, onDone, onUndo, onLog, onExclude, onRestore }: CellProps) {
+  if (state === "excluded") {
+    return (
+      <div className="cell excluded">
+        <div className="line">
+          <span>{t("cellExcluded")}</span>
+          {totalMs > 0 && <span className="num">{hours(totalMs)}</span>}
+        </div>
+        <div className="cell-actions">
+          <button className="mini light" title={t("cellRestore")} onClick={onRestore}>
+            ↺
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (state === "done") {
     return (
       <div className="cell done" style={{ background: stage.color }}>
@@ -1224,6 +1252,16 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
             ✓
           </button>
         )}
+        <button
+          className="mini"
+          title={t("cellExclude")}
+          onClick={(e) => {
+            e.stopPropagation();
+            onExclude();
+          }}
+        >
+          ⊘
+        </button>
         <button className="mini accent" title={t("startTracking")}>
           ▶
         </button>

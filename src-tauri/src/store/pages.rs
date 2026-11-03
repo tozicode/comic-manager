@@ -237,6 +237,7 @@ impl Store {
             .query_row(
                 "SELECT EXISTS (SELECT 1 FROM work_session WHERE page_id = ?1)
                      OR EXISTS (SELECT 1 FROM task_done WHERE page_id = ?1)
+                     OR EXISTS (SELECT 1 FROM task_excluded WHERE page_id = ?1)
                      OR EXISTS (SELECT 1 FROM page_tag WHERE page_id = ?1)",
                 [page_id],
                 |r| r.get(0),
@@ -339,6 +340,13 @@ impl Store {
             params![from, to],
         )
         .map_err(db_err)?;
+        // 対象外も完了と同じで、両方のページで対象外だった工程だけ残す
+        tx.execute(
+            "DELETE FROM task_excluded WHERE page_id = ?2
+             AND stage_id NOT IN (SELECT stage_id FROM task_excluded WHERE page_id = ?1)",
+            params![from, to],
+        )
+        .map_err(db_err)?;
         // タグは足し合わせる。ただし排他グループで移す先にすでにタグがあるときは、移す先のタグを優先する
         tx.execute(
             "INSERT OR IGNORE INTO page_tag (page_id, tag_id)
@@ -369,6 +377,11 @@ impl Store {
         tx.execute(
             "INSERT OR IGNORE INTO task_done (page_id, stage_id, done_at)
              SELECT ?2, stage_id, done_at FROM task_done WHERE page_id = ?1",
+            params![page_id, new_page_id],
+        )
+        .map_err(db_err)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO task_excluded (page_id, stage_id) SELECT ?2, stage_id FROM task_excluded WHERE page_id = ?1",
             params![page_id, new_page_id],
         )
         .map_err(db_err)?;
