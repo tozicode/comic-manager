@@ -188,6 +188,8 @@ footer {
 .cells .cell.span2 { width: 30px; }
 .cells .cell.working { background: transparent; box-shadow: inset 0 0 0 2px var(--c); }
 .cells .cell.done { background: var(--c); }
+/* 対象外のマス（版 3）。分母に入らない */
+.cells .cell.excluded { background: #c9bdb8; }
 /* 共同作業のメンバーが担当しているマス：下にメンバーの色の線 */
 .cells .cell.assigned { box-shadow: inset 0 -4px 0 var(--m); }
 .cells .cell.working.assigned { box-shadow: inset 0 0 0 2px var(--c), inset 0 -4px 0 var(--m); }

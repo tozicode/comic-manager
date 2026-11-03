@@ -450,17 +450,20 @@ function el(tag, attrs, children) {
   return e;
 }
 
-/** 工程ごとの完了数（見開きは 2）。cells が無ければ null */
+/** 工程ごとの完了数と分母（見開きは 2）。版 3 の 3（対象外）は分母に入れない。cells が無ければ null */
 function doneCounts(snapshot) {
   if (!snapshot.cells) return null;
   const counts = snapshot.stages.map(() => 0);
+  const totals = snapshot.stages.map(() => 0);
   snapshot.cells.forEach((row, r) => {
     const span = (snapshot.spans && snapshot.spans[r]) || 1;
     row.forEach((v, i) => {
+      if (v === 3) return;
+      totals[i] += span;
       if (v === 2) counts[i] += span;
     });
   });
-  return counts;
+  return { counts, totals };
 }
 /** 行の数（見開きは 2）。cells が無ければ work.rows */
 function totalUnits(snapshot) {
@@ -531,9 +534,9 @@ function renderWork(root, updatedAt, s) {
   card.appendChild(el("div", { class: "summary" }, [progressStat, deadlineStat, finishStat]));
 
   // 工程ごとの完了数
-  const counts = doneCounts(s);
-  if (counts) {
-    const total = totalUnits(s);
+  const dc = doneCounts(s);
+  if (dc) {
+    const { counts, totals } = dc;
     card.appendChild(el("div", { class: "label muted small" }, t("stagesDone")));
     card.appendChild(
       el(
@@ -544,7 +547,7 @@ function renderWork(root, updatedAt, s) {
             el("i", { class: "dot", style: `background:${st.color}` }),
             el("span", null, `${st.name} `),
             el("b", null, unitText(s, counts[i])),
-            el("span", { class: "muted small" }, t("ofRows", { n: total })),
+            el("span", { class: "muted small" }, t("ofRows", { n: totals[i] })),
           ]),
         ),
       ),
@@ -564,7 +567,7 @@ function renderWork(root, updatedAt, s) {
         const m = s.who && s.members && s.who[r] && s.who[r][i] >= 0 ? s.members[s.who[r][i]] : null;
         grid.appendChild(
           el("div", {
-            class: `cell${span > 1 ? " span2" : ""}${v === 2 ? " done" : v === 1 ? " working" : ""}${m ? " assigned" : ""}`,
+            class: `cell${span > 1 ? " span2" : ""}${v === 3 ? " excluded" : v === 2 ? " done" : v === 1 ? " working" : ""}${m ? " assigned" : ""}`,
             style: `--c:${st.color}${m ? `;--m:${m.c}` : ""}`,
             title: `${(s.labels && s.labels[r]) || ""} ${st.name}${m ? ` (${m.i})` : ""}`,
           }),
