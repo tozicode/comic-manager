@@ -582,7 +582,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                   </div>
                   <button
                     className={`mini alldone${hasRows ? " beside" : ""}`}
-                    title={allDone(page) ? t("pageAllUndone") : t("pageAllDoneHint")}
+                    title={allDone(page) ? t("pageAllUndoneTip") : t("pageAllDoneTip")}
                     onClick={() => setPagesDone([page], !allDone(page))}
                   >
                     {allDone(page) ? "↶" : "✓"}
