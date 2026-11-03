@@ -23,6 +23,8 @@ import "./App.css";
 export type Screen = "works" | "board" | "schedule" | "records" | "stats" | "settings";
 
 const WORK_KEY = "otosazu.workId";
+/** 起動時のミニ窓の開き直しを済ませたか。StrictMode は effect を 2 回動かすので、1 回で止める */
+let miniRestored = false;
 
 function loadWorkId(): number | null {
   try {
@@ -71,6 +73,8 @@ function Shell() {
 
   // 前回ミニタイマーを開いたまま終えていたら、起動時に開き直す（✕ で閉じていれば開かない）
   useEffect(() => {
+    if (miniRestored) return;
+    miniRestored = true;
     try {
       if (localStorage.getItem(MINI_OPEN_KEY) !== "1") return;
     } catch {

@@ -1,5 +1,7 @@
 //! デスクトップまわり：ミニタイマー窓、グローバルショートカット、PC の無操作時間
 
+use std::sync::Mutex;
+
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
@@ -12,9 +14,14 @@ pub const TOGGLE_EVENT: &str = "otosazu://toggle-timer";
 const MINI_SIZE: (f64, f64) = (340.0, 196.0);
 const MINI_COMPACT_SIZE: (f64, f64) = (236.0, 64.0);
 
+/// open_mini を直列にする鍵。コマンドは async で同時に走るので、「無いから作る」を 2 つが同時に通ると
+/// 同じラベルの窓が 2 つでき、片方は管理の外に残る（起動時の開き直しが React の StrictMode で 2 回呼ばれて起きた）
+static OPEN_MINI_LOCK: Mutex<()> = Mutex::new(());
+
 /// ミニタイマー窓を開く（開いていれば前に出す）。中身は同じ画面で、窓のラベルを見て切り替える。
 /// `focus` が偽なら前に出さない（起動時に開き直すときに、メインの窓からフォーカスを奪わないように）
 pub fn open_mini(app: &AppHandle, focus: bool) -> Result<(), String> {
+    let _guard = OPEN_MINI_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(w) = app.get_webview_window(MINI_LABEL) {
         w.show().map_err(err)?;
         return if focus { w.set_focus().map_err(err) } else { Ok(()) };
