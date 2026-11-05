@@ -1,0 +1,3 @@
+# 自動更新の確認先（src-tauri/tauri.conf.json の plugins.updater.endpoints）。
+# 置き場所を移すときはここを書き換えれば、配布済みのアプリを更新せずに済む
+/update/latest.json https://github.com/tozicode/otosazu-releases/releases/latest/download/latest.json 302

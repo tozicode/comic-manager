@@ -14,7 +14,7 @@ if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
 }
 
 const dir = join("release", version);
-const base = process.env.OTOSAZU_UPDATE_BASE ?? `https://github.com/tozicode/comic-manager/releases/download/v${version}`;
+const base = process.env.OTOSAZU_UPDATE_BASE ?? `https://github.com/tozicode/otosazu-releases/releases/download/v${version}`;
 
 /** ファイルと署名があれば { url, signature } を返す */
 function entry(file, required) {

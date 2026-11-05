@@ -1,14 +1,18 @@
 # リリース手順
 
-新しい版を出すときの手順。自動更新（仕様書 5.13）のために、更新ファイルを GitHub Releases に置き、
+新しい版を出すときの手順。自動更新（仕様書 5.13）のために、更新ファイルを公開専用リポジトリ otosazu-releases の GitHub Releases に置き、
 BOOTH には今までどおり zip を置く。
 
 ## 0. 最初の 1 回だけ
 
-- リポジトリを公開にする（非公開だと、アプリが更新ファイルをダウンロードできない）
+- 配布物は公開専用のリポジトリ **tozicode/otosazu-releases** の Releases に置く（ソースのリポジトリとは別。
+  ソースは非公開にしてよい）。アプリの更新確認先は `https://otosazu.com/update/latest.json` で、
+  `site/_redirects` が otosazu-releases の最新の latest.json へ転送している。置き場所を移すときは `_redirects` を
+  書き換えるだけでよく、配布済みのアプリを更新せずに済む（予備として `tauri.conf.json` の endpoints の 2 つ目に
+  otosazu-releases の URL も直接入れてある）
 
   ```sh
-  gh repo edit tozicode/comic-manager --visibility public --accept-visibility-change-consequences
+  gh repo create tozicode/otosazu-releases --public --description "Otosazu の配布（自動更新が読みに来る置き場所）" --homepage "https://otosazu.com"
   ```
 
 - 署名鍵 `~/.tauri/otosazu.key`（パスワードなし）を、USB メモリなど別の場所にも控えておく。
@@ -80,19 +84,33 @@ node scripts/make-latest-json.mjs <版> release/<版>/notes.txt
 
 ```sh
 V=<版>
-gh release create v$V --title "Otosazu $V" --notes-file release/$V/notes.txt \
-  release/$V/Otosazu_${V}_x64-setup.exe \
-  release/$V/Otosazu_${V}_universal.app.tar.gz \
-  release/$V/latest.json
+gh release create v$V --repo tozicode/otosazu-releases --title "Otosazu $V" --notes-file release/$V/notes.txt   release/$V/Otosazu_${V}_x64-setup.exe   release/$V/Otosazu_${V}_universal.app.tar.gz   release/$V/latest.json
 ```
 
-上げたら、アプリが読む URL から latest.json が取れることを確かめる。
+**移行期間（comic-manager を非公開にするまで）**：3.1.0 までのアプリは comic-manager の Releases を見ている。
+それらに新しい版を届けるため、同じものを comic-manager にも上げる（`--repo tozicode/comic-manager`）。
+latest.json の中のファイルの URL は otosazu-releases を指しているので、comic-manager 側のは知らせを出すためだけのもの。
+
+上げたら、アプリが読む URL から latest.json が取れることを確かめる（1 つ目は Pages の配り直しが終わってから）。
 
 ```sh
-curl -sL https://github.com/tozicode/comic-manager/releases/latest/download/latest.json | head
+curl -sL https://otosazu.com/update/latest.json | head
+curl -sL https://github.com/tozicode/otosazu-releases/releases/latest/download/latest.json | head
 ```
 
 古い版のアプリを起動して、「新しい版が出ています」が出て更新できるかも確かめる。
+
+### ソースのリポジトリを非公開にする（移行が済んだら）
+
+`node scripts/release-stats.mjs` で、comic-manager 側の latest.json の「起動」の伸びが止まったら（更新確認先を変えた版が
+ほぼ行き渡ったら）、comic-manager を非公開にする。その後は comic-manager の Releases は読めなくなるので、
+取り残された人は BOOTH か otosazu.com から入れ直してもらう。
+
+```sh
+gh repo edit tozicode/comic-manager --visibility private --accept-visibility-change-consequences
+```
+
+非公開にしたら、手順 6 の comic-manager への二重アップロードはやめる。
 
 ## 7. BOOTH
 
@@ -118,7 +136,7 @@ curl -sL https://github.com/tozicode/comic-manager/releases/latest/download/late
 node scripts/release-stats.mjs
 ```
 
-版ごとに、GitHub Releases のファイルのダウンロード数を出す。
+版ごとに、GitHub Releases のファイルのダウンロード数を出す（otosazu-releases と、読めるうちは comic-manager の両方。同じ版は合わせて数える）。
 
 - **人数**（setup.exe と .app.tar.gz）：その版が最新だった間に開いて更新した人の数。BOOTH は zip で配っているので、
   GitHub から取るのはほぼ自動更新だけで、1 人が 1 つの版につき 1 回。「あとで」を選び続ける人は入らないので、少なめに出る
