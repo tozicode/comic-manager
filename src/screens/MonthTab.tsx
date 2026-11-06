@@ -179,7 +179,7 @@ function MonthGrid({
   /** 今日より前の週も出す（印刷用） */
   full?: boolean;
 }) {
-  const { board, today, deadline, deadlines, cal } = forecast;
+  const { board, today, deadline, deadlines, cal, share } = forecast;
   // 月曜はじまりで、月の初めの週の月曜から月の終わりの週の日曜まで
   const end = new Date(month.getFullYear(), month.getMonth() + 1, 0);
   const cells: Date[] = [];
@@ -205,6 +205,8 @@ function MonthGrid({
           const off = cal.daysOff.includes(key) || (cal.weekdayHours[(d.getDay() + 6) % 7] ?? 0) === 0;
           const groups = plan ? groupDay(plan.steps, label, w) : [];
           const total = plan ? plan.steps.reduce((n, s) => n + s.ms, 0) : 0;
+          // ほかの作品の取り分（5.24）。今日より前は 0
+          const others = d >= today ? share.othersDayMs(d) : 0;
           const cls = ["month-day", d < today ? "past" : "", key === dayKey(today) ? "today" : "", off ? "off" : ""];
           return (
             <div
@@ -224,6 +226,7 @@ function MonthGrid({
                   </span>
                 </div>
               ))}
+              {others > 0 && <div className="month-item muted">{t("others", { time: estimate(others) })}</div>}
               {deadlines
                 .filter((dl) => key === dayKey(dl.date))
                 .map((dl) => (

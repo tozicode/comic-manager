@@ -5,14 +5,15 @@ import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { useRelink } from "../components/Relink";
 import { Thumb } from "../components/Thumb";
-import { useForecast } from "../forecast";
-import { dayLabel, hours } from "../format";
+import { useForecast, useTimetable } from "../forecast";
+import { dayLabel, estimate, hours } from "../format";
 import { kindKey, setName, unitText } from "../i18n/common";
 import { t } from "../i18n/works";
 
 type Props = {
   works: WorkSummary[];
-  onOpen: (workId: number) => void;
+  /** 作品を開く。to を "schedule" にするとスケジュール画面で開く */
+  onOpen: (workId: number, to?: "board" | "schedule") => void;
   /** 作品の追加で「新しいセットを作る」を選んだ（設定の工程へ飛ぶ） */
   onAddSet: () => void;
 };
@@ -57,6 +58,7 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
           {t("leadDetail")}
         </p>
       )}
+      <TimetableWarning onOpen={onOpen} />
       <div className="works">
         {works.map((w) => (
           <div key={w.id} className="card work-card" role="button" tabIndex={0} onClick={() => onOpen(w.id)}>
@@ -211,6 +213,33 @@ const STATUS = {
   late: "late",
 } as const;
 
+/** 時間割で締切までに残りを配りきれない作品の 1 行（5.24）。作品名を押すとその作品のスケジュール画面へ */
+function TimetableWarning({ onOpen }: { onOpen: (workId: number, to?: "board" | "schedule") => void }) {
+  const tt = useTimetable();
+  if (!tt) return null;
+  const late = tt.works
+    .filter((w) => w.deadline && (tt.shares.get(w.workId)?.shortMs ?? 0) > 0)
+    .sort((a, b) => a.deadline!.getTime() - b.deadline!.getTime());
+  if (late.length === 0) return null;
+  const shortMs = late.reduce((n, w) => n + tt.shares.get(w.workId)!.shortMs, 0);
+  return (
+    <div className="notice warn">
+      <span>
+        ⚠{" "}
+        {late.map((w, i) => (
+          <span key={w.workId}>
+            {i > 0 && t("warnSep")}
+            <button className="link" style={{ color: "inherit", textDecoration: "underline" }} onClick={() => onOpen(w.workId, "schedule")}>
+              {w.title}（{dayLabel(w.deadline!)}）
+            </button>
+          </span>
+        ))}
+        {t("warnTail", { time: hours(shortMs) })}
+      </span>
+    </div>
+  );
+}
+
 /** 完成見込みと締切の状況（作品カードの中に出す） */
 function WorkOutlook({ workId }: { workId: number }) {
   const f = useForecast(workId);
@@ -244,6 +273,13 @@ function WorkOutlook({ workId }: { workId: number }) {
           </dd>
         </>
       )}
+      <dt>{t("todayQuota")}</dt>
+      <dd className="num">
+        {estimate(f.quotaMs)}
+        {f.workedTodayMs > 0 && (
+          <span className="muted"> {f.quotaMet ? t("todayDone") : t("todayLeft", { time: estimate(f.quotaMs - f.workedTodayMs) })}</span>
+        )}
+      </dd>
     </>
   );
 }
