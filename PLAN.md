@@ -80,7 +80,13 @@ export function buildTimetable(works: TimetableWork[], today: Date, cal: Calenda
 
 **確かめ方**：`npm test -- timetable`
 
-## 2. 入力の呼び口と下限の保存（Rust、版 11）
+## 2. 入力の呼び口と下限の保存（Rust、版 11）（済）
+
+作ってみて決まったこと：
+- アプリに「アーカイブ」は無いので、時間割の入力は残りのある全作品。休止したい作品は残りのマスを対象外にして外す（仕様書 5.24 も直した）
+- `set_work_hours` を消したので、5.5 A のスライダーの保存先はこの工程で `set_default_hours` に替えた（工程 3 の先取り。
+  「全作品の既定に戻す」のボタンと文言 `resetHours` は消した）。`WorkSchedule` の型とテストの雛形も合わせた
+- 0.5 刻みに合わない下限は丸めずに断る（`MinHoursInvalid`）。画面は選択肢で出すので、普通は起きない
 
 ```sql
 -- 版 11
@@ -93,12 +99,12 @@ ALTER TABLE work ADD COLUMN min_hours REAL NOT NULL DEFAULT 0;  -- 「この作�
 - `store/schedule.rs`：`WorkSchedule` から `custom_hours` と `default_weekday_hours` を消し、`weekday_hours` は全作品の既定値そのものにする。
   `min_hours: f64` を足す。`set_work_hours` を消し、`set_min_hours(work_id, hours)`（0〜24、0.5 刻み）を足す
 - `store/predict.rs`：`prediction()` を「モデルを受け取って作品の残りを出す」`prediction_with(&model, work_id, now)` に分け、
-  `timetable_input(now) -> Vec<TimetableWorkInput>` を足す。アーカイブしていない全作品について
+  `timetable_input(now) -> Vec<TimetableWorkInput>` を足す。全作品について
   `{ work_id, title, remaining_ms, low_ms, high_ms, sigma, deadlines, selected_deadline, min_hours }`。残りが 0 の作品は入れない。
   モデルの学習は 1 回だけ
 - `lib.rs`：`get_timetable_input`、`set_min_hours`。`set_work_hours` を消す。
   `server.rs` の `ALLOWED` に `get_timetable_input` を足す（遠隔の画面のノルマに要る。秘密は含まない）
-- テスト：移行、`set_min_hours` の範囲、`timetable_input` がアーカイブ済み・完成済みの作品を入れないこと、`prediction_with` が `prediction()` と同じ結果
+- テスト：移行、`set_min_hours` の範囲、`timetable_input` が完成済みの作品を入れないこと、`prediction_with` が `prediction()` と同じ結果
 
 **確かめ方**：`cargo test`（`src-tauri/` で）
 
