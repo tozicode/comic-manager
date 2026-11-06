@@ -1,5 +1,5 @@
-//! スケジュールの設定：曜日ごとの作業時間、休みの日、締切（複数。5.19）、作業順。
-//! 曜日ごとの作業時間は全作品の既定値があり、作品ごとに上書きできる。休みの日は全作品で共通。
+//! スケジュールの設定：曜日ごとの作業時間、休みの日、締切（複数。5.19）、作業順、「この作品に毎日かならず」（5.24）。
+//! 曜日ごとの作業時間と休みの日は全作品で共通（人に 1 つの器。5.24）。作品ごとの上書きは版 11 でやめた。
 
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
@@ -19,11 +19,10 @@ const DEFAULT_HOURS: WeekHours = [3.0, 3.0, 3.0, 3.0, 3.0, 6.0, 6.0];
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkSchedule {
-    /// この作品で使う曜日ごとの作業時間（月〜日）
+    /// 曜日ごとの作業時間（月〜日。全作品共通）
     pub weekday_hours: WeekHours,
-    /// 作品独自の作業時間を設定しているか
-    pub custom_hours: bool,
-    pub default_weekday_hours: WeekHours,
+    /// 「この作品に毎日かならず」使う時間（時間／日。既定 0。5.24）
+    pub min_hours: f64,
     /// 締切（日付順）
     pub deadlines: Vec<Deadline>,
     /// いま見ている締切の id（消した締切を指していることもある。どれで計算するかは画面側で決める）
@@ -77,22 +76,19 @@ impl Store {
     }
 
     pub fn schedule(&self, work_id: i64) -> Result<WorkSchedule> {
-        let (hours, selected_deadline, work_order): (Option<String>, Option<i64>, String) = self
+        let (min_hours, selected_deadline, work_order): (f64, Option<i64>, String) = self
             .conn
             .query_row(
-                "SELECT weekday_hours, selected_deadline, work_order FROM work WHERE id = ?1",
+                "SELECT min_hours, selected_deadline, work_order FROM work WHERE id = ?1",
                 [work_id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()
             .map_err(db_err)?
             .ok_or_else(|| tr(M::WorkNotFound).to_string())?;
-        let default = self.default_hours()?;
-        let custom = hours.as_deref().and_then(from_json);
         Ok(WorkSchedule {
-            weekday_hours: custom.unwrap_or(default),
-            custom_hours: custom.is_some(),
-            default_weekday_hours: default,
+            weekday_hours: self.default_hours()?,
+            min_hours,
             deadlines: self.deadlines(work_id)?,
             selected_deadline,
             work_order,
@@ -100,21 +96,19 @@ impl Store {
         })
     }
 
-    /// 作品の作業時間を設定する。None なら全作品の既定値に戻す
-    pub fn set_work_hours(&self, work_id: i64, hours: Option<WeekHours>) -> Result<()> {
-        if let Some(h) = &hours {
-            check_hours(h)?;
+    /// 「この作品に毎日かならず」使う時間を設定する（0〜24 時間、0.5 刻み）
+    pub fn set_min_hours(&self, work_id: i64, hours: f64) -> Result<()> {
+        if !(0.0..=24.0).contains(&hours) || (hours * 2.0).fract() != 0.0 {
+            return Err(tr(M::MinHoursInvalid).into());
         }
-        self.conn
-            .execute(
-                "UPDATE work SET weekday_hours = ?2 WHERE id = ?1",
-                params![work_id, hours.as_ref().map(to_json)],
-            )
+        let n = self
+            .conn
+            .execute("UPDATE work SET min_hours = ?2 WHERE id = ?1", params![work_id, hours])
             .map_err(db_err)?;
-        Ok(())
+        if n == 0 { Err(tr(M::WorkNotFound).into()) } else { Ok(()) }
     }
 
-    fn deadlines(&self, work_id: i64) -> Result<Vec<Deadline>> {
+    pub(super) fn deadlines(&self, work_id: i64) -> Result<Vec<Deadline>> {
         let mut stmt = self
             .conn
             .prepare("SELECT id, name, date FROM deadline WHERE work_id = ?1 ORDER BY date, id")
@@ -237,25 +231,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 作業時間は既定値と作品ごとの上書きがある() {
+    fn 作業時間は全作品共通で_下限は作品ごと() {
         let (store, id) = setup();
         let s = store.schedule(id).unwrap();
-        assert_eq!(s.weekday_hours, DEFAULT_HOURS);
-        assert!(!s.custom_hours);
+        assert_eq!((s.weekday_hours, s.min_hours), (DEFAULT_HOURS, 0.0));
         assert_eq!(s.work_order, "stage");
         assert!(s.deadlines.is_empty());
 
         store.set_default_hours([2.0, 2.0, 2.0, 2.0, 2.0, 5.0, 0.0]).unwrap();
         assert_eq!(store.schedule(id).unwrap().weekday_hours[6], 0.0);
+        assert!(store.set_default_hours([25.0; 7]).is_err());
 
-        let mine = [1.0, 1.0, 1.0, 1.0, 1.0, 8.0, 8.0];
-        store.set_work_hours(id, Some(mine)).unwrap();
-        let s = store.schedule(id).unwrap();
-        assert_eq!((s.weekday_hours, s.custom_hours, s.default_weekday_hours[5]), (mine, true, 5.0));
-
-        store.set_work_hours(id, None).unwrap();
-        assert!(!store.schedule(id).unwrap().custom_hours);
-        assert!(store.set_work_hours(id, Some([25.0; 7])).is_err());
+        store.set_min_hours(id, 1.5).unwrap();
+        assert_eq!(store.schedule(id).unwrap().min_hours, 1.5);
+        // 0〜24 時間、0.5 刻み。無い作品には設定できない
+        assert!(store.set_min_hours(id, 1.25).is_err());
+        assert!(store.set_min_hours(id, -0.5).is_err());
+        assert!(store.set_min_hours(id, 24.5).is_err());
+        assert!(store.set_min_hours(9999, 1.0).is_err());
+        store.set_min_hours(id, 0.0).unwrap();
+        assert_eq!(store.schedule(id).unwrap().min_hours, 0.0);
     }
 
     #[test]

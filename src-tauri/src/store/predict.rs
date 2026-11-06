@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use rusqlite::params;
 use serde::Serialize;
 
+use super::schedule::Deadline;
 use super::tags::SYSTEM_SPREAD;
 use super::{Result, Store, db_err};
 
@@ -48,7 +49,7 @@ pub struct TaskPrediction {
     pub excluded: bool,
 }
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StageBase {
     pub stage_id: i64,
@@ -95,6 +96,24 @@ pub struct ModelStats {
     pub tags: Vec<TagFit>,
     /// 全工程（隠した工程も含む）
     pub stages: Vec<StageBase>,
+}
+
+/// 時間割（仕様書 5.24）の入力。作品 1 つぶん。時間割そのものは画面側（src/timetable.ts）で組む
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TimetableWorkInput {
+    pub work_id: i64,
+    pub title: String,
+    /// 残り時間（標準／少なめ／多め）と、残り合計の対数標準偏差（prediction と同じ）
+    pub remaining_ms: i64,
+    pub low_ms: i64,
+    pub high_ms: i64,
+    pub sigma: f64,
+    /// 締切（日付順）といま見ている締切の id（schedule と同じ。どれで計算するかは画面側で決める）
+    pub deadlines: Vec<Deadline>,
+    pub selected_deadline: Option<i64>,
+    /// 「この作品に毎日かならず」使う時間（時間／日）
+    pub min_hours: f64,
 }
 
 /// 全作品の実績から作る、予測の前提（基準時間・タグの倍率・ずれ）
@@ -185,7 +204,11 @@ impl Store {
     }
 
     pub fn prediction(&self, work_id: i64, now: i64) -> Result<Prediction> {
-        let model = self.model()?;
+        self.prediction_with(&self.model()?, work_id, now)
+    }
+
+    /// 学習済みのモデルで作品の残りを出す。全作品ぶんを続けて出すときは、モデルを 1 回だけ学習して使い回す
+    fn prediction_with(&self, model: &Model, work_id: i64, now: i64) -> Result<Prediction> {
         let sigma = model.sigma;
 
         // この作品のタスク
@@ -214,7 +237,7 @@ impl Store {
             }
         }
 
-        let mut bases = model.bases;
+        let bases = &model.bases;
         let open: Vec<&TaskPrediction> = tasks.iter().filter(|t| !t.done && !t.assigned && !t.excluded).collect();
         let remaining: i64 = open.iter().map(|t| t.remaining_ms).sum();
         let open_stages: Vec<i64> = board.stages.iter().map(|s| s.id).filter(|id| open.iter().any(|t| t.stage_id == *id)).collect();
@@ -227,7 +250,7 @@ impl Store {
             if uses_hint { s.max(HINT_SIGMA) } else { s }
         };
 
-        let stages = board.stages.iter().filter_map(|s| bases.remove(&s.id)).collect();
+        let stages = board.stages.iter().filter_map(|s| bases.get(&s.id).cloned()).collect();
         Ok(Prediction {
             tasks,
             remaining_ms: remaining,
@@ -236,6 +259,39 @@ impl Store {
             sigma: total_sigma,
             stages,
         })
+    }
+
+    /// 時間割の入力（仕様書 5.24）。残りのタスクがある全作品について、残りと締切と下限をまとめて返す。
+    /// 残りが 0 の作品（完成した作品）は入れない。モデルの学習は 1 回だけ
+    pub fn timetable_input(&self, now: i64) -> Result<Vec<TimetableWorkInput>> {
+        let model = self.model()?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, selected_deadline, min_hours FROM work ORDER BY id")
+            .map_err(db_err)?;
+        let works: Vec<(i64, String, Option<i64>, f64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)?;
+        let mut out = Vec::new();
+        for (work_id, title, selected_deadline, min_hours) in works {
+            let p = self.prediction_with(&model, work_id, now)?;
+            if p.remaining_ms <= 0 {
+                continue;
+            }
+            out.push(TimetableWorkInput {
+                work_id,
+                title,
+                remaining_ms: p.remaining_ms,
+                low_ms: p.low_ms,
+                high_ms: p.high_ms,
+                sigma: p.sigma,
+                deadlines: self.deadlines(work_id)?,
+                selected_deadline,
+                min_hours,
+            });
+        }
+        Ok(out)
     }
 
     /// 全ページのタグと初期倍率（隠したタグは除く。見開きは span = 2 から）
@@ -487,6 +543,38 @@ mod tests {
         let many = store.prediction(id, at).unwrap();
         assert!(many.stages.iter().all(|s| s.samples == 5));
         assert!(many.sigma < few.sigma);
+    }
+
+    #[test]
+    fn 時間割の入力は残りのある全作品ぶんで_完成した作品は入れない() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let mut at = 0;
+        // 2 つ目の作品（1 ページ）は全工程を終えて完成にする
+        let other = store.add_work("C:/b.cmc", &super::super::tests::comic(&[("a.clip", 1)]), 0).unwrap();
+        let page = store.board(other, 0).unwrap().pages[0].id;
+        for &stage in &st {
+            finish(&store, page, stage, 60, &mut at);
+        }
+        // 3 つ目は締切と下限を持つ
+        let third = store.add_work("C:/c.cmc", &super::super::tests::comic(&[("x.clip", 1), ("y.clip", 1)]), 0).unwrap();
+        let dl = store.add_deadline(third, "納品", "2026-12-01").unwrap();
+        store.select_deadline(third, Some(dl)).unwrap();
+        store.set_min_hours(third, 1.5).unwrap();
+
+        let input = store.timetable_input(at).unwrap();
+        let ids: Vec<i64> = input.iter().map(|w| w.work_id).collect();
+        assert_eq!(ids, [id, third]);
+        // 学習済みのモデルを使い回しても、作品ごとの prediction() と同じ数字
+        for w in &input {
+            let p = store.prediction(w.work_id, at).unwrap();
+            assert_eq!((w.remaining_ms, w.low_ms, w.high_ms, w.sigma), (p.remaining_ms, p.low_ms, p.high_ms, p.sigma));
+            assert!(w.remaining_ms > 0);
+        }
+        let w3 = input.iter().find(|w| w.work_id == third).unwrap();
+        assert_eq!((w3.deadlines.len(), w3.deadlines[0].id, w3.selected_deadline, w3.min_hours), (1, dl, Some(dl), 1.5));
+        let w1 = input.iter().find(|w| w.work_id == id).unwrap();
+        assert_eq!((w1.deadlines.len(), w1.selected_deadline, w1.min_hours), (0, None, 0.0));
     }
 
     /// 工程 1 に、タグなしのページを 60 分、タグ 7（初期 ×1.3）のページを `minutes` 分で n 件ずつ入れる

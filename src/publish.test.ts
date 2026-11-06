@@ -69,8 +69,7 @@ const prediction = (b: Board, remainingMs: number): Prediction => ({
 });
 const schedule = (deadlines: { id: number; name: string; date: string }[], selected: number | null): WorkSchedule => ({
   weekdayHours: [2, 2, 2, 2, 2, 2, 2],
-  customHours: false,
-  defaultWeekdayHours: [2, 2, 2, 2, 2, 2, 2],
+  minHours: 0,
   deadlines,
   selectedDeadline: selected,
   workOrder: "stage",

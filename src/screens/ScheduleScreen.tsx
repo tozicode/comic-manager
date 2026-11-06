@@ -83,19 +83,19 @@ function FinishTab({
   setDraftHours: (h: number[] | null) => void;
 }) {
   const app = useApp();
-  const { schedule, finish, prediction, board } = forecast;
+  const { schedule, finish, prediction } = forecast;
   const hoursNow = draftHours ?? schedule.weekdayHours;
   const saveTimer = useRef<number | undefined>(undefined);
   const [newDayOff, setNewDayOff] = useState("");
 
-  // スライダーを止めて少し経ったら保存する
+  // スライダーを止めて少し経ったら保存する。値は全作品共通の器（設定の曜日ごとの作業時間）そのもの（5.24）
   const changeHours = (i: number, v: number) => {
     const next = hoursNow.map((h, k) => (k === i ? v : h));
     setDraftHours(next);
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
       try {
-        await api.setWorkHours(board.work.id, next);
+        await api.setDefaultHours(next);
         app.refresh();
       } catch (e) {
         app.showError(e);
@@ -141,13 +141,7 @@ function FinishTab({
           <span className="muted">{t("perWeek")}</span>
           <b className="num">{hours(weekTotal * HOUR)}</b>
           <span className="grow" />
-          {schedule.customHours ? (
-            <button className="btn small ghost" onClick={() => run(() => api.setWorkHours(board.work.id, null))}>
-              {t("resetHours")}
-            </button>
-          ) : (
-            <span className="muted">{t("defaultHours")}</span>
-          )}
+          <span className="muted">{t("defaultHours")}</span>
         </div>
         <div className="section-title">{t("daysOffTitle")}</div>
         <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>

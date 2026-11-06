@@ -266,16 +266,29 @@ export type ModelStats = { tags: TagFit[]; stages: Prediction["stages"] };
 export type Deadline = { id: number; name: string; date: string };
 
 export type WorkSchedule = {
-  /** 月〜日の作業時間（時間） */
+  /** 月〜日の作業時間（時間。全作品共通） */
   weekdayHours: number[];
-  customHours: boolean;
-  defaultWeekdayHours: number[];
+  /** 「この作品に毎日かならず」使う時間（時間／日。5.24） */
+  minHours: number;
   /** 日付順 */
   deadlines: Deadline[];
   /** いま見ている締切の id（消した締切を指していることもある） */
   selectedDeadline: number | null;
   workOrder: "stage" | "page";
   daysOff: string[];
+};
+
+/** 時間割の入力（5.24）。作品 1 つぶん。残りが 0 の作品は入らない */
+export type TimetableWorkInput = {
+  workId: number;
+  title: string;
+  remainingMs: number;
+  lowMs: number;
+  highMs: number;
+  sigma: number;
+  deadlines: Deadline[];
+  selectedDeadline: number | null;
+  minHours: number;
 };
 
 export type PageMerge = { fromPageId: number; fromFileName: string; toPageId: number; toLabel: string; ms: number };
@@ -379,7 +392,9 @@ export const api = {
   getPrediction: (workId: number) => call<Prediction>("get_prediction", { workId }),
   getModelStats: () => call<ModelStats>("get_model_stats"),
   getSchedule: (workId: number) => call<WorkSchedule>("get_schedule", { workId }),
-  setWorkHours: (workId: number, hours: number[] | null) => call<void>("set_work_hours", { workId, hours }),
+  getTimetableInput: () => call<TimetableWorkInput[]>("get_timetable_input"),
+  /** 0〜24 時間、0.5 刻み */
+  setMinHours: (workId: number, hours: number) => call<void>("set_min_hours", { workId, hours }),
   setDefaultHours: (hours: number[]) => call<void>("set_default_hours", { hours }),
   addDeadline: (workId: number, name: string, date: string) => call<number>("add_deadline", { workId, name, date }),
   updateDeadline: (id: number, name: string, date: string) => call<void>("update_deadline", { id, name, date }),

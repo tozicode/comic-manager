@@ -79,8 +79,7 @@ const prediction: Prediction = {
 };
 const schedule: WorkSchedule = {
   weekdayHours: [3, 3, 3, 3, 3, 6, 0],
-  customHours: false,
-  defaultWeekdayHours: [3, 3, 3, 3, 3, 6, 0],
+  minHours: 0,
   deadlines: [
     { id: 1, name: "早割", date: "2026-11-01" },
     { id: 2, name: "", date: "2026-11-06" },

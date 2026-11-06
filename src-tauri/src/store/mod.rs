@@ -25,7 +25,7 @@ mod tags;
 
 pub use collab::{Assignee, CollabInfo, CollabMember, CollabSummary};
 pub use pages::{PageMerge, PageSplit};
-pub use predict::{ModelStats, Prediction};
+pub use predict::{ModelStats, Prediction, TimetableWorkInput};
 pub use prefs::{DisplayPrefs, RemotePrefs, TimerPrefs};
 pub use publish::PublishPrefs;
 pub use schedule::WorkSchedule;
@@ -293,7 +293,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 10;
+const LATEST: i64 = 11;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -531,6 +531,18 @@ impl Store {
                         PRIMARY KEY (page_id, stage_id)
                     );
                     PRAGMA user_version = 10;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+        }
+        if version < 11 && target >= 11 {
+            // 版 11：作品ごとの作業時間の上書きをやめ（値は捨てる）、「この作品に毎日かならず」を足す（仕様書 5.24）
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    ALTER TABLE work DROP COLUMN weekday_hours;
+                    ALTER TABLE work ADD COLUMN min_hours REAL NOT NULL DEFAULT 0;
+                    PRAGMA user_version = 11;
                     COMMIT;",
                 )
                 .map_err(db_err)?;
@@ -2061,6 +2073,28 @@ mod tests {
         let rows: Vec<(i64, &str, i64)> =
             board.pages.iter().map(|p| (p.id, p.file_name.as_str(), p.cells[0].total_ms)).collect();
         assert_eq!(rows, [(70, "page0001.clip", 600000), (71, "page0002.clip", 0)]);
+    }
+
+    #[test]
+    fn 版10のデータを版11に移すと作品ごとの作業時間は消え下限は0になる() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        let old = Store { conn };
+        old.migrate(10).unwrap();
+        old.conn
+            .execute_batch(
+                "INSERT INTO work (id, title, kind, set_id, cmc_path, created_at, weekday_hours)
+                    VALUES (7, '旧作品', 'comic', 1, 'C:/old.cmc', 0, '[1,1,1,1,1,8,8]');
+                 INSERT INTO work_stage (work_id, stage_id, sort_order) VALUES (7, 1, 0);",
+            )
+            .unwrap();
+        old.migrate(LATEST).unwrap();
+        let version: i64 = old.conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, LATEST);
+        // 作品ごとの上書きは列ごと消え、全作品の既定値に戻る
+        assert!(old.conn.prepare("SELECT weekday_hours FROM work").is_err());
+        let s = old.schedule(7).unwrap();
+        assert_eq!((s.weekday_hours, s.min_hours), (old.default_hours().unwrap(), 0.0));
     }
 
     #[test]

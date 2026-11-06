@@ -33,6 +33,7 @@ const ALLOWED: &[&str] = &[
     "set_task_excluded",
     "get_prediction",
     "get_schedule",
+    "get_timetable_input",
     "list_spans",
     "load_thumbnail",
     "get_display_prefs",
