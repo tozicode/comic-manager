@@ -14,7 +14,6 @@ import {
   deadlinePlan,
   DeadlinePlan,
   finishDateAtPace,
-  HOUR,
   MIN_STEP,
   onTimeProbability,
   pickDeadline,
@@ -36,6 +35,8 @@ export type DeadlineView = {
   plan: DeadlinePlan;
   probability: number;
   status: DeadlineStatus;
+  /** この締切を選んだときに、締切までに配りきれない時間（0 なら収まる。5.24） */
+  shortMs: number;
 };
 
 export type Forecast = {
@@ -110,7 +111,6 @@ function toTimetableWork(w: TimetableWorkInput, allSpans: Span[], today: Date, n
     highMs: w.highMs,
     sigma: w.sigma,
     deadline: picked ? new Date(`${picked.date}T00:00`) : null,
-    minMs: w.minHours * HOUR,
     workedTodayMs: totals.get(dayKey(today))?.total ?? 0,
   };
 }
@@ -213,10 +213,10 @@ export function computeForecast(
     sigma: prediction.sigma,
     deadlines: schedule.deadlines,
     selectedDeadline: schedule.selectedDeadline,
-    minHours: schedule.minHours,
   };
   const works = [self, ...timetable.filter((w) => w.workId !== board.work.id)].map((w) => toTimetableWork(w, allSpans, today, now));
   const share = buildTimetable(works, today, cal).get(board.work.id)!;
+  const picked = pickDeadline(schedule.deadlines, schedule.selectedDeadline, dayKey(today));
 
   const finish = {
     ...share.finish,
@@ -229,14 +229,15 @@ export function computeForecast(
       const date = new Date(`${d.date}T00:00`);
       // 1 日あたりの必要時間は、この作品だけで割った数字のまま（5.24）
       const plan = deadlinePlan(prediction.remainingMs, prediction.highMs, today, date, workedTodayMs, cal);
+      // 選んでいない締切は、この作品の締切をその日に差し替えて時間割を組み直した結果で見る（別の締切なら収まるか）
+      const s = d.id === picked?.id ? share : buildTimetable(works.map((w, i) => (i === 0 ? { ...w, deadline: date } : w)), today, cal).get(board.work.id)!;
       // 確率の分母は、締切までにこの作品が使えた器（ほかの作品が先に取るぶんを除く）。今日の作業済みぶんは除く
-      const capacityLeft = Math.max(0, share.availableUntil(date) - Math.max(workedTodayMs, 0));
+      const capacityLeft = Math.max(0, s.availableUntil(date) - Math.max(workedTodayMs, 0));
       const probability = onTimeProbability(prediction.remainingMs, prediction.sigma, capacityLeft);
       const status: DeadlineStatus =
-        finish.mid && finish.mid <= date ? (finish.high && finish.high <= date ? "ok" : "tight") : "late";
-      return { id: d.id, name: d.name, date, plan, probability, status };
+        s.finish.mid && s.finish.mid <= date ? (s.finish.high && s.finish.high <= date ? "ok" : "tight") : "late";
+      return { id: d.id, name: d.name, date, plan, probability, status, shortMs: s.shortMs };
     });
-  const picked = pickDeadline(schedule.deadlines, schedule.selectedDeadline, dayKey(today));
   const deadline = deadlines.find((d) => d.id === picked?.id) ?? null;
   const quotaMs = share.todayMs;
   const leftMs = quotaMs - workedTodayMs;

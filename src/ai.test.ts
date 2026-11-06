@@ -79,7 +79,6 @@ const prediction: Prediction = {
 };
 const schedule: WorkSchedule = {
   weekdayHours: [3, 3, 3, 3, 3, 6, 0],
-  minHours: 0,
   deadlines: [
     { id: 1, name: "早割", date: "2026-11-01" },
     { id: 2, name: "", date: "2026-11-06" },
@@ -193,7 +192,6 @@ describe("aiText", () => {
       sigma: 0.3,
       deadlines: [{ id: 9, name: "", date: "2026-11-04" }],
       selectedDeadline: null,
-      minHours: 0,
     };
     const withOther = aiText(
       { ...input(), forecast: computeForecast(board, prediction, schedule, [], NOW, undefined, [other]) },

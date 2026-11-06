@@ -69,7 +69,6 @@ const prediction = (b: Board, remainingMs: number): Prediction => ({
 });
 const schedule = (deadlines: { id: number; name: string; date: string }[], selected: number | null): WorkSchedule => ({
   weekdayHours: [2, 2, 2, 2, 2, 2, 2],
-  minHours: 0,
   deadlines,
   selectedDeadline: selected,
   workOrder: "stage",
@@ -151,10 +150,32 @@ describe("buildSnapshot", () => {
       sigma: 0.3,
       deadlines: [{ id: 9, name: "", date: "2026-10-30" }],
       selectedDeadline: null,
-      minHours: 0,
     };
     const f = computeForecast(b, prediction(b, 4 * 3600_000), schedule([], null), [], NOW, undefined, [other]);
     expect(buildSnapshot(f, extra, []).finish?.mid).toBe("2026-11-01");
+  });
+
+  it("選んだ締切に収まらなくても、締切ごとに「別の締切なら収まるか」が分かる（5.24）", () => {
+    // 10/29 締切の別の作品（残り 4 時間）が今日と明日の器を使うので、この作品の 4 時間は 10/31 と 11/1。
+    // 選んでいる 10/30 には 4 時間足りず、11/1 の締切なら収まる
+    const other = {
+      workId: 2,
+      title: "Skeb",
+      remainingMs: 4 * 3600_000,
+      lowMs: 4 * 3600_000,
+      highMs: 4 * 3600_000,
+      sigma: 0.3,
+      deadlines: [{ id: 9, name: "", date: "2026-10-29" }],
+      selectedDeadline: null,
+    };
+    const dl = [
+      { id: 1, name: "", date: "2026-10-30" },
+      { id: 2, name: "通常", date: "2026-11-01" },
+    ];
+    const f = computeForecast(b, prediction(b, 4 * 3600_000), schedule(dl, 1), [], NOW, undefined, [other]);
+    expect(f.deadline?.id).toBe(1);
+    expect(f.deadlines.map((d) => d.shortMs / 3600_000)).toEqual([4, 0]);
+    expect(f.deadlines.map((d) => d.status === "late")).toEqual([true, false]);
   });
 
   it("隠す項目は null になる", () => {

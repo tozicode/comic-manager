@@ -14,10 +14,8 @@ export type TimetableWork = {
   lowMs: number;
   highMs: number;
   sigma: number;
-  /** 計算に使う締切（pickDeadline の結果）。無ければ null */
+  /** 計算に使う締切（pickDeadline の結果）。無ければ null。選んだ締切は必ず守るものとして扱う */
   deadline: Date | null;
-  /** 「この作品に毎日かならず」（ミリ秒／日） */
-  minMs: number;
   /** 今日この作品で作業した時間 */
   workedTodayMs: number;
 };
@@ -34,8 +32,8 @@ export type WorkShare = {
   /** いっぱいで締切までにこの作品に配った時間（今日の作業済みぶんを含む）。締切が無ければ配った全部 */
   allottedMs: number;
   /**
-   * その日までにこの作品が使えた器（間に合う確率の分母）：その日までの器から、締切の早い作品が取ったぶんと、
-   * 締切の遅い作品の下限を除いたもの。作品が 1 つなら器そのもの（今までの確率と同じ）
+   * その日までにこの作品が使えた器（間に合う確率の分母）：その日までの器から、締切の早い作品が取ったぶんを除いたもの。
+   * 作品が 1 つなら器そのもの（今までの確率と同じ）
    */
   availableUntil: (d: Date) => number;
   /** 締切までに配りきれなかった時間（正なら足りない。締切が無ければ 0） */
@@ -81,24 +79,6 @@ export function buildTimetable(works: TimetableWork[], today: Date, cal: Calenda
     if (d === null || d < i) return 0;
     return pre[Math.min(d, DAY_LIMIT - 1) + 1] - pre[i];
   };
-  // ほかの作品の下限（1 日あたり floors）を除いた器の累積。floors の値ごとに 1 回だけ作る
-  const netPrefixes = new Map<number, number[]>();
-  const netPrefix = (floors: number) => {
-    let p = netPrefixes.get(floors);
-    if (!p) {
-      p = [0];
-      for (let i = 0; i < DAY_LIMIT; i++) p.push(p[i] + Math.max(0, cap[i] - floors));
-      netPrefixes.set(floors, p);
-    }
-    return p;
-  };
-  /** i 日目から締切までの、ほかの作品の下限を除いた器の合計 */
-  const netCapUntilFrom = (i: number, k: number, floors: number) => {
-    const d = dIdx[k];
-    if (d === null || d < i) return 0;
-    const p = netPrefix(floors);
-    return p[Math.min(d, DAY_LIMIT - 1) + 1] - p[i];
-  };
   // 今日は全作品の作業済みぶんを残りに足し戻してから組む（5.6。ノルマは日中変わらない）
   const base = (pick: (w: TimetableWork) => number) =>
     works.map((w) => Math.max(0, pick(w)) + Math.max(0, w.workedTodayMs));
@@ -115,27 +95,16 @@ export function buildTimetable(works: TimetableWork[], today: Date, cal: Calenda
       const give = new Array<number>(n).fill(0);
       let room = cap[i];
       if (room > 0) {
-        // 1. 下限：締切順に確保する
-        for (const k of order) {
-          if (rem[k] <= EPS || works[k].minMs <= 0) continue;
-          const x = Math.min(works[k].minMs, rem[k], room);
-          give[k] += x;
-          room -= x;
-        }
-        // 2. 必要量：ならしで間に合う作品は締切までの器に比例、それ以外は器いっぱい（= 残り全部）。
-        //    比例の分母は、ほかの作品の下限が毎日先に取られるぶんを除いた器にする（除かないと、下限のぶん毎日少しずつ遅れて締切に届かない）
-        const openFloors = works.reduce((a, w, k) => (rem[k] > EPS ? a + w.minMs : a), 0);
-        const need = works.map((w, k) => {
+        // 1. 必要量：ならしで間に合う作品は締切までの器に比例、それ以外は器いっぱい（= 残り全部）
+        const need = works.map((_, k) => {
           if (rem[k] <= EPS) return 0;
-          let want = rem[k];
           if (smooth && smooth[k] && dIdx[k] !== null) {
-            const floors = openFloors - w.minMs;
-            const until = netCapUntilFrom(i, k, floors);
-            if (until > 0) want = Math.min(rem[k], (rem[k] * Math.max(0, cap[i] - floors)) / until);
+            const until = capUntilFrom(i, k);
+            if (until > 0) return Math.min(rem[k], (rem[k] * cap[i]) / until);
           }
-          return Math.max(0, want - give[k]);
+          return rem[k];
         });
-        // 3. 取り合い：収まればそのまま。収まらなければ締切の早い順に満たし、締切の無い作品どうしは残りに比例
+        // 2. 取り合い：収まればそのまま。収まらなければ締切の早い順に満たし、締切の無い作品どうしは残りに比例
         const total = need.reduce((a, b) => a + b, 0);
         if (total <= room) {
           need.forEach((x, k) => {
@@ -205,14 +174,13 @@ export function buildTimetable(works: TimetableWork[], today: Date, cal: Calenda
 
   const dateOf = (idx: number) => (idx < 0 ? null : addDays(today, idx));
   const indexOf = (d: Date) => Math.round((d.getTime() - today.getTime()) / DAY_MS);
-  /** k 番目の作品が last 日目までに使えた器。締切の早い作品の取り分と、遅い作品の下限（floor は min(下限, 取り分)）を除く */
+  /** k 番目の作品が last 日目までに使えた器。締切の早い作品（順位が前の作品）の取り分を除く */
   const availableUntil = (k: number, last: number) => {
-    const pos = order.indexOf(k);
+    const ahead = order.slice(0, order.indexOf(k));
     let s = 0;
     for (let i = 0; i <= last && i < DAY_LIMIT; i++) {
-      let used = 0;
       const row = full.alloc[i];
-      if (row) order.forEach((j, p) => (p < pos ? (used += row[j]) : p > pos ? (used += Math.min(works[j].minMs, row[j])) : 0));
+      const used = row ? ahead.reduce((a, j) => a + row[j], 0) : 0;
       s += Math.max(0, cap[i] - used);
     }
     return s;

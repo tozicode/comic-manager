@@ -345,6 +345,7 @@ function DeadlineTabs({ forecast, run, onAdd }: { forecast: Forecast; run: (f: (
               title={view ? undefined : t("pastDeadline")}
               onClick={() => run(() => api.selectDeadline(board.work.id, d.id))}
             >
+              {view && view.shortMs > 0 && "⚠ "}
               {d.name || t("deadlineDefault")} {shortDate(d.date)}
               {view && <span className="chance"> · {Math.round(view.probability * 100)}%</span>}
             </button>
@@ -413,42 +414,6 @@ function EditDeadline({ deadline, run }: { deadline: Deadline; run: (f: () => Pr
   );
 }
 
-/** 「この作品に毎日かならず」（5.24）。全作品の下限の合計が器を超える曜日があれば、その場で注意する（保存はできる） */
-function MinHoursRow({ forecast, run }: { forecast: Forecast; run: (f: () => Promise<unknown>) => void }) {
-  const { board, schedule, cal, timetable } = forecast;
-  // 0 〜 器の最大まで 0.5 刻み。器を減らしたあとでも今の値は選択肢に残す
-  const max = Math.max(0, ...cal.weekdayHours);
-  const options: number[] = [];
-  for (let h = 0; h <= max; h += 0.5) options.push(h);
-  if (!options.includes(schedule.minHours)) options.push(schedule.minHours);
-  options.sort((a, b) => a - b);
-  const floorsMs = timetable.reduce((n, w) => n + w.minMs, 0);
-  const over = cal.weekdayHours.some((h) => h > 0 && h * HOUR < floorsMs - 1);
-  return (
-    <div className="row small-text" style={{ marginBottom: 12, flexWrap: "wrap" }}>
-      <label className="row tight muted">
-        {t("minHours")}
-        <select
-          className="field"
-          value={schedule.minHours}
-          onChange={(e) => run(() => api.setMinHours(board.work.id, Number(e.target.value)))}
-        >
-          {options.map((h) => (
-            <option key={h} value={h}>
-              {h === 0 ? t("minHoursNone") : hours(h * HOUR)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {over ? (
-        <span style={{ color: "var(--warn-text)" }}>{t("minHoursOver", { time: hours(floorsMs) })}</span>
-      ) : (
-        <span className="muted">{t("minHoursHint")}</span>
-      )}
-    </div>
-  );
-}
-
 function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: unknown) => void }) {
   const app = useApp();
   const { board, schedule, deadline, prediction, finish, share } = forecast;
@@ -493,11 +458,13 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
     ? schedule.daysOff.filter((d) => d >= dayKey(forecast.today) && d <= dayKey(deadline.date)).length
     : 0;
   const pct = forecast.quotaMs > 0 ? Math.min(100, (forecast.workedTodayMs / forecast.quotaMs) * 100) : 0;
+  // 選んだ締切に収まらないとき、この作品のほかの締切で収まるものがあれば勧める（5.24）
+  const otherDeadlines = deadline ? forecast.deadlines.filter((d) => d.id !== deadline.id) : [];
+  const fit = otherDeadlines.find((d) => d.shortMs <= 0);
 
   return (
     <>
       <DeadlineTabs forecast={forecast} run={run} onAdd={() => setAdding(true)} />
-      <MinHoursRow forecast={forecast} run={run} />
       <div className="quota">
         <div className="card">
           <div className="section-title">{t("deadlineDefault")}</div>
@@ -581,13 +548,25 @@ function DeadlineTab({ forecast, onError }: { forecast: Forecast; onError: (e: u
                   works: share.breakdown.map((b) => titleOf(b.workId)).join(t("worksSep")),
                   time: hours(share.shortMs),
                 })
-              : `${t("lateReasonAlone", { time: hours(share.shortMs) })} ${t("lateWarning2")}`}
+              : t("lateReasonAlone", { time: hours(share.shortMs) })}
           </span>
           {share.aloneFeasible && share.breakdown.length > 0 && (
             <span className="small-text">
               {t("lateBreakdown", { list: share.breakdown.map((b) => `${titleOf(b.workId)} ${hours(b.ms)}`).join(t("worksSep")) })}
             </span>
           )}
+          <span>
+            {fit ? (
+              <>
+                {t("lateFit", { deadline: `${fit.name || t("deadlineDefault")} ${dayLabel(fit.date)}` })}{" "}
+                <button className="link" style={{ color: "inherit", textDecoration: "underline" }} onClick={() => run(() => api.selectDeadline(workId, fit.id))}>
+                  {t("switchDeadline")}
+                </button>
+              </>
+            ) : (
+              `${otherDeadlines.length > 0 ? `${t("lateNoFit")} ` : ""}${t(share.aloneFeasible ? "lateWarning2Others" : "lateWarning2")}`
+            )}
+          </span>
         </div>
       )}
       {forecast.notice && <div className="notice info">💡 {forecast.notice}</div>}

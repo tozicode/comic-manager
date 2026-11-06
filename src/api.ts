@@ -269,7 +269,6 @@ export type WorkSchedule = {
   /** 月〜日の作業時間（時間。全作品共通） */
   weekdayHours: number[];
   /** 「この作品に毎日かならず」使う時間（時間／日。5.24） */
-  minHours: number;
   /** 日付順 */
   deadlines: Deadline[];
   /** いま見ている締切の id（消した締切を指していることもある） */
@@ -288,7 +287,6 @@ export type TimetableWorkInput = {
   sigma: number;
   deadlines: Deadline[];
   selectedDeadline: number | null;
-  minHours: number;
 };
 
 export type PageMerge = { fromPageId: number; fromFileName: string; toPageId: number; toLabel: string; ms: number };
@@ -394,7 +392,6 @@ export const api = {
   getSchedule: (workId: number) => call<WorkSchedule>("get_schedule", { workId }),
   getTimetableInput: () => call<TimetableWorkInput[]>("get_timetable_input"),
   /** 0〜24 時間、0.5 刻み */
-  setMinHours: (workId: number, hours: number) => call<void>("set_min_hours", { workId, hours }),
   setDefaultHours: (hours: number[]) => call<void>("set_default_hours", { hours }),
   addDeadline: (workId: number, name: string, date: string) => call<number>("add_deadline", { workId, name, date }),
   updateDeadline: (id: number, name: string, date: string) => call<void>("update_deadline", { id, name, date }),

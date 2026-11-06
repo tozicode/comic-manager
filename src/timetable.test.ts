@@ -16,7 +16,6 @@ const mk = (o: Partial<TimetableWork> & { workId: number }): TimetableWork => ({
   highMs: 0,
   sigma: 0.3,
   deadline: null,
-  minMs: 0,
   workedTodayMs: 0,
   ...o,
 });
@@ -120,43 +119,28 @@ describe("取り合い", () => {
   });
 });
 
-describe("下限", () => {
-  it("早い作品が間に合わなくても、下限の時間は毎日取れる", () => {
-    const a = simple(1, 20 * HOUR, { deadline: day(2026, 10, 20) }); // 間に合わないので器いっぱい
-    const b = simple(2, 10 * HOUR, { deadline: day(2026, 11, 20), minMs: 1 * HOUR });
-    const t = buildTimetable([a, b], MON, WEEK);
-    expect(t.get(2)!.todayMs).toBeCloseTo(1 * HOUR);
-    expect(t.get(2)!.dayMs(day(2026, 10, 20))).toBeCloseTo(1 * HOUR);
-    expect(t.get(1)!.todayMs).toBeCloseTo(2 * HOUR);
-    // 下限が無ければ B は今日ぶんが入らない
-    expect(buildTimetable([a, { ...b, minMs: 0 }], MON, WEEK).get(2)!.todayMs).toBeCloseTo(0);
-  });
-
-  it("下限の合計が器を超える日は締切順。休みの日には確保しない", () => {
-    const a = simple(1, 20 * HOUR, { deadline: day(2026, 10, 25), minMs: 2 * HOUR });
-    const b = simple(2, 20 * HOUR, { deadline: day(2026, 11, 25), minMs: 2 * HOUR });
-    const t = buildTimetable([a, b], MON, { ...WEEK, daysOff: ["2026-10-20"] });
-    expect(t.get(1)!.todayMs).toBeCloseTo(2 * HOUR);
-    expect(t.get(2)!.todayMs).toBeCloseTo(1 * HOUR);
-    expect(t.get(2)!.dayMs(day(2026, 10, 20))).toBe(0);
-  });
-
-  it("使えた器は、早い作品の取り分と遅い作品の下限を除いたもの", () => {
-    // A（10/21 締切、9h の器に 6h）と B（11/20 締切、下限 0.5h）。A が使えた器 = 9h − B の下限 1.5h、B が使えた器 = 器 − A の取り分 6h
+describe("使えた器", () => {
+  it("使えた器は、締切の早い作品の取り分を除いたもの。早い作品の側は器そのもの", () => {
+    // A（10/21 締切、9h の器に 6h）と B（11/20 締切）。A が使えた器 = 9h、B が使えた器 = 器 − A の取り分 6h
     const a = simple(1, 6 * HOUR, { deadline: day(2026, 10, 21) });
-    const b = simple(2, 30 * HOUR, { deadline: day(2026, 11, 20), minMs: 0.5 * HOUR });
+    const b = simple(2, 30 * HOUR, { deadline: day(2026, 11, 20) });
     const t = buildTimetable([a, b], MON, WEEK);
-    expect(t.get(1)!.availableUntil(day(2026, 10, 21))).toBeCloseTo(9 * HOUR - 1.5 * HOUR);
+    expect(t.get(1)!.availableUntil(day(2026, 10, 21))).toBeCloseTo(9 * HOUR);
     const capB = deadlinePlan(0, 0, MON, day(2026, 11, 20), 0, WEEK).capacityMs;
     expect(t.get(2)!.availableUntil(day(2026, 11, 20))).toBeCloseTo(capB - 6 * HOUR);
     // 締切を過ぎた日付の器は 0
     expect(t.get(1)!.availableUntil(day(2026, 10, 18))).toBe(0);
   });
 
-  it("下限は必要量より多くても確保する", () => {
-    const s = buildTimetable([simple(1, 7 * HOUR, { deadline: day(2026, 10, 25), minMs: 2 * HOUR })], MON, WEEK).get(1)!;
-    // 比例配分なら今日 7 × 3 / 27 ≒ 0.78h だが、下限の 2h
-    expect(s.todayMs).toBeCloseTo(2 * HOUR);
+  it("早い作品が間に合わないあいだ、遅い作品には回らない（選んだ締切は必ず守る）", () => {
+    const a = simple(1, 20 * HOUR, { deadline: day(2026, 10, 20) }); // 器 6h に 20h
+    const b = simple(2, 10 * HOUR, { deadline: day(2026, 11, 20) });
+    const t = buildTimetable([a, b], MON, WEEK);
+    expect(t.get(1)!.todayMs).toBeCloseTo(3 * HOUR);
+    expect(t.get(2)!.todayMs).toBeCloseTo(0);
+    // 締切を過ぎても A が先。A が終わる土曜（3h × 5 日 + 5h）に初めて B に回る（B は間に合うので、ならしのぶんだけ）
+    expect(t.get(2)!.dayMs(day(2026, 10, 23))).toBeCloseTo(0);
+    expect(t.get(2)!.dayMs(day(2026, 10, 24))).toBeGreaterThan(0);
   });
 });
 
@@ -165,14 +149,14 @@ describe("持ち越しと合計", () => {
     const works = [
       simple(1, 9 * HOUR, { deadline: day(2026, 10, 21), workedTodayMs: HOUR }),
       simple(2, 14 * HOUR, { deadline: day(2026, 10, 28) }),
-      simple(3, 40 * HOUR, { deadline: day(2026, 12, 1), minMs: 0.5 * HOUR }),
+      simple(3, 40 * HOUR, { deadline: day(2026, 12, 1) }),
       simple(4, 5 * HOUR),
     ];
     const t = buildTimetable(works, MON, WEEK);
     for (const w of works) expect(total(t.get(w.workId)!), w.title).toBeCloseTo(w.remainingMs + w.workedTodayMs);
-    // 1 は締切までの器 9h から 3 の下限 1.5h を除いた 7.5h に 10h なので足りない。今日は器いっぱい（3 の下限 0.5h を除いた 2.5h）
-    expect(t.get(1)!.todayMs).toBeCloseTo(2.5 * HOUR);
-    expect(t.get(1)!.shortMs).toBeCloseTo(2.5 * HOUR);
+    // 1 は締切までの器 9h に 10h なので足りない。今日は器いっぱい
+    expect(t.get(1)!.todayMs).toBeCloseTo(3 * HOUR);
+    expect(t.get(1)!.shortMs).toBeCloseTo(1 * HOUR);
   });
 
   it("今日の作業済みぶんを足し戻すので、日中にノルマが変わらない", () => {
@@ -193,7 +177,6 @@ describe("持ち越しと合計", () => {
         works.push(
           simple(k + 1, (1 + Math.floor(rnd() * 60)) * HOUR, {
             deadline: hasDeadline ? addDays(MON, Math.floor(rnd() * 30)) : null,
-            minMs: rnd() < 0.3 ? 0.5 * HOUR : 0,
             workedTodayMs: rnd() < 0.3 ? HOUR : 0,
           }),
         );
