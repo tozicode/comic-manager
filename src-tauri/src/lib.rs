@@ -439,15 +439,10 @@ fn get_schedule(state: State<AppState>, work_id: i64) -> Cmd<store::WorkSchedule
     with_store(&state, |s| s.schedule(work_id))
 }
 
-/// 時間割の入力（仕様書 5.24）。全作品の残り・締切・下限をまとめて返す。時間割は画面側で組む
+/// 時間割の入力（仕様書 5.24）。全作品の残り・締切をまとめて返す。時間割は画面側で組む
 #[tauri::command]
 fn get_timetable_input(state: State<AppState>) -> Cmd<Vec<store::TimetableWorkInput>> {
     with_store(&state, |s| s.timetable_input(now_ms()))
-}
-
-#[tauri::command]
-fn set_min_hours(state: State<AppState>, work_id: i64, hours: f64) -> Cmd<()> {
-    with_store(&state, |s| s.set_min_hours(work_id, hours))
 }
 
 #[tauri::command]
@@ -867,7 +862,6 @@ pub fn run() {
             get_model_stats,
             get_schedule,
             get_timetable_input,
-            set_min_hours,
             set_default_hours,
             add_deadline,
             update_deadline,

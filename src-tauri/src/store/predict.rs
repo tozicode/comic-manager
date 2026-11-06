@@ -112,8 +112,6 @@ pub struct TimetableWorkInput {
     /// 締切（日付順）といま見ている締切の id（schedule と同じ。どれで計算するかは画面側で決める）
     pub deadlines: Vec<Deadline>,
     pub selected_deadline: Option<i64>,
-    /// 「この作品に毎日かならず」使う時間（時間／日）
-    pub min_hours: f64,
 }
 
 /// 全作品の実績から作る、予測の前提（基準時間・タグの倍率・ずれ）
@@ -261,20 +259,20 @@ impl Store {
         })
     }
 
-    /// 時間割の入力（仕様書 5.24）。残りのタスクがある全作品について、残りと締切と下限をまとめて返す。
+    /// 時間割の入力（仕様書 5.24）。残りのタスクがある全作品について、残りと締切をまとめて返す。
     /// 残りが 0 の作品（完成した作品）は入れない。モデルの学習は 1 回だけ
     pub fn timetable_input(&self, now: i64) -> Result<Vec<TimetableWorkInput>> {
         let model = self.model()?;
         let mut stmt = self
             .conn
-            .prepare("SELECT id, title, selected_deadline, min_hours FROM work ORDER BY id")
+            .prepare("SELECT id, title, selected_deadline FROM work ORDER BY id")
             .map_err(db_err)?;
-        let works: Vec<(i64, String, Option<i64>, f64)> = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        let works: Vec<(i64, String, Option<i64>)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .and_then(|rows| rows.collect())
             .map_err(db_err)?;
         let mut out = Vec::new();
-        for (work_id, title, selected_deadline, min_hours) in works {
+        for (work_id, title, selected_deadline) in works {
             let p = self.prediction_with(&model, work_id, now)?;
             if p.remaining_ms <= 0 {
                 continue;
@@ -288,7 +286,6 @@ impl Store {
                 sigma: p.sigma,
                 deadlines: self.deadlines(work_id)?,
                 selected_deadline,
-                min_hours,
             });
         }
         Ok(out)
@@ -556,11 +553,10 @@ mod tests {
         for &stage in &st {
             finish(&store, page, stage, 60, &mut at);
         }
-        // 3 つ目は締切と下限を持つ
+        // 3 つ目は締切を持つ
         let third = store.add_work("C:/c.cmc", &super::super::tests::comic(&[("x.clip", 1), ("y.clip", 1)]), 0).unwrap();
         let dl = store.add_deadline(third, "納品", "2026-12-01").unwrap();
         store.select_deadline(third, Some(dl)).unwrap();
-        store.set_min_hours(third, 1.5).unwrap();
 
         let input = store.timetable_input(at).unwrap();
         let ids: Vec<i64> = input.iter().map(|w| w.work_id).collect();
@@ -572,9 +568,9 @@ mod tests {
             assert!(w.remaining_ms > 0);
         }
         let w3 = input.iter().find(|w| w.work_id == third).unwrap();
-        assert_eq!((w3.deadlines.len(), w3.deadlines[0].id, w3.selected_deadline, w3.min_hours), (1, dl, Some(dl), 1.5));
+        assert_eq!((w3.deadlines.len(), w3.deadlines[0].id, w3.selected_deadline), (1, dl, Some(dl)));
         let w1 = input.iter().find(|w| w.work_id == id).unwrap();
-        assert_eq!((w1.deadlines.len(), w1.selected_deadline, w1.min_hours), (0, None, 0.0));
+        assert_eq!((w1.deadlines.len(), w1.selected_deadline), (0, None));
     }
 
     /// 工程 1 に、タグなしのページを 60 分、タグ 7（初期 ×1.3）のページを `minutes` 分で n 件ずつ入れる

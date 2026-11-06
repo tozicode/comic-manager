@@ -536,12 +536,11 @@ impl Store {
                 .map_err(db_err)?;
         }
         if version < 11 && target >= 11 {
-            // 版 11：作品ごとの作業時間の上書きをやめ（値は捨てる）、「この作品に毎日かならず」を足す（仕様書 5.24）
+            // 版 11：作品ごとの作業時間の上書きをやめる（値は捨てる。作業時間は全作品共通。仕様書 5.24）
             self.conn
                 .execute_batch(
                     "BEGIN;
                     ALTER TABLE work DROP COLUMN weekday_hours;
-                    ALTER TABLE work ADD COLUMN min_hours REAL NOT NULL DEFAULT 0;
                     PRAGMA user_version = 11;
                     COMMIT;",
                 )
@@ -2094,7 +2093,7 @@ mod tests {
         // 作品ごとの上書きは列ごと消え、全作品の既定値に戻る
         assert!(old.conn.prepare("SELECT weekday_hours FROM work").is_err());
         let s = old.schedule(7).unwrap();
-        assert_eq!((s.weekday_hours, s.min_hours), (old.default_hours().unwrap(), 0.0));
+        assert_eq!(s.weekday_hours, old.default_hours().unwrap());
     }
 
     #[test]

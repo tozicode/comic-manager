@@ -21,8 +21,6 @@ const DEFAULT_HOURS: WeekHours = [3.0, 3.0, 3.0, 3.0, 3.0, 6.0, 6.0];
 pub struct WorkSchedule {
     /// 曜日ごとの作業時間（月〜日。全作品共通）
     pub weekday_hours: WeekHours,
-    /// 「この作品に毎日かならず」使う時間（時間／日。既定 0。5.24）
-    pub min_hours: f64,
     /// 締切（日付順）
     pub deadlines: Vec<Deadline>,
     /// いま見ている締切の id（消した締切を指していることもある。どれで計算するかは画面側で決める）
@@ -76,36 +74,23 @@ impl Store {
     }
 
     pub fn schedule(&self, work_id: i64) -> Result<WorkSchedule> {
-        let (min_hours, selected_deadline, work_order): (f64, Option<i64>, String) = self
+        let (selected_deadline, work_order): (Option<i64>, String) = self
             .conn
             .query_row(
-                "SELECT min_hours, selected_deadline, work_order FROM work WHERE id = ?1",
+                "SELECT selected_deadline, work_order FROM work WHERE id = ?1",
                 [work_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()
             .map_err(db_err)?
             .ok_or_else(|| tr(M::WorkNotFound).to_string())?;
         Ok(WorkSchedule {
             weekday_hours: self.default_hours()?,
-            min_hours,
             deadlines: self.deadlines(work_id)?,
             selected_deadline,
             work_order,
             days_off: self.days_off()?,
         })
-    }
-
-    /// 「この作品に毎日かならず」使う時間を設定する（0〜24 時間、0.5 刻み）
-    pub fn set_min_hours(&self, work_id: i64, hours: f64) -> Result<()> {
-        if !(0.0..=24.0).contains(&hours) || (hours * 2.0).fract() != 0.0 {
-            return Err(tr(M::MinHoursInvalid).into());
-        }
-        let n = self
-            .conn
-            .execute("UPDATE work SET min_hours = ?2 WHERE id = ?1", params![work_id, hours])
-            .map_err(db_err)?;
-        if n == 0 { Err(tr(M::WorkNotFound).into()) } else { Ok(()) }
     }
 
     pub(super) fn deadlines(&self, work_id: i64) -> Result<Vec<Deadline>> {
@@ -231,26 +216,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 作業時間は全作品共通で_下限は作品ごと() {
+    fn 作業時間は全作品共通() {
         let (store, id) = setup();
         let s = store.schedule(id).unwrap();
-        assert_eq!((s.weekday_hours, s.min_hours), (DEFAULT_HOURS, 0.0));
+        assert_eq!(s.weekday_hours, DEFAULT_HOURS);
         assert_eq!(s.work_order, "stage");
         assert!(s.deadlines.is_empty());
 
         store.set_default_hours([2.0, 2.0, 2.0, 2.0, 2.0, 5.0, 0.0]).unwrap();
         assert_eq!(store.schedule(id).unwrap().weekday_hours[6], 0.0);
         assert!(store.set_default_hours([25.0; 7]).is_err());
-
-        store.set_min_hours(id, 1.5).unwrap();
-        assert_eq!(store.schedule(id).unwrap().min_hours, 1.5);
-        // 0〜24 時間、0.5 刻み。無い作品には設定できない
-        assert!(store.set_min_hours(id, 1.25).is_err());
-        assert!(store.set_min_hours(id, -0.5).is_err());
-        assert!(store.set_min_hours(id, 24.5).is_err());
-        assert!(store.set_min_hours(9999, 1.0).is_err());
-        store.set_min_hours(id, 0.0).unwrap();
-        assert_eq!(store.schedule(id).unwrap().min_hours, 0.0);
+        assert!(store.schedule(9999).is_err());
     }
 
     #[test]
