@@ -108,7 +108,16 @@ ALTER TABLE work ADD COLUMN min_hours REAL NOT NULL DEFAULT 0;  -- 「この作�
 
 **確かめ方**：`cargo test`（`src-tauri/` で）
 
-## 3. forecast と画面をつなぐ（TypeScript）
+## 3. forecast と画面をつなぐ（TypeScript）（済）
+
+作ってみて決まったこと：
+- 確率の分母は「配った時間」ではなく「使えた器」（`WorkShare.availableUntil`）。配った時間は残りで頭打ちになるので、
+  間に合う作品の確率が必ず 50% になってしまう。使えた器 = 器 − 早い作品の取り分 − 遅い作品の下限。1 作品なら器そのもの（テストで固定）
+- `computeForecast` はこの作品のぶんを、いま読んだ盤面と予測から作り直して時間割に入れる（時間割の入力と読んだ時刻がずれても食い違わない）。
+  `timetable` を渡さなければこの作品だけで組むので、既存のテストはそのまま通る
+- 作品一覧の警告の 1 行は、カードの `useForecast` とは別に `useTimetable()`（入力 + 今日の記録 + 器）で全作品の取り分を組む
+- 月の欄の「ほか」は作品名を出さず合計だけ（欄が狭い。仕様書も合わせた）
+- 作品名を押すとスケジュール画面へ：`WorksScreen` の `onOpen` に行き先（`"schedule"`）を足した
 
 - `src/api.ts`：`WorkSchedule` の型を 2 に合わせる。`TimetableWorkInput`、`getTimetableInput()`、`setMinHours()`。`setWorkHours` を消す
 - `src/forecast.ts`
