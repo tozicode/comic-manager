@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildIcs, DayWords, groupDay, planMonth, MonthOrder, staleEvents } from "./calendar";
 import { dayKey } from "./format";
-import { Calendar, Candidate, HOUR } from "./schedule";
+import { Calendar, Candidate, capacity, HOUR } from "./schedule";
 
 // 2026/10/19 は月曜日
 const MON = new Date(2026, 9, 19);
@@ -17,8 +17,14 @@ function tasks(pages: number, stageHours: number[]): Candidate[] {
   return out;
 }
 
+/** 今日は todayMs、明日以降は作業可能時間 × ratio（時間割を使う前の形をそのまま再現する） */
 const plan = (ts: Candidate[], order: MonthOrder, cal = EVERY3, todayMs = 3 * HOUR, ratio = 1) =>
-  planMonth({ tasks: ts, today: MON, cal, todayMs, ratio, order });
+  planMonth({
+    tasks: ts,
+    today: MON,
+    budgetOf: (d) => (d.getTime() === MON.getTime() ? todayMs : capacity(d, cal) * ratio),
+    order,
+  });
 
 /** 日ごとの「ページ:工程」の並び */
 const names = (p: ReturnType<typeof plan>) =>

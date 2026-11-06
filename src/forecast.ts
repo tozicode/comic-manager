@@ -1,6 +1,7 @@
-// 作品の予測・スケジュールをまとめて読み込み、画面で使う形に計算するフック
+// 作品の予測・スケジュールをまとめて読み込み、画面で使う形に計算するフック。
+// 完成見込み・確率・ノルマ・月の予定は、全作品を 1 つの時間割に敷いた結果（timetable.ts、仕様書 5.24）から出す
 import { useEffect, useState } from "react";
-import { api, Board, cellPassed, Prediction, Span, TaskPrediction, WorkSchedule } from "./api";
+import { api, Board, cellPassed, Prediction, Span, TaskPrediction, TimetableWorkInput, WorkSchedule } from "./api";
 import { useApp } from "./app-context";
 import type { ExportedEvent, MonthInput, MonthOrder } from "./calendar";
 import { dailyTotals, dayKey, dayStartMs, startOfDay } from "./format";
@@ -9,12 +10,11 @@ import {
   buildPlans,
   Calendar,
   Candidate,
-  capacity,
   catchUpNotice,
   deadlinePlan,
   DeadlinePlan,
-  finishDate,
   finishDateAtPace,
+  HOUR,
   MIN_STEP,
   onTimeProbability,
   pickDeadline,
@@ -22,6 +22,7 @@ import {
   PlanStep,
   StageInfo,
 } from "./schedule";
+import { buildTimetable, TimetableWork, WorkShare } from "./timetable";
 
 const PACE_DAYS = 28;
 
@@ -54,7 +55,7 @@ export type Forecast = {
   deadlines: DeadlineView[];
   /** 計算に使っている締切（選んでいるもの。過ぎていれば次の締切） */
   deadline: DeadlineView | null;
-  /** 今日のノルマ（締切があれば逆算した量、無ければ今日の作業可能時間） */
+  /** 今日のノルマ（時間割のこの作品の今日の取り分。締切があれば逆算、無ければほかの作品のあとに残る時間） */
   quotaMs: number;
   /** 案を作るときの時間：今日の残りのノルマ。達成済みなら「もう少し進める」ぶんとしてノルマ 1 日ぶん */
   planQuotaMs: number;
@@ -69,7 +70,73 @@ export type Forecast = {
   plans: Plan[];
   notice: string | null;
   task: (pageId: number, stageId: number) => TaskPrediction | undefined;
+  /** 時間割でのこの作品の取り分（5.24） */
+  share: WorkShare;
+  /** 時間割に入っている作品（この作品を含む。締切順ではなく入力の順） */
+  timetable: TimetableWork[];
 };
+
+// ---------------------------------------------------------------------------
+// 時間割の入力（全作品ぶん）。作品一覧はカードごとに useForecast を呼ぶので、同じ版（app.version）なら
+// 1 回しか読まないよう、最後の読み込みを窓ごとに覚えておく
+// ---------------------------------------------------------------------------
+
+let inputCache: { version: number; promise: Promise<TimetableWorkInput[]> } | null = null;
+
+function loadTimetableInput(version: number): Promise<TimetableWorkInput[]> {
+  if (!inputCache || inputCache.version !== version) {
+    const promise = api.getTimetableInput();
+    inputCache = { version, promise };
+    // 読めなかったら次に呼ばれたときに読み直す
+    promise.catch(() => {
+      if (inputCache?.promise === promise) inputCache = null;
+    });
+  }
+  return inputCache.promise;
+}
+
+/** 時間割の入力を、計算に使う締切と今日の作業時間を添えた形にする */
+function toTimetableWork(w: TimetableWorkInput, allSpans: Span[], today: Date, now: number): TimetableWork {
+  const picked = pickDeadline(w.deadlines, w.selectedDeadline, dayKey(today));
+  const totals = dailyTotals(
+    allSpans.filter((s) => s.workId === w.workId),
+    now,
+  );
+  return {
+    workId: w.workId,
+    title: w.title,
+    remainingMs: w.remainingMs,
+    lowMs: w.lowMs,
+    highMs: w.highMs,
+    sigma: w.sigma,
+    deadline: picked ? new Date(`${picked.date}T00:00`) : null,
+    minMs: w.minHours * HOUR,
+    workedTodayMs: totals.get(dayKey(today))?.total ?? 0,
+  };
+}
+
+/** 全作品の時間割（作品一覧の警告の 1 行に使う）。読み込み中は null */
+export function useTimetable(): { works: TimetableWork[]; shares: Map<number, WorkShare>; today: Date } | null {
+  const app = useApp();
+  const [data, setData] = useState<{ input: TimetableWorkInput[]; spans: Span[]; cal: Calendar } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const today = startOfDay(Date.now());
+    Promise.all([loadTimetableInput(app.version), api.listSpans(dayStartMs(today)), api.getCalendar()])
+      .then(([input, spans, [weekdayHours, daysOff]]) => !cancelled && setData({ input, spans, cal: { weekdayHours, daysOff } }))
+      .catch(app.showError);
+    return () => {
+      cancelled = true;
+    };
+  }, [app.version, app.showError]);
+
+  if (!data) return null;
+  const now = Date.now();
+  const today = startOfDay(now);
+  const works = data.input.map((w) => toTimetableWork(w, data.spans, today, now));
+  return { works, shares: buildTimetable(works, today, data.cal), today };
+}
 
 /**
  * 予測に必要なデータを読み込み、計算する。データが変わるたびに読み直す。
@@ -77,9 +144,13 @@ export type Forecast = {
  */
 export function useForecast(workId: number | null, hoursOverride?: number[] | null): Forecast | null {
   const app = useApp();
-  const [data, setData] = useState<{ board: Board; prediction: Prediction; schedule: WorkSchedule; spans: Span[] } | null>(
-    null,
-  );
+  const [data, setData] = useState<{
+    board: Board;
+    prediction: Prediction;
+    schedule: WorkSchedule;
+    spans: Span[];
+    timetable: TimetableWorkInput[];
+  } | null>(null);
 
   useEffect(() => {
     if (!workId) {
@@ -88,8 +159,17 @@ export function useForecast(workId: number | null, hoursOverride?: number[] | nu
     }
     let cancelled = false;
     const from = dayStartMs(addDays(startOfDay(Date.now()), -PACE_DAYS));
-    Promise.all([api.getBoard(workId), api.getPrediction(workId), api.getSchedule(workId), api.listSpans(from)])
-      .then(([board, prediction, schedule, spans]) => !cancelled && setData({ board, prediction, schedule, spans }))
+    Promise.all([
+      api.getBoard(workId),
+      api.getPrediction(workId),
+      api.getSchedule(workId),
+      api.listSpans(from),
+      loadTimetableInput(app.version),
+    ])
+      .then(
+        ([board, prediction, schedule, spans, timetable]) =>
+          !cancelled && setData({ board, prediction, schedule, spans, timetable }),
+      )
       .catch(app.showError);
     return () => {
       cancelled = true;
@@ -98,9 +178,13 @@ export function useForecast(workId: number | null, hoursOverride?: number[] | nu
 
   if (!data || !workId || data.board.work.id !== workId) return null;
   const cal = hoursOverride ? { weekdayHours: hoursOverride, daysOff: data.schedule.daysOff } : undefined;
-  return computeForecast(data.board, data.prediction, data.schedule, data.spans, Date.now(), cal);
+  return computeForecast(data.board, data.prediction, data.schedule, data.spans, Date.now(), cal, data.timetable);
 }
 
+/**
+ * 純粋関数。timetable は全作品の時間割の入力（無ければこの作品だけで組む = 3.1.0 までと同じ結果）。
+ * この作品のぶんは、いま読んだ盤面と予測から作り直す（時間割の入力と読んだ時刻がずれても、この作品の数字は食い違わない）
+ */
 export function computeForecast(
   board: Board,
   prediction: Prediction,
@@ -108,6 +192,7 @@ export function computeForecast(
   allSpans: Span[],
   now: number,
   calOverride?: Calendar,
+  timetable: TimetableWorkInput[] = [],
 ): Forecast {
   const cal = calOverride ?? { weekdayHours: schedule.weekdayHours, daysOff: schedule.daysOff };
   const today = startOfDay(now);
@@ -118,10 +203,23 @@ export function computeForecast(
   for (let i = 1; i <= PACE_DAYS; i++) pastMs += totals.get(dayKey(addDays(today, -i)))?.total ?? 0;
   const paceMs = pastMs / PACE_DAYS;
 
+  // 時間割（5.24）
+  const self: TimetableWorkInput = {
+    workId: board.work.id,
+    title: board.work.title,
+    remainingMs: prediction.remainingMs,
+    lowMs: prediction.lowMs,
+    highMs: prediction.highMs,
+    sigma: prediction.sigma,
+    deadlines: schedule.deadlines,
+    selectedDeadline: schedule.selectedDeadline,
+    minHours: schedule.minHours,
+  };
+  const works = [self, ...timetable.filter((w) => w.workId !== board.work.id)].map((w) => toTimetableWork(w, allSpans, today, now));
+  const share = buildTimetable(works, today, cal).get(board.work.id)!;
+
   const finish = {
-    low: finishDate(prediction.lowMs, today, workedTodayMs, cal),
-    mid: finishDate(prediction.remainingMs, today, workedTodayMs, cal),
-    high: finishDate(prediction.highMs, today, workedTodayMs, cal),
+    ...share.finish,
     pace: paceMs > 0 ? finishDateAtPace(prediction.remainingMs, today, paceMs) : null,
   };
 
@@ -129,9 +227,10 @@ export function computeForecast(
     .filter((d) => d.date >= dayKey(today))
     .map((d): DeadlineView => {
       const date = new Date(`${d.date}T00:00`);
+      // 1 日あたりの必要時間は、この作品だけで割った数字のまま（5.24）
       const plan = deadlinePlan(prediction.remainingMs, prediction.highMs, today, date, workedTodayMs, cal);
-      // 今日の作業済みぶんは確率の計算から除く（残り時間と、今日の残りの作業可能時間で比べる）
-      const capacityLeft = Math.max(0, plan.capacityMs - Math.max(workedTodayMs, 0));
+      // 確率の分母は、締切までにこの作品が使えた器（ほかの作品が先に取るぶんを除く）。今日の作業済みぶんは除く
+      const capacityLeft = Math.max(0, share.availableUntil(date) - Math.max(workedTodayMs, 0));
       const probability = onTimeProbability(prediction.remainingMs, prediction.sigma, capacityLeft);
       const status: DeadlineStatus =
         finish.mid && finish.mid <= date ? (finish.high && finish.high <= date ? "ok" : "tight") : "late";
@@ -139,7 +238,7 @@ export function computeForecast(
     });
   const picked = pickDeadline(schedule.deadlines, schedule.selectedDeadline, dayKey(today));
   const deadline = deadlines.find((d) => d.id === picked?.id) ?? null;
-  const quotaMs = deadline ? deadline.plan.todayQuotaMs : capacity(today, cal);
+  const quotaMs = share.todayMs;
   const leftMs = quotaMs - workedTodayMs;
   const quotaMet = leftMs < MIN_STEP;
   const planQuotaMs = quotaMet ? quotaMs : leftMs;
@@ -192,6 +291,8 @@ export function computeForecast(
     plans: buildPlans(candidates, stageInfos, planQuotaMs, schedule.workOrder, board.work),
     notice: catchUpNotice(candidates, stageInfos, openCounts, board.work),
     task,
+    share,
+    timetable: works,
   };
 }
 
@@ -226,15 +327,15 @@ export function saveChosenPlan(workId: number, plan: ChosenPlan | null) {
 // 月の予定（仕様書 5.15）
 // ---------------------------------------------------------------------------
 
-/**
- * 月の予定を割り振る条件。1 日の時間は今日のノルマと同じ考え方：
- * 締切に間に合うなら締切までの作業可能時間に比例させ、そうでなければ作業可能時間をいっぱいに使う
- */
+/** 月の予定を割り振る条件。1 日の時間は時間割のその日のこの作品の取り分（今日は、取り分から作業済みぶんを引いた残り） */
 export function monthInput(f: Forecast, order: MonthOrder): MonthInput {
-  const plan = f.deadline?.plan;
-  const ratio =
-    plan && plan.feasible && plan.capacityMs > 0 ? (f.prediction.remainingMs + f.workedTodayMs) / plan.capacityMs : 1;
-  return { tasks: f.openTasks, today: f.today, cal: f.cal, todayMs: Math.max(0, f.quotaMs - f.workedTodayMs), ratio, order };
+  const todayKey = dayKey(f.today);
+  return {
+    tasks: f.openTasks,
+    today: f.today,
+    budgetOf: (d) => (dayKey(d) === todayKey ? Math.max(0, f.quotaMs - f.workedTodayMs) : f.share.dayMs(d)),
+    order,
+  };
 }
 
 const orderKey = (workId: number) => `otosazu.monthOrder.${workId}`;

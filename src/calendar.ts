@@ -1,5 +1,5 @@
 // 月の予定（仕様書 5.15）：残りのタスクを完成まで日ごとに割り振り、.ics に書き出す
-import { addDays, Calendar, capacity, Candidate, DAY_LIMIT, MIN_STEP, ordered } from "./schedule";
+import { addDays, Candidate, DAY_LIMIT, MIN_STEP, ordered } from "./schedule";
 
 /** 「日をまたがないように」で、その日の残りを超えてもよい量（その日に割り振る時間に対する割合） */
 const FIT_SLACK = 0.2;
@@ -35,11 +35,8 @@ export type MonthInput = {
   /** 終わっていないタスクすべて（着手できないものも含む） */
   tasks: Candidate[];
   today: Date;
-  cal: Calendar;
-  /** 今日に割り振る時間（今日のノルマの残り） */
-  todayMs: number;
-  /** 明日以降、作業可能時間のうち使う割合（締切に合わせて割り振るときは 1 未満） */
-  ratio: number;
+  /** その日に割り振る時間（今日は今日のノルマの残り。明日以降は時間割のその日の取り分。5.24） */
+  budgetOf: (d: Date) => number;
   order: MonthOrder;
 };
 
@@ -48,7 +45,7 @@ export type MonthInput = {
  * 1 日の時間は「その日までに割り振るはずの合計」で管理し、使い残し・使いすぎを翌日以降で調整する
  */
 export function planMonth(input: MonthInput): MonthPlan {
-  const { today, cal, order } = input;
+  const { today, order } = input;
   const left = new Map(input.tasks.map((t) => [key(t), t.remainingMs]));
   const started = new Set(input.tasks.filter((t) => t.inProgress).map(key));
   const open = new Set(input.tasks.filter((t) => t.remainingMs > 0).map(key));
@@ -66,7 +63,7 @@ export function planMonth(input: MonthInput): MonthPlan {
   let done = 0; // 実際に割り振った合計
   for (let i = 0; i < DAY_LIMIT && open.size > 0; i++) {
     const date = addDays(today, i);
-    const budget = i === 0 ? Math.max(0, input.todayMs) : capacity(date, cal) * input.ratio;
+    const budget = Math.max(0, input.budgetOf(date));
     if (budget <= 0) continue;
     target += budget;
     const steps: DayStep[] = [];

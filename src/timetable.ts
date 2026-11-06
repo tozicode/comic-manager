@@ -31,8 +31,13 @@ export type WorkShare = {
   othersDayMs: (d: Date) => number;
   /** いっぱいで残りが尽きる日。尽きなければ null */
   finish: { low: Date | null; mid: Date | null; high: Date | null };
-  /** いっぱいで締切までにこの作品に配った時間（今日の作業済みぶんを含む。確率の分母）。締切が無ければ配った全部 */
+  /** いっぱいで締切までにこの作品に配った時間（今日の作業済みぶんを含む）。締切が無ければ配った全部 */
   allottedMs: number;
+  /**
+   * その日までにこの作品が使えた器（間に合う確率の分母）：その日までの器から、締切の早い作品が取ったぶんと、
+   * 締切の遅い作品の下限を除いたもの。作品が 1 つなら器そのもの（今までの確率と同じ）
+   */
+  availableUntil: (d: Date) => number;
   /** 締切までに配りきれなかった時間（正なら足りない。締切が無ければ 0） */
   shortMs: number;
   /** この作品だけなら間に合う（deadlinePlan.feasible と同じ）。締切が無ければ true */
@@ -200,6 +205,18 @@ export function buildTimetable(works: TimetableWork[], today: Date, cal: Calenda
 
   const dateOf = (idx: number) => (idx < 0 ? null : addDays(today, idx));
   const indexOf = (d: Date) => Math.round((d.getTime() - today.getTime()) / DAY_MS);
+  /** k 番目の作品が last 日目までに使えた器。締切の早い作品の取り分と、遅い作品の下限（floor は min(下限, 取り分)）を除く */
+  const availableUntil = (k: number, last: number) => {
+    const pos = order.indexOf(k);
+    let s = 0;
+    for (let i = 0; i <= last && i < DAY_LIMIT; i++) {
+      let used = 0;
+      const row = full.alloc[i];
+      if (row) order.forEach((j, p) => (p < pos ? (used += row[j]) : p > pos ? (used += Math.min(works[j].minMs, row[j])) : 0));
+      s += Math.max(0, cap[i] - used);
+    }
+    return s;
+  };
 
   const result = new Map<number, WorkShare>();
   works.forEach((w, k) => {
@@ -221,6 +238,7 @@ export function buildTimetable(works: TimetableWork[], today: Date, cal: Calenda
       },
       finish: { low: dateOf(low.finishIdx[k]), mid: dateOf(full.finishIdx[k]), high: dateOf(high.finishIdx[k]) },
       allottedMs: allotted[k],
+      availableUntil: (d) => availableUntil(k, indexOf(d)),
       shortMs: dIdx[k] === null ? 0 : Math.max(0, mid[k] - allotted[k]),
       aloneFeasible: dIdx[k] === null || (dIdx[k] >= 0 && capUntilFrom(0, k) >= mid[k] - EPS),
       othersPerDayMs: workDays > 0 ? othersMs / workDays : 0,

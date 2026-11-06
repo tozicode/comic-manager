@@ -58,6 +58,8 @@ describe("作品が 1 つなら今の結果と同じ", () => {
         else expect(s.todayMs).toBeCloseTo(capacity(MON, c.cal));
         expect(s.allottedMs).toBeCloseTo(Math.min(plan.capacityMs, rem + c.worked));
         expect(s.shortMs).toBeCloseTo(Math.max(0, rem + c.worked - plan.capacityMs));
+        // 確率の分母は、1 作品なら締切までの器そのもの
+        expect(s.availableUntil(c.deadline)).toBeCloseTo(plan.capacityMs);
         expect(s.breakdown).toEqual([]);
         expect(s.othersPerDayMs).toBe(0);
       }
@@ -137,6 +139,18 @@ describe("下限", () => {
     expect(t.get(1)!.todayMs).toBeCloseTo(2 * HOUR);
     expect(t.get(2)!.todayMs).toBeCloseTo(1 * HOUR);
     expect(t.get(2)!.dayMs(day(2026, 10, 20))).toBe(0);
+  });
+
+  it("使えた器は、早い作品の取り分と遅い作品の下限を除いたもの", () => {
+    // A（10/21 締切、9h の器に 6h）と B（11/20 締切、下限 0.5h）。A が使えた器 = 9h − B の下限 1.5h、B が使えた器 = 器 − A の取り分 6h
+    const a = simple(1, 6 * HOUR, { deadline: day(2026, 10, 21) });
+    const b = simple(2, 30 * HOUR, { deadline: day(2026, 11, 20), minMs: 0.5 * HOUR });
+    const t = buildTimetable([a, b], MON, WEEK);
+    expect(t.get(1)!.availableUntil(day(2026, 10, 21))).toBeCloseTo(9 * HOUR - 1.5 * HOUR);
+    const capB = deadlinePlan(0, 0, MON, day(2026, 11, 20), 0, WEEK).capacityMs;
+    expect(t.get(2)!.availableUntil(day(2026, 11, 20))).toBeCloseTo(capB - 6 * HOUR);
+    // 締切を過ぎた日付の器は 0
+    expect(t.get(1)!.availableUntil(day(2026, 10, 18))).toBe(0);
   });
 
   it("下限は必要量より多くても確保する", () => {
