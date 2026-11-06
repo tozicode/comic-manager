@@ -140,6 +140,23 @@ describe("buildSnapshot", () => {
     expect(s.generatedAt).toBe(NOW);
   });
 
+  it("締切の早い別の作品が先に器を使うと、完成見込みが後ろにずれる（5.24）", () => {
+    // 1 日 2 時間。10/30 締切の別の作品（残り 4 時間）が今日と明日の器を使うので、この作品の 4 時間は 10/31 と 11/1
+    const other = {
+      workId: 2,
+      title: "Skeb",
+      remainingMs: 4 * 3600_000,
+      lowMs: 4 * 3600_000,
+      highMs: 4 * 3600_000,
+      sigma: 0.3,
+      deadlines: [{ id: 9, name: "", date: "2026-10-30" }],
+      selectedDeadline: null,
+      minHours: 0,
+    };
+    const f = computeForecast(b, prediction(b, 4 * 3600_000), schedule([], null), [], NOW, undefined, [other]);
+    expect(buildSnapshot(f, extra, []).finish?.mid).toBe("2026-11-01");
+  });
+
   it("隠す項目は null になる", () => {
     const f = computeForecast(b, prediction(b, 4 * 3600_000), schedule([], null), [], NOW);
     const s = buildSnapshot(f, extra, ["title", "time", "finish", "cells"]);

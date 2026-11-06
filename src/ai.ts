@@ -101,7 +101,12 @@ export function aiText(input: AiInput, opts: AiOptions): string {
                 time: est(d.plan.perDayMs),
                 safe: est(d.plan.safePerDayMs),
               })}`;
-          return `${head}${used}${detail}`;
+          // ほかの作品にも配っているなら、その 1 日あたりの時間（確率はそのぶんを除いた時間で出している。5.24）
+          const others =
+            !completed && d.id === f.deadline?.id && f.share.othersPerDayMs > 0
+              ? `\n  - ${t("deadlineOthers", { time: est(f.share.othersPerDayMs) })}`
+              : "";
+          return `${head}${used}${detail}${others}`;
         }),
       ),
     );

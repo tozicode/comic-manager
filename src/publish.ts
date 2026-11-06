@@ -1,7 +1,7 @@
 // 進捗の公開（仕様書 5.22）：要約（snapshot）を組んで、預かり場所（server/）に送る。
 // 要約の形は docs/snapshot-format.md。中身の計算は share.ts（マスと進み具合）と forecast.ts（完成見込み・締切）を使い回す。
 // 鍵と設定は Rust 側（store/publish.rs）が持ち、送るのはここ（画面側の fetch）。
-import { api, Board, HideKey, PublishPrefs } from "./api";
+import { api, Board, HideKey, PublishPrefs, TimetableWorkInput } from "./api";
 import { computeForecast, Forecast } from "./forecast";
 import { dayKey, dayStartMs, startOfDay } from "./format";
 import { addDays } from "./schedule";
@@ -111,13 +111,16 @@ export function shareUrl(prefs: PublishPrefs): string {
 /** 直近の作業の目安に使う日数（forecast.ts の PACE_DAYS と同じ 28 日） */
 const PACE_DAYS = 28;
 
-/** 作品の今の状態を読み込んで要約を組む（Publisher とダイアログの両方から使う） */
-export async function collectSnapshot(workId: number, hide: HideKey[]): Promise<Snapshot> {
+/**
+ * 作品の今の状態を読み込んで要約を組む（Publisher とダイアログの両方から使う）。
+ * timetable は全作品の時間割の入力（5.24）。続けて何作品も送るときは、呼ぶ側で 1 回読んで渡す
+ */
+export async function collectSnapshot(workId: number, hide: HideKey[], timetable?: TimetableWorkInput[]): Promise<Snapshot> {
   const now = Date.now();
   const today = startOfDay(now);
   const dayStart = dayStartMs(today);
   const from = dayStartMs(addDays(today, -PACE_DAYS));
-  const [board, prediction, schedule, spans, sessions, works, info] = await Promise.all([
+  const [board, prediction, schedule, spans, sessions, works, info, input] = await Promise.all([
     api.getBoard(workId),
     api.getPrediction(workId),
     api.getSchedule(workId),
@@ -125,8 +128,9 @@ export async function collectSnapshot(workId: number, hide: HideKey[]): Promise<
     api.listSessions(workId, dayStart),
     api.listWorks(),
     api.dataInfo(),
+    timetable ?? api.getTimetableInput(),
   ]);
-  const forecast = computeForecast(board, prediction, schedule, spans, now);
+  const forecast = computeForecast(board, prediction, schedule, spans, now, undefined, input);
   const lastWorkedAt = works.find((w) => w.id === workId)?.lastWorkedAt ?? null;
   return buildSnapshot(forecast, { sessions, dayStart, lastWorkedAt, appVersion: info.version, now }, hide);
 }
@@ -152,9 +156,9 @@ export async function removeSnapshot(prefs: PublishPrefs): Promise<void> {
 }
 
 /** 1 作品ぶんを送って結果を記録する。送れなかった理由は記録するだけで投げない */
-export async function publishWork(prefs: PublishPrefs): Promise<void> {
+export async function publishWork(prefs: PublishPrefs, timetable?: TimetableWorkInput[]): Promise<void> {
   try {
-    const snapshot = await collectSnapshot(prefs.workId, prefs.hide);
+    const snapshot = await collectSnapshot(prefs.workId, prefs.hide, timetable);
     await sendSnapshot(prefs, snapshot);
     await api.markPublished(prefs.workId, null);
   } catch (e) {
@@ -175,8 +179,12 @@ export async function unpublishWork(prefs: PublishPrefs): Promise<void> {
 /** 送る必要のあるものをすべて片付ける（起動時・記録が変わったあと） */
 export async function publishAll(): Promise<void> {
   const list = await api.listPublishing();
+  // 時間割の入力は全作品で同じなので 1 回だけ読む（読めなければ作品ごとに読み直し、その失敗を作品に記録する）
+  const timetable = list.some((p) => p.enabled && !p.pendingDelete)
+    ? await api.getTimetableInput().catch(() => undefined)
+    : undefined;
   for (const prefs of list) {
     if (prefs.pendingDelete) await unpublishWork(prefs);
-    else if (prefs.enabled) await publishWork(prefs);
+    else if (prefs.enabled) await publishWork(prefs, timetable);
   }
 }

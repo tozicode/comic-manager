@@ -180,6 +180,28 @@ describe("aiText", () => {
     expect(aiText(input(), opts({ pages: false }))).not.toContain("## ページごとの状態");
   });
 
+  it("ほかの作品にも配っているときは、締切の節にその 1 日あたりの時間を書く", () => {
+    const alone = aiText(input(), opts());
+    expect(alone).not.toContain("ほかの作品にも");
+    // 10/31 締切の別の作品（残り 10 時間）が先に器を使う
+    const other = {
+      workId: 2,
+      title: "Skeb",
+      remainingMs: 10 * HOUR,
+      lowMs: 8 * HOUR,
+      highMs: 13 * HOUR,
+      sigma: 0.3,
+      deadlines: [{ id: 9, name: "", date: "2026-11-04" }],
+      selectedDeadline: null,
+      minHours: 0,
+    };
+    const withOther = aiText(
+      { ...input(), forecast: computeForecast(board, prediction, schedule, [], NOW, undefined, [other]) },
+      opts(),
+    );
+    expect(withOther).toMatch(/締切まで、ほかの作品にも 1 日あたり .+ 使う予定/);
+  });
+
   it("作品名を伏せる", () => {
     const text = aiText(input(), opts({ hideTitle: true }));
     expect(text).toContain("- 作品名：作品A");
