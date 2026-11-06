@@ -6,7 +6,7 @@ import { dayKey } from "./format";
 import { t } from "./i18n/schedule";
 
 export const HOUR = 3_600_000;
-const DAY_LIMIT = 3 * 365; // これより先は「完成しない」とみなす
+export const DAY_LIMIT = 3 * 365; // これより先は「完成しない」とみなす（時間割・月の予定も同じ上限）
 
 /** 月〜日の作業時間（時間） */
 export type WeekHours = number[];

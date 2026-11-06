@@ -1,7 +1,6 @@
 // 月の予定（仕様書 5.15）：残りのタスクを完成まで日ごとに割り振り、.ics に書き出す
-import { addDays, Calendar, capacity, Candidate, MIN_STEP, ordered } from "./schedule";
+import { addDays, Calendar, capacity, Candidate, DAY_LIMIT, MIN_STEP, ordered } from "./schedule";
 
-const DAY_LIMIT = 3 * 365;
 /** 「日をまたがないように」で、その日の残りを超えてもよい量（その日に割り振る時間に対する割合） */
 const FIT_SLACK = 0.2;
 /** 「日をまたがないように」で、収まるタスクが無いときに次のタスクを途中まで進める残りの量（同じく割合） */
