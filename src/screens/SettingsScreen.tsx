@@ -205,6 +205,7 @@ function StagesSection({ addSet, onAddSetShown }: SettingsProps) {
             onSave={(name, color, hint) => run(() => api.updateStage(s.id, name, color, hint))}
             onMove={(delta) => run(() => api.moveStage(s.id, delta))}
             onHidden={(hidden) => run(() => api.setStageHidden(s.id, hidden))}
+            onRemove={() => run(() => api.removeStage(s.id))}
           />
         ))}
         <div className="row">
@@ -307,9 +308,10 @@ type RowProps = {
   onSave: (name: string, color: string, hintMinutes: number) => void;
   onMove: (delta: number) => void;
   onHidden: (hidden: boolean) => void;
+  onRemove: () => void;
 };
 
-function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver, onDragEnd, onSave, onMove, onHidden }: RowProps) {
+function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver, onDragEnd, onSave, onMove, onHidden, onRemove }: RowProps) {
   const card = useRef<HTMLDivElement>(null);
   const [name, setName] = useState(stage.name);
   const [hint, setHint] = useState(String(stage.hintMinutes));
@@ -378,6 +380,9 @@ function StageRow({ stage, unit, first, last, dragging, onDragStart, onDragOver,
       </label>
       <button className="btn small" onClick={() => onHidden(!stage.hidden)}>
         {stage.hidden ? t("show") : t("hide")}
+      </button>
+      <button className="btn small ghost" title={t("stage.removeHint")} onClick={onRemove}>
+        {t("stage.remove")}
       </button>
     </div>
   );

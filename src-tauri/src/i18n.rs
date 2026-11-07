@@ -349,6 +349,13 @@ messages! {
         "有作品正在使用此工序组，无法删除",
         "有作品正在使用此工序組，無法刪除",
     ],
+    StageInUse => [
+        "この工程を使っている作品があるので消せません。代わりに「隠す」で一覧から外せます",
+        "This stage is used by a work and can't be removed. Use \"Hide\" to take it off the list instead",
+        "이 공정을 사용하는 작품이 있어 삭제할 수 없습니다. 대신 '숨기기'로 목록에서 뺄 수 있습니다",
+        "有作品正在使用此工序，无法删除。可以改用“隐藏”将其从列表中移除",
+        "有作品正在使用此工序，無法刪除。可以改用「隱藏」將其從列表中移除",
+    ],
     BuiltinSet => [
         "漫画・イラストのセットは変えたり消したりできません",
         "The Comic and Illustration sets can't be changed or removed",

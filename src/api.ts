@@ -374,6 +374,7 @@ export const api = {
   updateStage: (id: number, name: string, color: string, hintMinutes: number) =>
     call<StageDef>("update_stage", { id, name, color, hintMinutes }),
   setStageHidden: (id: number, hidden: boolean) => call<void>("set_stage_hidden", { id, hidden }),
+  removeStage: (id: number) => call<void>("remove_stage", { id }),
   moveStage: (id: number, delta: number) => call<void>("move_stage", { id, delta }),
 
   listTags: () => call<TagGroup[]>("list_tags"),

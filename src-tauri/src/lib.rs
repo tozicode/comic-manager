@@ -381,6 +381,11 @@ fn set_stage_hidden(state: State<AppState>, id: i64, hidden: bool) -> Cmd<()> {
 }
 
 #[tauri::command]
+fn remove_stage(state: State<AppState>, id: i64) -> Cmd<()> {
+    with_store(&state, |s| s.remove_stage(id))
+}
+
+#[tauri::command]
 fn move_stage(state: State<AppState>, id: i64, delta: i64) -> Cmd<()> {
     with_store(&state, |s| s.move_stage(id, delta))
 }
@@ -850,6 +855,7 @@ pub fn run() {
             add_stage,
             update_stage,
             set_stage_hidden,
+            remove_stage,
             move_stage,
             list_tags,
             set_page_tag,

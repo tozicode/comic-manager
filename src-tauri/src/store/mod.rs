@@ -909,6 +909,41 @@ impl Store {
         Ok(())
     }
 
+    /// 工程を消す（間違えて足したときのため）。使っている作品（ボードの列・記録・対象外）があれば消せない
+    /// （記録が工程を参照しているため。「隠す」で対応する）。隠すと同じく、セットに表示している工程を 1 つは残す
+    pub fn remove_stage(&self, id: i64) -> Result<()> {
+        let stage = self.stage(id)?;
+        let used: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM work_stage WHERE stage_id = ?1)
+                     OR EXISTS (SELECT 1 FROM task_done WHERE stage_id = ?1)
+                     OR EXISTS (SELECT 1 FROM work_session WHERE stage_id = ?1)
+                     OR EXISTS (SELECT 1 FROM task_excluded WHERE stage_id = ?1)",
+                [id],
+                |r| r.get(0),
+            )
+            .map_err(db_err)?;
+        if used {
+            return Err(tr(M::StageInUse).into());
+        }
+        if !stage.hidden {
+            let visible: i64 = self
+                .conn
+                .query_row(
+                    "SELECT COUNT(*) FROM stage_def WHERE hidden = 0 AND id != ?1 AND set_id = ?2",
+                    params![id, stage.set_id],
+                    |r| r.get(0),
+                )
+                .map_err(db_err)?;
+            if visible == 0 {
+                return Err(tr(M::KeepOneStage).into());
+            }
+        }
+        self.conn.execute("DELETE FROM stage_def WHERE id = ?1", [id]).map_err(db_err)?;
+        Ok(())
+    }
+
     /// 工程を同じセットの中で 1 つ上（delta = -1）または下（delta = 1）へ動かす。全作品の並び順にも反映する
     pub fn move_stage(&self, id: i64, delta: i64) -> Result<()> {
         let mut ids = self.set_stage_ids(self.stage_set_of(id)?)?;
@@ -1889,6 +1924,20 @@ mod tests {
         let names: Vec<String> = store.board(id, 0).unwrap().stages.into_iter().map(|s| s.name).collect();
         assert_eq!(names, ["トーン", "下書き", "ペン入れ"]);
         assert!(store.set_stage_order(&[st[0], st[1]]).is_err());
+    }
+
+    #[test]
+    fn 使っていない工程は消せるが_使っている工程は消せない() {
+        let (store, id) = setup();
+        let set = store.default_set(KIND_COMIC).unwrap();
+        // 登録後に足した工程は、どの作品も使っていないので消せる
+        let extra = store.add_stage_in_set(set, "ベタ", "#000000").unwrap();
+        store.remove_stage(extra.id).unwrap();
+        assert!(store.list_stages().unwrap().iter().all(|s| s.id != extra.id));
+        // 作品のボードに並んでいる工程は、記録が無くても消せない
+        let st = stage_ids(&store);
+        assert!(store.remove_stage(st[0]).is_err());
+        assert_eq!(store.board(id, 0).unwrap().stages.len(), 3);
     }
 
     #[test]
