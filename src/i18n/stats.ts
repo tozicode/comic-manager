@@ -27,6 +27,9 @@ export const { t, tn } = defineMessages({
     "base.fromHint": "目安を使用中",
     "base.samples": "実績 {n} 件",
     "base.hint": "目安 {time}",
+    "base.mean": "記録の平均 {time}",
+    "base.note":
+      "基準時間は、完了したタスクごとの記録をタグの倍率で割って揃えたものの中央値です（予測はこれにタグの倍率を掛けて使います）。手で計算した平均と違って見えるときは、タグの影響を含んだ「記録の平均」と見比べてください。",
   },
   en: {
     "tags.title": "Tag multipliers",
@@ -55,6 +58,9 @@ export const { t, tn } = defineMessages({
     "base.fromHint": "Using estimated time",
     "base.samples": (p) => (p.n === 1 ? "1 actual record" : "{n} actual records"),
     "base.hint": "Estimate {time}",
+    "base.mean": "Average of records {time}",
+    "base.note":
+      "The base time is the median of each finished task's record divided by its tag multiplier (forecasts multiply the tags back in). If it differs from an average you worked out by hand, compare it with the \"average of records\", which includes the effect of tags.",
   },
   ko: {
     "tags.title": "태그 배율",
@@ -81,6 +87,9 @@ export const { t, tn } = defineMessages({
     "base.fromHint": "예상 시간 사용 중",
     "base.samples": "실적 {n}건",
     "base.hint": "예상 {time}",
+    "base.mean": "기록의 평균 {time}",
+    "base.note":
+      "기준 시간은 완료한 태스크별 기록을 태그 배율로 나누어 맞춘 값의 중앙값입니다(예측에서는 여기에 태그 배율을 곱해 사용합니다). 직접 계산한 평균과 달라 보이면, 태그의 영향을 포함한 '기록의 평균'과 비교해 보세요.",
   },
   "zh-Hans": {
     "tags.title": "标签倍率",
@@ -107,6 +116,9 @@ export const { t, tn } = defineMessages({
     "base.fromHint": "正在使用参考时间",
     "base.samples": "实际记录 {n} 条",
     "base.hint": "参考 {time}",
+    "base.mean": "记录平均 {time}",
+    "base.note":
+      "基准时间是把每个已完成任务的记录除以标签倍率后取的中位数（预测时再乘回标签倍率使用）。如果和您手算的平均不同，请与包含标签影响的“记录平均”对照。",
   },
   "zh-Hant": {
     "tags.title": "標籤倍率",
@@ -133,5 +145,8 @@ export const { t, tn } = defineMessages({
     "base.fromHint": "正在使用參考時間",
     "base.samples": "實際紀錄 {n} 筆",
     "base.hint": "參考 {time}",
+    "base.mean": "紀錄平均 {time}",
+    "base.note":
+      "基準時間是把每個已完成任務的紀錄除以標籤倍率後取的中位數（預測時再乘回標籤倍率使用）。如果和您手算的平均不同，請與包含標籤影響的「紀錄平均」對照。",
   },
 });

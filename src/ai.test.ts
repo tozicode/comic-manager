@@ -73,8 +73,8 @@ const prediction: Prediction = {
   highMs: 10 * HOUR,
   sigma: 0.3,
   stages: [
-    { stageId: 1, baseMs: 2 * HOUR, samples: 2, fromHint: false },
-    { stageId: 2, baseMs: 3 * HOUR, samples: 0, fromHint: true },
+    { stageId: 1, baseMs: 2 * HOUR, meanMs: 2.5 * HOUR, samples: 2, fromHint: false },
+    { stageId: 2, baseMs: 3 * HOUR, meanMs: 0, samples: 0, fromHint: true },
   ],
 };
 const schedule: WorkSchedule = {

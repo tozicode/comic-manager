@@ -55,6 +55,8 @@ pub struct StageBase {
     pub stage_id: i64,
     /// タグの影響を除いた 1 ページあたりの時間
     pub base_ms: i64,
+    /// タグの影響を含んだ、完了タスク 1 件あたりの記録の平均（統計で手計算と見比べるため。実績が無ければ 0）
+    pub mean_ms: i64,
     /// 基準に使った完了タスクの数
     pub samples: i64,
     /// 実績が無く、目安の時間を使っている
@@ -160,13 +162,15 @@ impl Store {
         let hints: HashMap<i64, i64> = self.list_stages()?.into_iter().map(|s| (s.id, s.hint_minutes * 60_000)).collect();
         let mut bases: HashMap<i64, StageBase> = HashMap::new();
         for (&stage, &hint) in &hints {
-            let mut normalized: Vec<f64> = samples.iter().filter(|s| s.0 == stage).map(|s| s.1 / s.2).collect();
+            let own: Vec<&(i64, f64, f64)> = samples.iter().filter(|s| s.0 == stage).collect();
+            let mut normalized: Vec<f64> = own.iter().map(|s| s.1 / s.2).collect();
             let base = if normalized.is_empty() {
-                StageBase { stage_id: stage, base_ms: hint, samples: 0, from_hint: true }
+                StageBase { stage_id: stage, base_ms: hint, mean_ms: 0, samples: 0, from_hint: true }
             } else {
                 StageBase {
                     stage_id: stage,
                     base_ms: median(&mut normalized).round() as i64,
+                    mean_ms: (own.iter().map(|s| s.1).sum::<f64>() / own.len() as f64).round() as i64,
                     samples: normalized.len() as i64,
                     from_hint: false,
                 }
@@ -459,6 +463,8 @@ mod tests {
         assert!((55 * MIN..65 * MIN).contains(&p.stages[0].base_ms), "{}", p.stages[0].base_ms / MIN);
         assert_eq!(p.stages[0].samples, 3);
         assert!(!p.stages[0].from_hint);
+        // 記録の平均はタグで割らないそのままの値（50・120・91）
+        assert_eq!(p.stages[0].mean_ms, 87 * MIN);
 
         // p4 のペン入れ：目安 90 分 × コマ多（下書きの実績から 1.3 より少し大きく学習している）
         let t = p.tasks.iter().find(|t| t.page_id == pages[2] && t.stage_id == st[1]).unwrap();
@@ -624,6 +630,8 @@ mod tests {
         assert_eq!(stats.stages.len(), store.list_stages().unwrap().len());
         let draft = stats.stages.iter().find(|s| s.stage_id == st[0]).unwrap();
         assert_eq!((draft.samples, draft.from_hint), (2, false));
+        assert_eq!(draft.mean_ms, 90 * MIN);
+        assert_eq!(stats.stages.iter().find(|s| s.stage_id == st[1]).unwrap().mean_ms, 0);
         assert!(stats.stages.iter().find(|s| s.stage_id == st[1]).unwrap().from_hint);
         let spread = store.list_tags().unwrap().into_iter().flat_map(|g| g.tags).find(|t| t.system).unwrap().id;
         assert_eq!(stats.tags.iter().map(|t| (t.tag_id, t.samples)).collect::<Vec<_>>(), [(spread, 1)]);

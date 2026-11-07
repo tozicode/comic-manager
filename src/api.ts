@@ -247,7 +247,7 @@ export type Prediction = {
   lowMs: number;
   highMs: number;
   sigma: number;
-  stages: { stageId: number; baseMs: number; samples: number; fromHint: boolean }[];
+  stages: { stageId: number; baseMs: number; meanMs: number; samples: number; fromHint: boolean }[];
 };
 
 export type TagFit = {

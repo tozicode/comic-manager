@@ -177,9 +177,11 @@ function StageBases({ stats, sets, stages }: { stats: ModelStats | null; sets: S
                           {s.name}
                         </span>
                       </td>
-                      <td className="num right">{b ? estimate(b.baseMs) : "—"}</td>
+                      <td className="num right">{b ? hours(b.baseMs) : "—"}</td>
                       <td className="muted small-text">
-                        {!b || b.fromHint ? t("base.fromHint") : t("base.samples", { n: b.samples })}
+                        {!b || b.fromHint
+                          ? t("base.fromHint")
+                          : `${t("base.samples", { n: b.samples })}・${t("base.mean", { time: hours(b.meanMs) })}`}
                       </td>
                       <td className="muted small-text right">{t("base.hint", { time: estimate(s.hintMinutes * 60_000) })}</td>
                     </tr>
@@ -190,6 +192,7 @@ function StageBases({ stats, sets, stages }: { stats: ModelStats | null; sets: S
           </div>
         );
       })}
+      <p className="muted small-text">{t("base.note")}</p>
     </div>
   );
 }
