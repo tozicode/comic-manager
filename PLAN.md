@@ -30,7 +30,7 @@
 - 画面の上に `Achievements`（4 つのタイル）。作業した時間と日数は `dailyTotals` で（ヒートマップと同じ数え方）
 - 文言 5 言語（`src/i18n/records.ts`・`src/i18n/stats.ts`）
 
-## 3. 説明書・BOOTH・版
+## 3. 説明書・BOOTH・版（済）
 
 - 説明書の「統計で見直す」に 1 行、BOOTH の履歴、版を 3.3.0 に（package.json・package-lock.json・Cargo.toml・Cargo.lock・tauri.conf.json）
 - `npm run guide` で PDF と site/guide を作り直す
