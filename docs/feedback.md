@@ -21,7 +21,7 @@
 ```sh
 python scripts/feedback.py                 # 未対応の回答を新しい順に
 python scripts/feedback.py --all           # 全部
-python scripts/feedback.py done 5 "済 3.2.1 記録の平均（5.12）"   # 5 行目の「対応」列に書く
+python scripts/feedback.py done 5 "済 3.3.0 記録の平均（5.12）"   # 5 行目の「対応」列に書く
 ```
 
 - 「対応」が **「済」か「見送り」で始まる行は対応済み**。空欄や「一部 …」は未対応として出る。
