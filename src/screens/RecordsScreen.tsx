@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { api, Board, SessionRow, Span } from "../api";
+import { api, Board, ModelStats, SessionRow, Span, WorkStageStats } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { Heatmap } from "../components/Heatmap";
 import { dailyTotals, dayKey, dayLabel, dayStartMs, fromInputs, hours, startOfDay, time, timeInDay } from "../format";
 import { kindKey, unitText } from "../i18n/common";
 import { t } from "../i18n/records";
+import { factorDiffers } from "../stats";
 
 const DAY = 86_400_000;
 // 期間の選択肢（名前は描画時に訳す）
@@ -48,6 +49,9 @@ export function RecordsScreen({ workId }: { workId: number }) {
   const [rows, setRows] = useState<SessionRow[]>([]);
   /** 全作品の記録（日ごとの見出しに全作品の合計を出すため。複数の作品を並行して進める人向け） */
   const [spans, setSpans] = useState<Span[]>([]);
+  /** この作品の工程ごとの時間と、比べる相手の全作品の平均（5.12） */
+  const [workStats, setWorkStats] = useState<WorkStageStats[]>([]);
+  const [model, setModel] = useState<ModelStats | null>(null);
   const [period, setPeriod] = useState(0);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -62,6 +66,8 @@ export function RecordsScreen({ workId }: { workId: number }) {
     api.getBoard(workId).then(setBoard).catch(app.showError);
     api.listSessions(workId, from).then(setRows).catch(app.showError);
     api.listSpans(from).then(setSpans).catch(app.showError);
+    api.getWorkStageStats().then(setWorkStats).catch(app.showError);
+    api.getModelStats().then(setModel).catch(app.showError);
   }, [workId, from, app.version, app.showError]);
   const allTotals = dailyTotals(spans, app.now);
 
@@ -184,6 +190,7 @@ export function RecordsScreen({ workId }: { workId: number }) {
   return (
     <>
       <Heatmap selected={selectedDay} onSelect={selectDay} />
+      {board && <WorkStageTimes board={board} rows={workStats.find((w) => w.workId === workId)?.stages ?? []} model={model} />}
 
       <div className="toolbar">
         <select className="field" value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
@@ -294,5 +301,58 @@ export function RecordsScreen({ workId }: { workId: number }) {
         </Dialog>
       )}
     </>
+  );
+}
+
+/** この作品の工程ごとの時間（5.12）。振り返りと次の見積もりのために、タグの影響を除かない平均を全作品と並べる。記録が無ければ出さない */
+function WorkStageTimes({ board, rows, model }: { board: Board; rows: WorkStageStats["stages"]; model: ModelStats | null }) {
+  if (!rows.some((r) => r.totalMs > 0)) return null;
+  const allMeans = new Map(model?.stages.map((s) => [s.stageId, s]));
+  const defs = new Map(board.stages.map((s) => [s.id, s]));
+  return (
+    <div className="card rec-stages">
+      <div className="section-title">{t("stage.title")}</div>
+      <p className="muted small-text">{t("stage.lead")}</p>
+      <table className="rec stats-table">
+        <thead>
+          <tr>
+            <th>{t("col.stage")}</th>
+            <th className="right">{t("col.workMean")}</th>
+            <th className="right">{t("col.samples")}</th>
+            <th className="right">{t("col.allMean")}</th>
+            <th className="right">{t("col.ratio")}</th>
+            <th className="right">{t("col.total")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const def = defs.get(r.stageId);
+            const all = allMeans.get(r.stageId);
+            const allMean = all && !all.fromHint ? all.meanMs : 0;
+            const ratio = r.samples > 0 && allMean > 0 ? r.meanMs / allMean : null;
+            const differs = ratio !== null && factorDiffers(allMean, r.meanMs, r.samples);
+            return (
+              <tr key={r.stageId}>
+                <td>
+                  <span className="stage-label">
+                    <i style={{ background: def?.color ?? "transparent" }} />
+                    {def?.name ?? "—"}
+                  </span>
+                </td>
+                <td className="num right">{r.samples > 0 ? hours(r.meanMs) : "—"}</td>
+                <td className="num right">{t("count", { n: r.samples })}</td>
+                <td className="num right">{allMean > 0 ? hours(allMean) : "—"}</td>
+                <td className={`num right${differs ? " differs" : ""}`}>
+                  {ratio !== null ? `×${ratio.toFixed(2)}` : "—"}
+                  {differs && " ⚠"}
+                </td>
+                <td className="num right">{r.totalMs > 0 ? hours(r.totalMs) : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="muted small-text">{t("stage.note")}</p>
+    </div>
   );
 }

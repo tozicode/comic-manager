@@ -1024,6 +1024,17 @@ table.board {
   margin-bottom: 18px;
   scroll-margin-top: 10px;
 }
+/* 作業記録の上の「この作品の工程の時間」 */
+.rec-stages {
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.rec-stages > p {
+  margin: 0 0 10px;
+}
+.rec-stages > p:last-child {
+  margin: 10px 0 0;
+}
 .rec-day h3 {
   display: flex;
   justify-content: space-between;
