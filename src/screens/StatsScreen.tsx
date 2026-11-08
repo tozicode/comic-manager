@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, ModelStats, Span, StageDef, StageSet, TagGroup } from "../api";
+import { api, ModelStats, Span, StageDef, StageSet, TagGroup, WorkStageStats, WorkSummary } from "../api";
 import { useApp } from "../app-context";
 import { dayLabel, estimate, factor, hours, weekdayName } from "../format";
 import { kindKey, setName, unitText } from "../i18n/common";
@@ -19,9 +19,13 @@ export function StatsScreen() {
   const [stages, setStages] = useState<StageDef[]>([]);
   const [spans, setSpans] = useState<Span[]>([]);
   const [calendar, setCalendar] = useState<[number[], string[]] | null>(null);
+  const [works, setWorks] = useState<WorkSummary[]>([]);
+  const [workStats, setWorkStats] = useState<WorkStageStats[]>([]);
 
   useEffect(() => {
     api.getModelStats().then(setStats).catch(app.showError);
+    api.listWorks().then(setWorks).catch(app.showError);
+    api.getWorkStageStats().then(setWorkStats).catch(app.showError);
     api.listTags().then(setGroups).catch(app.showError);
     api.listStageSets().then(setSets).catch(app.showError);
     api.listStages().then(setStages).catch(app.showError);
@@ -31,7 +35,10 @@ export function StatsScreen() {
 
   return (
     <div className="stats">
-      <TagFactors stats={stats} groups={groups} sets={sets} />
+      <div className="stats-side">
+        <TagFactors stats={stats} groups={groups} sets={sets} />
+        <WorkStages stats={stats} works={works} workStats={workStats} stages={stages} />
+      </div>
       <div className="stats-side">
         <WeekdayHours spans={spans} calendar={calendar} />
         <StageBases stats={stats} sets={sets} stages={stages} />
@@ -193,6 +200,96 @@ function StageBases({ stats, sets, stages }: { stats: ModelStats | null; sets: S
         );
       })}
       <p className="muted small-text">{t("base.note")}</p>
+    </div>
+  );
+}
+
+/** 作品ごとの工程の時間（5.12）。振り返りと次の見積もりのために、タグの影響を除かない平均を全作品と並べる */
+function WorkStages({
+  stats,
+  works,
+  workStats,
+  stages,
+}: {
+  stats: ModelStats | null;
+  works: WorkSummary[];
+  workStats: WorkStageStats[];
+  stages: StageDef[];
+}) {
+  // 最後に作業した作品を先頭に
+  const ordered = useMemo(() => [...works].sort((a, b) => (b.lastWorkedAt ?? 0) - (a.lastWorkedAt ?? 0)), [works]);
+  const [workId, setWorkId] = useState<number | null>(null);
+  const selected = ordered.find((w) => w.id === workId) ?? ordered[0];
+  const rows = workStats.find((w) => w.workId === selected?.id)?.stages ?? [];
+  const allMeans = new Map(stats?.stages.map((s) => [s.stageId, s]));
+  const defs = new Map(stages.map((s) => [s.id, s]));
+  const hasRecords = rows.some((r) => r.totalMs > 0);
+
+  return (
+    <div className="card">
+      <div className="row" style={{ marginBottom: 8 }}>
+        <div className="section-title" style={{ margin: 0 }}>
+          {t("work.title")}
+        </div>
+        {ordered.length > 0 && (
+          <select className="field" value={selected?.id ?? ""} onChange={(e) => setWorkId(Number(e.target.value))}>
+            {ordered.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.title}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      <p className="muted small-text">{t("work.lead")}</p>
+      {!selected ? (
+        <p className="muted">{t("work.noWorks")}</p>
+      ) : !hasRecords ? (
+        <p className="muted">{t("work.empty")}</p>
+      ) : (
+        <>
+          <table className="rec stats-table">
+            <thead>
+              <tr>
+                <th>{t("col.stage")}</th>
+                <th className="right">{t("col.workMean")}</th>
+                <th className="right">{t("col.samples")}</th>
+                <th className="right">{t("col.allMean")}</th>
+                <th className="right">{t("col.ratio")}</th>
+                <th className="right">{t("col.total")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const def = defs.get(r.stageId);
+                const all = allMeans.get(r.stageId);
+                const allMean = all && !all.fromHint ? all.meanMs : 0;
+                const ratio = r.samples > 0 && allMean > 0 ? r.meanMs / allMean : null;
+                const differs = ratio !== null && factorDiffers(allMean, r.meanMs, r.samples);
+                return (
+                  <tr key={r.stageId}>
+                    <td>
+                      <span className="stage-label">
+                        <i style={{ background: def?.color ?? "transparent" }} />
+                        {def?.name ?? "—"}
+                      </span>
+                    </td>
+                    <td className="num right">{r.samples > 0 ? hours(r.meanMs) : "—"}</td>
+                    <td className="num right">{t("count", { n: r.samples })}</td>
+                    <td className="num right">{allMean > 0 ? hours(allMean) : "—"}</td>
+                    <td className={`num right${differs ? " differs" : ""}`}>
+                      {ratio !== null ? `×${ratio.toFixed(2)}` : "—"}
+                      {differs && " ⚠"}
+                    </td>
+                    <td className="num right">{r.totalMs > 0 ? hours(r.totalMs) : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="muted small-text">{t("work.note")}</p>
+        </>
+      )}
     </div>
   );
 }

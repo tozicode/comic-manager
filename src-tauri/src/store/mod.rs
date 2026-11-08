@@ -25,7 +25,7 @@ mod tags;
 
 pub use collab::{Assignee, CollabInfo, CollabMember, CollabSummary};
 pub use pages::{PageMerge, PageSplit};
-pub use predict::{ModelStats, Prediction, TimetableWorkInput};
+pub use predict::{ModelStats, Prediction, TimetableWorkInput, WorkStageStats};
 pub use prefs::{DisplayPrefs, RemotePrefs, TimerPrefs};
 pub use publish::PublishPrefs;
 pub use schedule::WorkSchedule;

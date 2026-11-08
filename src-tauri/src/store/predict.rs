@@ -100,6 +100,26 @@ pub struct ModelStats {
     pub stages: Vec<StageBase>,
 }
 
+/// 作品ごとの工程の時間（統計画面。仕様書 5.12）。工程はその作品のボードの列の順
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkStageStats {
+    pub work_id: i64,
+    pub stages: Vec<WorkStageStat>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkStageStat {
+    pub stage_id: i64,
+    /// この作品で完了したタスクの数（止めた記録の合計が 0 より大きいもの。全作品の「記録の平均」と同じ数え方）
+    pub samples: i64,
+    /// 完了したタスク 1 件あたりの記録の平均。タグの影響は除かない。実績が無ければ 0
+    pub mean_ms: i64,
+    /// この作品でその工程に使った時間の合計（止めた記録。完了していないタスクの分も含む）
+    pub total_ms: i64,
+}
+
 /// 時間割（仕様書 5.24）の入力。作品 1 つぶん。時間割そのものは画面側（src/timetable.ts）で組む
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -203,6 +223,61 @@ impl Store {
         let mut stages: Vec<StageBase> = model.bases.into_values().collect();
         stages.sort_by_key(|s| s.stage_id);
         Ok(ModelStats { tags, stages })
+    }
+
+    /// 全作品の、工程ごとの実績（統計画面の「作品ごとの工程の時間」）
+    pub fn work_stage_stats(&self) -> Result<Vec<WorkStageStats>> {
+        // 完了したタスクの記録：(作品, 工程) → (件数, 合計)
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.work_id, t.stage_id, SUM(ss.ended_at - ss.started_at) FROM task_done t
+                 JOIN page p ON p.id = t.page_id
+                 JOIN work_session ss ON ss.page_id = t.page_id AND ss.stage_id = t.stage_id
+                 WHERE ss.ended_at IS NOT NULL GROUP BY t.page_id, t.stage_id",
+            )
+            .map_err(db_err)?;
+        let mut done: HashMap<(i64, i64), (i64, i64)> = HashMap::new();
+        for row in stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?))).map_err(db_err)? {
+            let (work, stage, spent) = row.map_err(db_err)?;
+            if spent > 0 {
+                let e = done.entry((work, stage)).or_insert((0, 0));
+                e.0 += 1;
+                e.1 += spent;
+            }
+        }
+        // 止めた記録の合計：(作品, 工程) → 合計
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.work_id, ss.stage_id, SUM(ss.ended_at - ss.started_at) FROM work_session ss
+                 JOIN page p ON p.id = ss.page_id WHERE ss.ended_at IS NOT NULL GROUP BY p.work_id, ss.stage_id",
+            )
+            .map_err(db_err)?;
+        let totals: HashMap<(i64, i64), i64> = stmt
+            .query_map([], |r| Ok(((r.get(0)?, r.get(1)?), r.get(2)?)))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)?;
+        // 作品ごとに、ボードの列の順で並べる
+        let mut stmt = self
+            .conn
+            .prepare("SELECT work_id, stage_id FROM work_stage ORDER BY work_id, sort_order, stage_id")
+            .map_err(db_err)?;
+        let mut works: Vec<WorkStageStats> = Vec::new();
+        for row in stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))).map_err(db_err)? {
+            let (work_id, stage_id) = row.map_err(db_err)?;
+            if works.last().map(|w| w.work_id) != Some(work_id) {
+                works.push(WorkStageStats { work_id, stages: Vec::new() });
+            }
+            let (samples, sum) = done.get(&(work_id, stage_id)).copied().unwrap_or((0, 0));
+            works.last_mut().unwrap().stages.push(WorkStageStat {
+                stage_id,
+                samples,
+                mean_ms: if samples > 0 { (sum as f64 / samples as f64).round() as i64 } else { 0 },
+                total_ms: totals.get(&(work_id, stage_id)).copied().unwrap_or(0),
+            });
+        }
+        Ok(works)
     }
 
     pub fn prediction(&self, work_id: i64, now: i64) -> Result<Prediction> {
@@ -635,6 +710,32 @@ mod tests {
         assert!(stats.stages.iter().find(|s| s.stage_id == st[1]).unwrap().from_hint);
         let spread = store.list_tags().unwrap().into_iter().flat_map(|g| g.tags).find(|t| t.system).unwrap().id;
         assert_eq!(stats.tags.iter().map(|t| (t.tag_id, t.samples)).collect::<Vec<_>>(), [(spread, 1)]);
+    }
+
+    #[test]
+    fn 作品ごとの工程の時間は作品で分かれる() {
+        use super::super::tests::comic;
+        let (store, a) = setup();
+        let b = store.add_work("C:/b.cmc", &comic(&[("page0001.clip", 1), ("page0002.clip", 1)]), 0).unwrap();
+        let st = stage_ids(&store);
+        let pa: Vec<i64> = store.board(a, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        let pb: Vec<i64> = store.board(b, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        let mut at = 0;
+        finish(&store, pa[0], st[0], 50, &mut at);
+        finish(&store, pa[1], st[0], 70, &mut at);
+        finish(&store, pb[0], st[0], 100, &mut at);
+        // B のペン入れは計測しただけで完了していない → 平均には入らず、合計にだけ入る
+        store.add_session(pb[0], st[1], at, at + 30 * MIN, i64::MAX).unwrap();
+
+        let stats = store.work_stage_stats().unwrap();
+        let of = |w: i64| stats.iter().find(|s| s.work_id == w).unwrap();
+        assert_eq!(of(a).stages.iter().map(|s| s.stage_id).collect::<Vec<_>>(), st);
+        let draft = |w: i64| &of(w).stages[0];
+        assert_eq!((draft(a).samples, draft(a).mean_ms, draft(a).total_ms), (2, 60 * MIN, 120 * MIN));
+        assert_eq!((draft(b).samples, draft(b).mean_ms, draft(b).total_ms), (1, 100 * MIN, 100 * MIN));
+        let pen = &of(b).stages[1];
+        assert_eq!((pen.samples, pen.mean_ms, pen.total_ms), (0, 0, 30 * MIN));
+        assert_eq!(of(a).stages[2], WorkStageStat { stage_id: st[2], samples: 0, mean_ms: 0, total_ms: 0 });
     }
 
     #[test]

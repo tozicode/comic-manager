@@ -262,6 +262,20 @@ export type TagFit = {
 /** 統計画面に出す、予測の前提（実績のあるタグと、全工程の基準時間） */
 export type ModelStats = { tags: TagFit[]; stages: Prediction["stages"] };
 
+/** 作品ごとの工程の時間（統計画面。仕様書 5.12）。工程はその作品のボードの列の順 */
+export type WorkStageStats = {
+  workId: number;
+  stages: {
+    stageId: number;
+    /** この作品で完了したタスクの数 */
+    samples: number;
+    /** 完了したタスク 1 件あたりの記録の平均（タグの影響は除かない。実績が無ければ 0） */
+    meanMs: number;
+    /** この作品でその工程に使った時間の合計（完了していないタスクの分も含む） */
+    totalMs: number;
+  }[];
+};
+
 /** 締切（5.19）。name が空なら画面では「締切」と出す */
 export type Deadline = { id: number; name: string; date: string };
 
@@ -390,6 +404,7 @@ export const api = {
 
   getPrediction: (workId: number) => call<Prediction>("get_prediction", { workId }),
   getModelStats: () => call<ModelStats>("get_model_stats"),
+  getWorkStageStats: () => call<WorkStageStats[]>("get_work_stage_stats"),
   getSchedule: (workId: number) => call<WorkSchedule>("get_schedule", { workId }),
   getTimetableInput: () => call<TimetableWorkInput[]>("get_timetable_input"),
   /** 0〜24 時間、0.5 刻み */
