@@ -2090,6 +2090,21 @@ button.lost:hover {
   display: grid;
   gap: 18px;
 }
+.stats-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.stats-tile {
+  padding: 12px 16px;
+}
+.stats-tile-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 2px 0;
+}
 .stats .card {
   padding: 16px;
 }

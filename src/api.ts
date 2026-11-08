@@ -262,6 +262,9 @@ export type TagFit = {
 /** 統計画面に出す、予測の前提（実績のあるタグと、全工程の基準時間） */
 export type ModelStats = { tags: TagFit[]; stages: Prediction["stages"] };
 
+/** これまでの実績（統計画面。仕様書 5.12）。完成したページ・枚（見開きは 2）と完成した作品の数 */
+export type CompletedCounts = { pages: number; works: number };
+
 /** 作品ごとの工程の時間（統計画面。仕様書 5.12）。工程はその作品のボードの列の順 */
 export type WorkStageStats = {
   workId: number;
@@ -405,6 +408,7 @@ export const api = {
   getPrediction: (workId: number) => call<Prediction>("get_prediction", { workId }),
   getModelStats: () => call<ModelStats>("get_model_stats"),
   getWorkStageStats: () => call<WorkStageStats[]>("get_work_stage_stats"),
+  getCompletedCounts: () => call<CompletedCounts>("get_completed_counts"),
   getSchedule: (workId: number) => call<WorkSchedule>("get_schedule", { workId }),
   getTimetableInput: () => call<TimetableWorkInput[]>("get_timetable_input"),
   /** 0〜24 時間、0.5 刻み */

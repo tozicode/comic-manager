@@ -3,6 +3,12 @@ import { defineMessages } from ".";
 
 export const { t, tn } = defineMessages({
   ja: {
+    "ach.hours": "作業した時間",
+    "ach.pages": "完成したページ・枚",
+    "ach.works": "完成した作品",
+    "ach.days": "作業した日数",
+    "ach.daysN": "{n} 日",
+    "ach.since": "使い始めて {n} 日目",
     "tags.title": "タグの倍率",
     "tags.lead": "予測には、初期倍率と実績を混ぜた倍率を使います。実績が増えるほど「実績から見た倍率」に近づきます。",
     "col.tag": "タグ",
@@ -43,6 +49,12 @@ export const { t, tn } = defineMessages({
       "基準時間は、完了したタスクごとの記録をタグの倍率で割って揃えたものの中央値です（予測はこれにタグの倍率を掛けて使います）。手で計算した平均と違って見えるときは、タグの影響を含んだ「記録の平均」と見比べてください。",
   },
   en: {
+    "ach.hours": "Time worked",
+    "ach.pages": "Pages & files finished",
+    "ach.works": "Works finished",
+    "ach.days": "Days worked",
+    "ach.daysN": (p) => (p.n === 1 ? "1 day" : "{n} days"),
+    "ach.since": "Day {n} since you started",
     "tags.title": "Tag multipliers",
     "tags.lead":
       "Forecasts use a multiplier that blends the default multiplier with your actual records. The more records you have, the closer it gets to the \"multiplier from actual records\".",
@@ -85,6 +97,12 @@ export const { t, tn } = defineMessages({
       "The base time is the median of each finished task's record divided by its tag multiplier (forecasts multiply the tags back in). If it differs from an average you worked out by hand, compare it with the \"average of records\", which includes the effect of tags.",
   },
   ko: {
+    "ach.hours": "작업한 시간",
+    "ach.pages": "완성한 페이지·장",
+    "ach.works": "완성한 작품",
+    "ach.days": "작업한 날수",
+    "ach.daysN": "{n}일",
+    "ach.since": "시작한 지 {n}일째",
     "tags.title": "태그 배율",
     "tags.lead": "예측에는 기본 배율과 실적을 섞은 배율을 사용합니다. 실적이 늘어날수록 '실적 기준 배율'에 가까워집니다.",
     "col.tag": "태그",
@@ -125,6 +143,12 @@ export const { t, tn } = defineMessages({
       "기준 시간은 완료한 태스크별 기록을 태그 배율로 나누어 맞춘 값의 중앙값입니다(예측에서는 여기에 태그 배율을 곱해 사용합니다). 직접 계산한 평균과 달라 보이면, 태그의 영향을 포함한 '기록의 평균'과 비교해 보세요.",
   },
   "zh-Hans": {
+    "ach.hours": "作业时间",
+    "ach.pages": "完成的页数·张数",
+    "ach.works": "完成的作品",
+    "ach.days": "作业天数",
+    "ach.daysN": "{n} 天",
+    "ach.since": "开始使用第 {n} 天",
     "tags.title": "标签倍率",
     "tags.lead": "预测使用初始倍率与实际记录混合后的倍率。实际记录越多，就越接近「根据实际记录得出的倍率」。",
     "col.tag": "标签",
@@ -165,6 +189,12 @@ export const { t, tn } = defineMessages({
       "基准时间是把每个已完成任务的记录除以标签倍率后取的中位数（预测时再乘回标签倍率使用）。如果和您手算的平均不同，请与包含标签影响的“记录平均”对照。",
   },
   "zh-Hant": {
+    "ach.hours": "作業時間",
+    "ach.pages": "完成的頁數·張數",
+    "ach.works": "完成的作品",
+    "ach.days": "作業天數",
+    "ach.daysN": "{n} 天",
+    "ach.since": "開始使用第 {n} 天",
     "tags.title": "標籤倍率",
     "tags.lead": "預測會使用初始倍率與實際紀錄混合後的倍率。實際紀錄越多，就越接近「依實際紀錄得出的倍率」。",
     "col.tag": "標籤",

@@ -445,6 +445,11 @@ fn get_work_stage_stats(state: State<AppState>) -> Cmd<Vec<store::WorkStageStats
 }
 
 #[tauri::command]
+fn get_completed_counts(state: State<AppState>) -> Cmd<store::CompletedCounts> {
+    with_store(&state, |s| s.completed_counts())
+}
+
+#[tauri::command]
 fn get_schedule(state: State<AppState>, work_id: i64) -> Cmd<store::WorkSchedule> {
     with_store(&state, |s| s.schedule(work_id))
 }
@@ -872,6 +877,7 @@ pub fn run() {
             get_prediction,
             get_model_stats,
             get_work_stage_stats,
+            get_completed_counts,
             get_schedule,
             get_timetable_input,
             set_default_hours,

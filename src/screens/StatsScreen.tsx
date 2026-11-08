@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, ModelStats, Span, StageDef, StageSet, TagGroup, WorkStageStats, WorkSummary } from "../api";
+import { api, CompletedCounts, ModelStats, Span, StageDef, StageSet, TagGroup, WorkStageStats, WorkSummary } from "../api";
 import { useApp } from "../app-context";
-import { dayLabel, estimate, factor, hours, weekdayName } from "../format";
+import { dailyTotals, dayLabel, estimate, factor, hours, startOfDay, weekdayName } from "../format";
 import { kindKey, setName, unitText } from "../i18n/common";
 import { t } from "../i18n/stats";
 import { factorDiffers, STATS_WEEKS, weekdayAverages } from "../stats";
 
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 // 月曜始まりの曜日（weekdayName の番号。0 = 日曜）
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
 
@@ -21,9 +22,11 @@ export function StatsScreen() {
   const [calendar, setCalendar] = useState<[number[], string[]] | null>(null);
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [workStats, setWorkStats] = useState<WorkStageStats[]>([]);
+  const [counts, setCounts] = useState<CompletedCounts | null>(null);
 
   useEffect(() => {
     api.getModelStats().then(setStats).catch(app.showError);
+    api.getCompletedCounts().then(setCounts).catch(app.showError);
     api.listWorks().then(setWorks).catch(app.showError);
     api.getWorkStageStats().then(setWorkStats).catch(app.showError);
     api.listTags().then(setGroups).catch(app.showError);
@@ -34,15 +37,42 @@ export function StatsScreen() {
   }, [app.version, app.showError]);
 
   return (
-    <div className="stats">
-      <div className="stats-side">
-        <TagFactors stats={stats} groups={groups} sets={sets} />
-        <WorkStages stats={stats} works={works} workStats={workStats} stages={stages} />
+    <>
+      <Achievements spans={spans} counts={counts} />
+      <div className="stats">
+        <div className="stats-side">
+          <TagFactors stats={stats} groups={groups} sets={sets} />
+          <WorkStages stats={stats} works={works} workStats={workStats} stages={stages} />
+        </div>
+        <div className="stats-side">
+          <WeekdayHours spans={spans} calendar={calendar} />
+          <StageBases stats={stats} sets={sets} stages={stages} />
+        </div>
       </div>
-      <div className="stats-side">
-        <WeekdayHours spans={spans} calendar={calendar} />
-        <StageBases stats={stats} sets={sets} stages={stages} />
-      </div>
+    </>
+  );
+}
+
+/** これまでの実績（5.12）。使い続ける楽しみのための 4 つの数字。予測には使わない */
+function Achievements({ spans, counts }: { spans: Span[]; counts: CompletedCounts | null }) {
+  const now = Date.now();
+  const totals = dailyTotals(spans, now);
+  const totalMs = spans.reduce((n, s) => n + (s.endedAt ?? now) - s.startedAt, 0);
+  const firstMs = spans.reduce((m, s) => Math.min(m, s.startedAt), Infinity);
+  const since = Number.isFinite(firstMs) ? Math.round((startOfDay(now).getTime() - startOfDay(firstMs).getTime()) / DAY) + 1 : 0;
+  const tile = (label: string, value: string, sub?: string) => (
+    <div className="card stats-tile">
+      <div className="muted small-text">{label}</div>
+      <div className="stats-tile-value">{value}</div>
+      {sub && <div className="muted small-text">{sub}</div>}
+    </div>
+  );
+  return (
+    <div className="stats-tiles">
+      {tile(t("ach.hours"), hours(totalMs))}
+      {tile(t("ach.pages"), String(counts?.pages ?? 0))}
+      {tile(t("ach.works"), String(counts?.works ?? 0))}
+      {tile(t("ach.days"), t("ach.daysN", { n: totals.size }), since > 0 ? t("ach.since", { n: since }) : undefined)}
     </div>
   );
 }

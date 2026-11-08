@@ -3,7 +3,7 @@
 //! 時刻はすべて UNIX 時間のミリ秒（i64）で保存する。日付への変換は画面側（ローカル時刻）で行う。
 //! テストしやすいよう、現在時刻 `now` は呼び出し側から渡す。
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -71,6 +71,16 @@ pub struct StageSet {
 pub const KIND_COMIC: &str = "comic";
 pub const KIND_FILES: &str = "files";
 pub const KIND_MANUAL: &str = "manual";
+
+/// これまでの実績（統計画面。仕様書 5.12）
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletedCounts {
+    /// 完成したページ・枚の数（表示している全工程が完了か対象外。見開きは 2。cmc から消えたページは数えない）
+    pub pages: i64,
+    /// 完成した作品の数（ページが 1 つ以上あり、その全ページが完成）
+    pub works: i64,
+}
 
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -1116,6 +1126,40 @@ impl Store {
             .ok_or_else(|| tr(M::WorkNotFound).into())
     }
 
+    /// 完成したページと作品の数（これまでの実績）
+    pub fn completed_counts(&self) -> Result<CompletedCounts> {
+        // ページごとに、(作品, 見開きなら 2, 残っているマスの数, 表示している工程の数)
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.work_id, p.span,
+                    (SELECT COUNT(*) FROM work_stage ws JOIN stage_def s ON s.id = ws.stage_id
+                        WHERE ws.work_id = p.work_id AND s.hidden = 0
+                          AND NOT EXISTS (SELECT 1 FROM task_done t WHERE t.page_id = p.id AND t.stage_id = ws.stage_id)
+                          AND NOT EXISTS (SELECT 1 FROM task_excluded x WHERE x.page_id = p.id AND x.stage_id = ws.stage_id)),
+                    (SELECT COUNT(*) FROM work_stage ws JOIN stage_def s ON s.id = ws.stage_id
+                        WHERE ws.work_id = p.work_id AND s.hidden = 0)
+                 FROM page p WHERE p.missing = 0",
+            )
+            .map_err(db_err)?;
+        let rows: Vec<(i64, i64, i64, i64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)?;
+        let mut pages = 0;
+        // 作品 → 全ページが完成しているか
+        let mut works: HashMap<i64, bool> = HashMap::new();
+        for (work, span, left, stages) in rows {
+            let done = left == 0 && stages > 0;
+            if done {
+                pages += span;
+            }
+            let e = works.entry(work).or_insert(true);
+            *e = *e && done;
+        }
+        Ok(CompletedCounts { pages, works: works.values().filter(|&&d| d).count() as i64 })
+    }
+
     pub fn list_works(&self) -> Result<Vec<WorkSummary>> {
         let mut stmt = self
             .conn
@@ -1938,6 +1982,29 @@ mod tests {
         let st = stage_ids(&store);
         assert!(store.remove_stage(st[0]).is_err());
         assert_eq!(store.board(id, 0).unwrap().stages.len(), 3);
+    }
+
+    #[test]
+    fn 完成したページと作品を数える() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let pages: Vec<i64> = store.board(id, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        assert_eq!(store.completed_counts().unwrap(), CompletedCounts { pages: 0, works: 0 });
+        // p1 の全工程を終える → 1 ページ
+        for &s in &st {
+            store.set_task_done(pages[0], s, true, 0).unwrap();
+        }
+        assert_eq!(store.completed_counts().unwrap(), CompletedCounts { pages: 1, works: 0 });
+        // 見開き（p2-3）は 2 ページと数える
+        for &s in &st {
+            store.set_task_done(pages[1], s, true, 0).unwrap();
+        }
+        assert_eq!(store.completed_counts().unwrap().pages, 3);
+        // p4 はトーンを対象外にして残りを終える → 作品も完成
+        store.set_task_excluded(pages[2], st[2], true).unwrap();
+        store.set_task_done(pages[2], st[0], true, 0).unwrap();
+        store.set_task_done(pages[2], st[1], true, 0).unwrap();
+        assert_eq!(store.completed_counts().unwrap(), CompletedCounts { pages: 4, works: 1 });
     }
 
     #[test]
