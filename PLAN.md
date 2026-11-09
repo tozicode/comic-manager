@@ -88,11 +88,13 @@
 
 ## 4. 説明書・サイト・版
 
-- 説明書に「みんなの作業」の節。送るもの・送らないもの・送り先（tozica ／ otosazu.com、置き場所は Cloudflare）・利用の目的・
-  残す期間（3 日）・止め方を書く（外部送信規律の公表を兼ねる。SPEC 5.25「公開に向けて」）。`npm run guide` で PDF と site/guide を作り直す
-- BOOTH の履歴と更新履歴に「既定で送る。案内で止められる」ことを書く
-- 版を 3.4.0 に（package.json・package-lock.json・Cargo.toml・Cargo.lock・tauri.conf.json）
-- Worker を配備：`npm run migrate:remote` → `npm run deploy`。本番に対して `POST /feed` と `GET /feed` を手で通す
+- （済）説明書に「11. ほかの人の作業を感じる（みんなの作業）」の節（`id="feed"`。アプリの「くわしくは説明書へ」の飛び先）。
+  送るもの・送らないもの・送り先と使い道（tozicode.com、Cloudflare 上）・残す期間（3 日）・止め方を書いた（外部送信規律の公表を兼ねる）。
+  以降の節の番号を 1 つずらし、「新しい版に入れ替えるとき」に 3.4.0 の注意を足した。`npm run guide` で PDF と site/guide を作り直した
+- （済）BOOTH の原稿：機能の一覧と【みんなの作業】、「安心してお使いいただくために」の「外へ送ることはありません」を、送るものの列挙に直した
+  （3.0.0 の公開の時点で古くなっていた）。3.4.0 の履歴（日付は仮に 2026/11/09。出す日に直す）とファイル名
+- （済）版を 3.4.0 に（package.json・package-lock.json・Cargo.toml・Cargo.lock・tauri.conf.json）
+- Worker を配備：`npm run migrate:remote` → `npm run deploy`。本番に対して `POST /feed` と `GET /feed` を手で通す（アプリを出す前に）
 
 ## 手で確かめること（3.4.0 を出す前）
 
