@@ -8,6 +8,9 @@ import { PomodoroDriver } from "./components/Pomodoro";
 import { FinishToast, SaveToast, Watchers } from "./components/Watchers";
 import { Publisher } from "./components/Publisher";
 import { CollabWatcher } from "./components/CollabWatcher";
+import { FeedGuide } from "./components/FeedGuide";
+import { FeedProvider, useFeed } from "./feed-context";
+import { FeedScreen } from "./screens/FeedScreen";
 import { MINI_OPEN_KEY, MiniApp } from "./MiniApp";
 import { RemoteApp } from "./RemoteApp";
 import { BoardScreen } from "./screens/BoardScreen";
@@ -20,7 +23,7 @@ import { useLang } from "./i18n";
 import { t } from "./i18n/shell";
 import "./App.css";
 
-export type Screen = "works" | "board" | "schedule" | "records" | "stats" | "settings";
+export type Screen = "works" | "board" | "schedule" | "records" | "stats" | "settings" | "feed";
 
 const WORK_KEY = "otosazu.workId";
 /** 起動時のミニ窓の開き直しを済ませたか。StrictMode は effect を 2 回動かすので、1 回で止める */
@@ -130,12 +133,15 @@ function Shell() {
             <RecordsScreen key={work.id} workId={work.id} />
           ) : screen === "stats" ? (
             <StatsScreen />
+          ) : screen === "feed" ? (
+            <FeedScreen workId={work?.id ?? null} />
           ) : (
             <SettingsScreen addSet={addSet} onAddSetShown={() => setAddSet(false)} />
           )}
         </div>
       </div>
 
+      <FeedGuideGate hasWorks={works.length > 0} />
       <Watchers />
       <Publisher />
       <CollabWatcher />
@@ -160,7 +166,23 @@ export default function App() {
   return (
     <AppProvider>
       <PomodoroDriver />
-      {isMini ? <MiniApp key={lang} /> : <Shell key={lang} />}
+      {isMini ? (
+        <MiniApp key={lang} />
+      ) : (
+        <FeedProvider>
+          <Shell key={lang} />
+        </FeedProvider>
+      )}
     </AppProvider>
   );
+}
+
+/**
+ * はじめての案内（5.25）を出すとき：まだ出していなくて、作品が 1 つ以上あるとき。
+ * 今の利用者は更新して最初の起動で、新しい利用者は最初の作品を登録したあとに出る
+ */
+function FeedGuideGate({ hasWorks }: { hasWorks: boolean }) {
+  const feed = useFeed();
+  if (!feed.prefs || feed.prefs.guided || !hasWorks) return null;
+  return <FeedGuide />;
 }

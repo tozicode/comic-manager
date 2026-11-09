@@ -332,6 +332,23 @@ export type PublishPrefs = {
   pendingDelete: boolean;
 };
 
+/** みんなの作業（5.25）の設定。送るのは案内を閉じてから */
+export type FeedPrefs = { send: boolean; receive: boolean; guided: boolean };
+export type FeedKind = "start" | "stage" | "page" | "work";
+export type FeedUnit = "page" | "sheet" | "item";
+/** 作品ごとの送り手（ランダムな ID と絵文字の番号 2 つ） */
+export type FeedSender = { workId: number; sender: string; emoji: [number, number] };
+/** 送る時刻になった知らせ 1 件。送れたら ids を feedSent に渡す */
+export type FeedDue = {
+  ids: number[];
+  sender: string;
+  emoji: [number, number];
+  kind: FeedKind;
+  stage: string | null;
+  unit: FeedUnit | null;
+  count: number | null;
+};
+
 export type TimerPrefs = {
   idleMinutes: number;
   shortcut: string;
@@ -470,6 +487,13 @@ export const api = {
   markPublished: (workId: number, error: string | null) => call<void>("mark_published", { workId, error }),
   markUnpublished: (workId: number) => call<void>("mark_unpublished", { workId }),
   listPublishing: () => call<PublishPrefs[]>("list_publishing"),
+  // みんなの作業（5.25）
+  getFeedPrefs: () => call<FeedPrefs>("get_feed_prefs"),
+  setFeedPrefs: (prefs: FeedPrefs) => call<void>("set_feed_prefs", { prefs }),
+  getFeedSender: (workId: number) => call<FeedSender>("get_feed_sender", { workId }),
+  listFeedSenders: () => call<FeedSender[]>("list_feed_senders"),
+  feedDue: () => call<FeedDue[]>("feed_due"),
+  feedSent: (ids: number[]) => call<void>("feed_sent", { ids }),
   // 共同作業の取り込み（5.23）
   readCollab: (workId: number) => call<CollabSummary | null>("read_collab", { workId }),
   readCollabAll: () => call<boolean>("read_collab_all"),

@@ -2,9 +2,13 @@ import type { ReactElement } from "react";
 import { WorkSummary } from "../api";
 import type { Screen } from "../App";
 import { t } from "../i18n/shell";
+import { FeedTicker } from "./FeedTicker";
 import { Logo } from "./Logo";
 
-const ICONS: Record<Screen, ReactElement> = {
+/** 左の項目に並べる画面。みんなの作業（feed）は項目にせず、下の 2 行から開く */
+type NavScreen = Exclude<Screen, "feed">;
+
+const ICONS: Record<NavScreen, ReactElement> = {
   board: (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
       <rect x="2.5" y="3" width="15" height="14" rx="2" />
@@ -52,7 +56,7 @@ type Props = {
 };
 
 export function Sidebar({ works, work, screen, onScreen, onWork }: Props) {
-  const item = (key: Screen, label: string, disabled = false) => (
+  const item = (key: NavScreen, label: string, disabled = false) => (
     <button
       className={`nav-item${screen === key ? " on" : ""}`}
       disabled={disabled}
@@ -92,6 +96,7 @@ export function Sidebar({ works, work, screen, onScreen, onWork }: Props) {
       {item("works", t("screen.works"))}
       {item("stats", t("screen.stats"))}
       {item("settings", t("screen.settings"))}
+      <FeedTicker onOpen={() => onScreen("feed")} />
     </aside>
   );
 }

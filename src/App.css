@@ -248,6 +248,143 @@ select {
   flex: 1;
 }
 
+/* みんなの作業（5.25）：左ペインの下の 2 行 */
+.feed-ticker {
+  margin-top: 8px;
+  padding: 8px 10px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.feed-ticker:hover {
+  background: var(--hover);
+}
+.feed-active {
+  color: var(--text);
+  font-weight: 700;
+}
+.feed-line {
+  height: 18px;
+  margin-top: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  line-height: 18px;
+}
+.feed-text {
+  display: inline-block;
+}
+.feed-text.measure {
+  visibility: hidden;
+}
+.feed-text.static,
+.feed-text.clip {
+  animation: feed-fade var(--dur) linear forwards;
+}
+.feed-text.clip {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.feed-text.scroll {
+  animation: feed-scroll var(--dur) linear forwards;
+}
+.feed-text.special {
+  color: var(--accent);
+  font-weight: 700;
+}
+@keyframes feed-fade {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes feed-scroll {
+  from {
+    transform: translateX(var(--from));
+  }
+  to {
+    transform: translateX(var(--to));
+  }
+}
+
+/* みんなの作業の画面とはじめての案内 */
+.feed-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 640px;
+}
+.feed-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+}
+.feed-settings p {
+  margin: 0;
+}
+.feed-disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.feed-disclosure .link {
+  align-self: flex-start;
+}
+.feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.feed-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.feed-list li + li {
+  border-top: 1px solid var(--line-soft);
+}
+.feed-list li.special {
+  color: var(--accent);
+  font-weight: 700;
+}
+.feed-guide {
+  width: 460px;
+}
+.feed-guide-label {
+  margin-top: 12px;
+}
+.feed-guide-sample {
+  width: 184px;
+  margin-bottom: 12px;
+}
+.feed-guide-sample .feed-ticker {
+  margin-top: 0;
+  cursor: default;
+}
+.feed-guide-send {
+  margin: 14px 0 4px;
+}
+
 .main {
   flex: 1;
   display: flex;
