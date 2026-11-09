@@ -329,11 +329,11 @@ select {
   max-width: 640px;
 }
 .feed-about {
-  padding: 4px 4px 0;
+  padding: 16px 18px 10px;
 }
 .feed-about h2 {
   margin: 0 0 10px;
-  font-size: 17px;
+  font-size: 15px;
 }
 .feed-about p {
   margin: 0 0 8px;

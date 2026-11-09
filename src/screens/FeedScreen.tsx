@@ -49,7 +49,7 @@ export function FeedScreen({ workId }: { workId: number | null }) {
 
   return (
     <div className="feed-screen">
-      <section className="feed-about">
+      <section className="card feed-about">
         <h2>{t("aboutTitle")}</h2>
         <p>{t("about1")}</p>
         <p>{t("about2")}</p>
