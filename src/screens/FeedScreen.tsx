@@ -49,6 +49,12 @@ export function FeedScreen({ workId }: { workId: number | null }) {
 
   return (
     <div className="feed-screen">
+      <section className="feed-about">
+        <h2>{t("aboutTitle")}</h2>
+        <p>{t("about1")}</p>
+        <p>{t("about2")}</p>
+      </section>
+
       <section className="card feed-settings">
         {prefs && (
           <>
