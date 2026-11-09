@@ -20,7 +20,7 @@
 | 画面 | `Screen` に `feed` を足す。左ペインの項目は増やさず、下の 2 行の領域を押して開く。画面の名前は仮に「みんなの作業」 |
 | 設定の置き場所 | 送る・受け取る・はじめての案内を出したか、の 3 つは既存の設定の表（`prefs.rs`）に置く。作品ごとの送り手は新しい表 |
 
-## 1. Worker の口（`server/`）
+## 1. Worker の口（`server/`）（済）
 
 - `migrations/0002_feed.sql`：`feed`（`seq` INTEGER PRIMARY KEY AUTOINCREMENT, `sender`, `e1`, `e2`, `kind`, `stage`, `unit`, `count`, `at`）と、`at` と `sender` の索引
 - `POST /feed`：ボディ `{ sender, emoji: [e1, e2], kind: "start" | "stage" | "page" | "work", stage?, unit?, count? }`。
@@ -30,7 +30,8 @@
   `since` での絞り込みは Worker の中でする（`since` ごとに別の鍵にすると使い回しが効かないため）
 - CORS は `/feed` にも開ける（`/p/*` と同じ設定）
 - 掃除：今の日次の cron（`sweep`）で、3 日より古い `feed` の行も消す
-- 定数と検証は `src/limits.ts` に置く（index.ts は handler 以外を export できない）
+- 定数・検証・読み書きは `src/feed.ts` に置く（index.ts は handler 以外を export できない。5.22 の `limits.ts` とは分けた）
+- 同じ送り手からは 10 秒に 1 件しか通らないので、アプリは 1 回の送信で送り手（作品）ごとに 1 件だけ送り、残りは次に回す
 - テスト（`test/feed.spec.ts`）：正しい形で置ける／形の違い 400（種類・番号の範囲・工程の鍵の形・余計な文字列）／
   10 秒以内の再送 429／全体の上限 429／`since` で新しいものだけ返る／24 時間より古いものは返らない／
   `active` が 12 時間以内の `start` の送り手の数（同じ送り手の 2 回は 1 人）／掃除で 3 日より古い行が消える

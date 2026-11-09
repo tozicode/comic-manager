@@ -1,6 +1,7 @@
-# otosazu-share（進捗の公開）
+# otosazu-share（進捗の公開・みんなの作業）
 
 仕様書 [5.22](../SPEC.md) の預かり場所。作品ごとの要約 1 件を Cloudflare Workers + D1 に預かり、閲覧鍵を持つ人に配る。
+あわせて、5.25「みんなの作業」の知らせ（作業の開始と完了の節目）を 3 日だけ預かって配る。
 作りは [Family Quest の同期中継](../../family-quest/server) と同じ（Hono + D1 + wrangler、vitest-pool-workers）。
 
 ## 口
@@ -12,11 +13,16 @@
 | `GET /p/<公開 ID>/snapshot` | `X-Otosazu-Read: <閲覧鍵>` | `{ updatedAt, snapshot }`。`Cache-Control: no-store` |
 | `GET /p/<公開 ID>` | なし | 閲覧ページ（`public/p.html`）。鍵は URL のフラグメント `#k=` にあり、サーバには届かない |
 | `GET /list` | なし | まとめページ（`public/list.html`）。`#p=<ID>:<閲覧鍵>,…` に一覧を持ち、サーバには何も置かない |
+| `POST /feed` | なし | みんなの作業の知らせを 1 件置く。ボディ `{ sender, emoji: [n, n], kind, stage?, unit?, count? }`。時刻はサーバが付ける |
+| `GET /feed?since=<seq>` | なし | 直近 24 時間の知らせ（`seq` より新しいもの、新しい順、最大 200 件）と `active`（12 時間以内に `start` を送った送り手の数）。D1 から読んだ答えは Cache API で 30 秒使い回し、`POST` のたびに捨てる |
 
 断り方：鍵が無い 401 ／ 鍵が違う 403 ／ ID の形が違う・JSON でない 400 ／ 64 KB 超 413 ／ 同じ ID へ 10 秒以内の再送 429。
 上限は `src/limits.ts`。サーバは鍵の SHA-256 だけを持ち、要約の中身は見ない。
 
-毎日 03:00 UTC の cron で、送信が 180 日止まった行を消す。
+`/feed` の断り方：形が違う・決まったキー以外がある 400 ／ 1 KB 超 413 ／ 同じ送り手から 10 秒以内 429 ／ 全体で 1 分に 120 件を超えたら 429。
+自由な文字列は受け付けない（工程は `[a-z_]` の鍵だけ）。上限と検証は `src/feed.ts`。IP ごとの制限（Workers の Rate Limiting）は wrangler 4.36 以上が要るので、まだ使っていない。
+
+毎日 03:00 UTC の cron で、送信が 180 日止まった行と、3 日より古い `feed` の行を消す。
 
 `/p/` 以下は CORS をどのオリジンにも開けてある（アプリの WebView のオリジンは `tauri://localhost` などで、開けないと fetch が落ちる）。
 
@@ -63,3 +69,4 @@ workerd が起動時に `Incorrect type for map entry` で断る）。テスト�
 - Cloudflare のダッシュボード → Workers & Pages → otosazu-share → Logs でリアルタイムのログ。`wrangler tail` でも見られる
 - D1 の中身：`npx wrangler d1 execute DB --remote --command "SELECT id, updated_at FROM snapshots ORDER BY updated_at DESC LIMIT 20"`
 - 行を手で消したいとき（利用者からの依頼）：同じく `DELETE FROM snapshots WHERE id = '...'`
+- みんなの作業の様子：`SELECT kind, COUNT(*) FROM feed GROUP BY kind`、荒らされたら `DELETE FROM feed WHERE sender = '...'`

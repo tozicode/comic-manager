@@ -1,6 +1,16 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
+import {
+  FEED_CACHE_SECONDS,
+  FEED_MAX_BODY_BYTES,
+  type FeedSnapshot,
+  feedRejection,
+  insertFeed,
+  parseFeedPost,
+  readFeed,
+  sweepFeed,
+} from './feed';
 import { MAX_BODY_BYTES, MIN_INTERVAL_MS, sweep } from './limits';
 
 export interface Env {
@@ -28,6 +38,8 @@ interface PutBody {
  *   - DELETE /p/:id           … Bearer <書き込み鍵>。消す（無くても 204）
  *   - GET    /p/:id/snapshot  … X-Otosazu-Read: <閲覧鍵>。要約の JSON
  *   - GET    /p/:id           … 閲覧ページ（public/p.html）
+ *   - POST   /feed            … みんなの作業（5.25）の知らせを 1 件置く。鍵は無い
+ *   - GET    /feed?since=<n>  … 直近 24 時間の知らせ（n より新しいもの）と作業中の人数
  *
  * サーバは要約の中身を理解しない。やることは「鍵を確かめて預かり、配る」だけ。
  */
@@ -41,6 +53,17 @@ app.use(
     origin: '*',
     allowMethods: ['GET', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type', READ_HEADER],
+    maxAge: 86400,
+  }),
+);
+
+// みんなの作業も、アプリの WebView から POST し、GET する
+app.use(
+  '/feed',
+  cors({
+    origin: '*',
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type'],
     maxAge: 86400,
   }),
 );
@@ -154,10 +177,67 @@ app.get('/p/:id', async (c) => {
   return c.env.ASSETS.fetch(new Request(url.toString(), { headers: c.req.raw.headers }));
 });
 
+/** 取得の答えを使い回すときの鍵（since によらず 1 つ。絞り込みは Worker の中でする） */
+function feedCacheKey(url: string): Request {
+  const u = new URL(url);
+  u.pathname = '/feed/__snapshot';
+  u.search = '';
+  return new Request(u.toString());
+}
+
+app.post('/feed', async (c) => {
+  const raw = await c.req.text();
+  if (new TextEncoder().encode(raw).length > FEED_MAX_BODY_BYTES) return c.json({ error: 'too large' }, 413);
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return c.json({ error: 'bad request' }, 400);
+  }
+  const post = parseFeedPost(json);
+  if (!post) return c.json({ error: 'bad request' }, 400);
+
+  const now = Date.now();
+  const rejected = await feedRejection(c.env.DB, post.sender, now);
+  if (rejected) {
+    c.header('Retry-After', rejected === 'sender' ? '10' : '60');
+    return c.json({ error: 'too many requests' }, 429);
+  }
+  const seq = await insertFeed(c.env.DB, post, now);
+  // 新しい知らせがすぐ見えるよう、使い回している答えを捨てる
+  await caches.default.delete(feedCacheKey(c.req.url));
+  return c.json({ ok: true, seq }, 201);
+});
+
+app.get('/feed', async (c) => {
+  const since = Number(c.req.query('since') ?? 0);
+  if (!Number.isInteger(since) || since < 0) return c.json({ error: 'bad since' }, 400);
+
+  const key = feedCacheKey(c.req.url);
+  let snapshot: FeedSnapshot;
+  const cached = await caches.default.match(key);
+  if (cached) {
+    snapshot = await cached.json<FeedSnapshot>();
+  } else {
+    snapshot = await readFeed(c.env.DB, Date.now());
+    await caches.default.put(
+      key,
+      new Response(JSON.stringify(snapshot), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${FEED_CACHE_SECONDS}` },
+      }),
+    );
+  }
+  const items = snapshot.items.filter((i) => i.seq > since);
+  return c.body(JSON.stringify({ now: snapshot.now, active: snapshot.active, items }), 200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
+});
+
 // 本体モジュールが export してよいのは handler だけ（定数を export すると workerd が起動時に断る）
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(sweep(env.DB));
+    ctx.waitUntil(Promise.all([sweep(env.DB), sweepFeed(env.DB)]));
   },
 };
