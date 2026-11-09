@@ -28,6 +28,25 @@ const STAGES: [(i64, Names); 7] = [
     (2, ["仕上げ", "Finishing", "마무리", "收尾", "收尾"]),
 ];
 
+/// みんなの作業（仕様書 5.25）で送る工程の鍵。STAGES と同じ並び
+const STAGE_KEYS: [&str; 7] = ["sketch", "inking", "screentone", "rough", "lineart", "coloring", "finishing"];
+
+/// 初期の工程には無いが、知っている名前として扱う工程（鍵, 5 言語の名前）
+const EXTRA_STAGES: [(&str, Names); 1] = [("storyboard", ["ネーム", "Storyboard", "콘티", "分镜", "分鏡"])];
+
+/// 工程の名前が知っている名前（初期の工程とネームの 5 言語）と一致すれば、送る鍵を返す。
+/// 利用者が名前を変えた工程は一致しないので None（工程名そのものは送らない）
+pub(super) fn stage_key(name: &str) -> Option<&'static str> {
+    let name = name.trim();
+    STAGES
+        .iter()
+        .zip(STAGE_KEYS)
+        .map(|((_, names), key)| (key, names))
+        .chain(EXTRA_STAGES.iter().map(|(key, names)| (*key, names)))
+        .find(|(_, names)| names.iter().any(|n| n.eq_ignore_ascii_case(name)))
+        .map(|(key, _)| key)
+}
+
 /// 初期のタググループとタグ。DEFAULT_TAGS・ILLUST_TAGS と同じ名前
 const TAGS: [(Names, &[Names]); 6] = [
     (

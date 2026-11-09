@@ -13,6 +13,7 @@ use crate::cmc::Comic;
 use crate::i18n::{M, tr, trf};
 
 mod collab;
+mod feed;
 mod files;
 mod localize;
 mod pages;
@@ -24,6 +25,8 @@ mod schedule;
 mod tags;
 
 pub use collab::{Assignee, CollabInfo, CollabMember, CollabSummary};
+pub use feed::{FeedDue, FeedPrefs, FeedSender};
+use feed::feed_quietly;
 pub use pages::{PageMerge, PageSplit};
 pub use predict::{ModelStats, Prediction, TimetableWorkInput, WorkStageStats};
 pub use prefs::{DisplayPrefs, RemotePrefs, TimerPrefs};
@@ -303,7 +306,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 11;
+const LATEST: i64 = 12;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -552,6 +555,43 @@ impl Store {
                     "BEGIN;
                     ALTER TABLE work DROP COLUMN weekday_hours;
                     PRAGMA user_version = 11;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+        }
+        if version < 12 && target >= 12 {
+            // 版 12：みんなの作業（仕様書 5.25）。作品ごとの送り手、もう知らせた節目、送り待ち、最後に送った開始
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE feed_sender (
+                        work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE,
+                        sender TEXT NOT NULL,
+                        e1 INTEGER NOT NULL,
+                        e2 INTEGER NOT NULL
+                    );
+                    CREATE TABLE feed_mark (
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        kind TEXT NOT NULL,
+                        key INTEGER NOT NULL,
+                        PRIMARY KEY (work_id, kind, key)
+                    );
+                    CREATE TABLE feed_outbox (
+                        id INTEGER PRIMARY KEY,
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        kind TEXT NOT NULL,
+                        stage_key TEXT,
+                        unit TEXT,
+                        count INTEGER,
+                        marks TEXT NOT NULL DEFAULT '[]',
+                        created_at INTEGER NOT NULL,
+                        send_after INTEGER NOT NULL
+                    );
+                    CREATE TABLE feed_last_start (
+                        work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE,
+                        at INTEGER NOT NULL
+                    );
+                    PRAGMA user_version = 12;
                     COMMIT;",
                 )
                 .map_err(db_err)?;
@@ -1402,16 +1442,24 @@ impl Store {
 
     pub fn set_task_done(&self, page_id: i64, stage_id: i64, done: bool, now: i64) -> Result<()> {
         if done {
-            self.conn
+            let added = self
+                .conn
                 .execute(
                     "INSERT OR IGNORE INTO task_done (page_id, stage_id, done_at) VALUES (?1, ?2, ?3)",
                     params![page_id, stage_id, now],
                 )
                 .map_err(db_err)?;
+            if added == 1 {
+                feed_quietly(self.feed_on_done(page_id, stage_id, now));
+            }
         } else {
-            self.conn
+            let removed = self
+                .conn
                 .execute("DELETE FROM task_done WHERE page_id = ?1 AND stage_id = ?2", params![page_id, stage_id])
                 .map_err(db_err)?;
+            if removed == 1 {
+                feed_quietly(self.feed_on_undone(page_id, stage_id));
+            }
         }
         Ok(())
     }
@@ -1452,6 +1500,7 @@ impl Store {
                 params![page_id, stage_id, now],
             )
             .map_err(db_err)?;
+        feed_quietly(self.feed_on_start(page_id, now));
         self.active_session()?
             .ok_or_else(|| tr(M::TrackingStartFailed).into())
     }

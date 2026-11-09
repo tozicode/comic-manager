@@ -764,6 +764,43 @@ fn list_publishing(state: State<AppState>) -> Cmd<Vec<store::PublishPrefs>> {
     with_store(&state, |s| s.list_publishing())
 }
 
+// ----- みんなの作業（5.25）。送るのは PC の窓だけなので server.rs の ALLOWED には入れない -----
+
+#[tauri::command]
+fn get_feed_prefs(state: State<AppState>) -> Cmd<store::FeedPrefs> {
+    with_store(&state, |s| s.feed_prefs())
+}
+
+/// 送り始めたとき（案内を閉じた・オフからオンにした）は、いま揃っている節目を送ったものとして扱う
+#[tauri::command]
+fn set_feed_prefs(state: State<AppState>, prefs: store::FeedPrefs) -> Cmd<()> {
+    with_store(&state, |s| s.set_feed_prefs(&prefs))
+}
+
+/// 作品の送り手（いまの作品で自分がどの絵文字で表示されるか）。無ければ作る
+#[tauri::command]
+fn get_feed_sender(state: State<AppState>, work_id: i64) -> Cmd<store::FeedSender> {
+    with_store(&state, |s| s.feed_sender(work_id))
+}
+
+/// 作ってある送り手すべて（自分の知らせを見分けるため）
+#[tauri::command]
+fn list_feed_senders(state: State<AppState>) -> Cmd<Vec<store::FeedSender>> {
+    with_store(&state, |s| s.feed_senders())
+}
+
+/// 送る時刻になった知らせ（作品ごとに 1 件）
+#[tauri::command]
+fn feed_due(state: State<AppState>) -> Cmd<Vec<store::FeedDue>> {
+    with_store(&state, |s| s.feed_due(now_ms()))
+}
+
+/// 送れた知らせを送り待ちから消す
+#[tauri::command]
+fn feed_sent(state: State<AppState>, ids: Vec<i64>) -> Cmd<()> {
+    with_store(&state, |s| s.feed_sent(&ids))
+}
+
 /// PC が持っているアドレス（設定画面で待ち受ける先を選ぶのに使う）
 #[tauri::command]
 fn local_addresses() -> Vec<String> {
@@ -941,6 +978,12 @@ pub fn run() {
             mark_published,
             mark_unpublished,
             list_publishing,
+            get_feed_prefs,
+            set_feed_prefs,
+            get_feed_sender,
+            list_feed_senders,
+            feed_due,
+            feed_sent,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
