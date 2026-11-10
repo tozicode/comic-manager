@@ -40,7 +40,7 @@
   「新しい版に入れ替えるとき」に、カードの進捗率が対象外を数えなくなることを書いた。`npm run guide` で PDF と site/guide を作り直した
 - （済）BOOTH の原稿：【複数の作品を同時に進める】に 1 行、3.5.0 の履歴（日付は仮に 2026/11/10。出す日に直す）とファイル名
 - （済）版を 3.5.0 に（package.json・package-lock.json・Cargo.toml・Cargo.lock・tauri.conf.json）
-- 出したら、ご意見の台帳の行 7 に `done`
+- （済）出したら、ご意見の台帳の行 7 に `done`（2026-11-10。GitHub Releases は otosazu-releases と comic-manager の両方に上げた）
 
 ## 手で確かめること（3.5.0 を出す前）
 
