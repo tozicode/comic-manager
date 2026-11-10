@@ -19,16 +19,17 @@ type Props = {
   onAddSet: () => void;
 };
 
-/** 作品一覧で選んでいるタグ。アプリを閉じるまで覚える（5.26） */
-let lastTag: number | null = null;
-/** 「完成した作品」のたたみを開いているか（5.26） */
-const DONE_OPEN_KEY = "otosazu.worksDoneOpen";
+/**
+ * 作品一覧の絞り込み（5.26）。進み具合（未完成 ／ 完成済み）と作品のタグを同じ並びのチップで選び、選んだものすべてに当てはまる作品を出す。
+ * 何も選んでいなければ「すべて」。アプリを閉じるまで覚え、起動したときは「未完成」
+ */
+type Selection = { status: "open" | "done" | null; tags: number[] };
+let lastSelection: Selection = { status: "open", tags: [] };
 
 export function WorksScreen({ works, onOpen, onAddSet }: Props) {
   const app = useApp();
   const tt = useTimetable();
-  const [tagFilter, setTagFilterState] = useState<number | null>(lastTag);
-  const [doneOpen, setDoneOpenState] = useState(() => localStorage.getItem(DONE_OPEN_KEY) === "1");
+  const [selection, setSelectionState] = useState<Selection>(lastSelection);
   /** タグを付け外ししている作品 */
   const [tagging, setTagging] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -50,25 +51,32 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
     }
   };
 
-  const setTagFilter = (id: number | null) => {
-    lastTag = id;
-    setTagFilterState(id);
+  const setSelection = (next: Selection) => {
+    lastSelection = next;
+    setSelectionState(next);
   };
-  const setDoneOpen = (on: boolean) => {
-    localStorage.setItem(DONE_OPEN_KEY, on ? "1" : "0");
-    setDoneOpenState(on);
-  };
+  // 未完成と完成済みは両方当てはまる作品が無いので、片方を選ぶともう片方は外す
+  const toggleStatus = (status: "open" | "done") =>
+    setSelection({ ...selection, status: selection.status === status ? null : status });
+  const toggleTag = (id: number) =>
+    setSelection({
+      ...selection,
+      tags: selection.tags.includes(id) ? selection.tags.filter((x) => x !== id) : [...selection.tags, id],
+    });
 
   // 今あるタグ。誰にも付いていないタグは消えるので、作品に付いているタグを集めれば全部になる
   const allTags = [...new Map(works.flatMap((w) => w.tags).map((tag) => [tag.id, tag])).values()].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
-  // 選んでいたタグが消えていたら「すべて」
-  const filter = allTags.some((tag) => tag.id === tagFilter) ? tagFilter : null;
-  const shown = filter === null ? works : works.filter((w) => w.tags.some((tag) => tag.id === filter));
+  // 選んでいたタグが消えていたら、そのタグは外して数える
+  const tags = selection.tags.filter((id) => allTags.some((tag) => tag.id === id));
+  const all = selection.status === null && tags.length === 0;
+  const shown = works.filter(
+    (w) =>
+      (selection.status === null || w.completed === (selection.status === "done")) &&
+      tags.every((id) => w.tags.some((tag) => tag.id === id)),
+  );
   const shownIds = new Set(shown.map((w) => w.id));
-  const openWorks = shown.filter((w) => !w.completed);
-  const doneWorks = shown.filter((w) => w.completed);
 
   const removeWork = async (work: WorkSummary) => {
     setRemoving(null);
@@ -186,36 +194,34 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
       {tt && works.length > 0 && (
         <UpcomingDeadlines rows={tt.upcoming.filter((r) => shownIds.has(r.workId))} today={tt.today} onOpen={onOpen} />
       )}
-      {allTags.length > 0 && (
+      {works.length > 0 && (
         <div className="tag-filter">
-          <button className={`opt${filter === null ? " on" : ""}`} onClick={() => setTagFilter(null)}>
+          {/* 「すべて」は選んでいるものを全部外す。ほかは押すたびに付け外しし、選んだものすべてに当てはまる作品を出す */}
+          <button className={`opt${all ? " on" : ""}`} onClick={() => setSelection({ status: null, tags: [] })}>
             {t("tagAll")}
           </button>
+          <button className={`opt${selection.status === "open" ? " on" : ""}`} onClick={() => toggleStatus("open")}>
+            {t("statusOpen")}
+          </button>
+          <button className={`opt${selection.status === "done" ? " on" : ""}`} onClick={() => toggleStatus("done")}>
+            {t("statusDone")}
+          </button>
           {allTags.map((tag) => (
-            <button key={tag.id} className={`opt${filter === tag.id ? " on" : ""}`} onClick={() => setTagFilter(tag.id)}>
+            <button key={tag.id} className={`opt${tags.includes(tag.id) ? " on" : ""}`} onClick={() => toggleTag(tag.id)}>
               {tag.name}
             </button>
           ))}
         </div>
       )}
-      {filter !== null && shown.length === 0 && <p className="muted">{t("filteredEmpty")}</p>}
+      {!all && shown.length === 0 && <p className="muted">{t("filteredEmpty")}</p>}
       <div className="works">
-        {openWorks.map(card)}
+        {shown.map(card)}
         <button className="work-add" onClick={() => setAdding(true)}>
           <span className="plus">＋</span>
           <b>{t("addWork")}</b>
           <span className="small-text">{t("addWorkKinds")}</span>
         </button>
       </div>
-      {/* 完成した作品は末尾にたたむ（5.26） */}
-      {doneWorks.length > 0 && (
-        <>
-          <button className="done-toggle" onClick={() => setDoneOpen(!doneOpen)} aria-expanded={doneOpen}>
-            {doneOpen ? "▾" : "▸"} {t("doneSection", { n: doneWorks.length })}
-          </button>
-          {doneOpen && <div className="works">{doneWorks.map(card)}</div>}
-        </>
-      )}
 
       {relink.dialog}
       {renaming && (

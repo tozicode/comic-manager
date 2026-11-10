@@ -834,7 +834,7 @@ select {
   right: 12px;
   cursor: default;
 }
-/* 作品一覧の上のタグの絞り込み（ポップオーバーの .opt と同じ見た目） */
+/* 作品一覧の上の絞り込み（進み具合と作品のタグ。ポップオーバーの .opt と同じ見た目） */
 .tag-filter {
   display: flex;
   flex-wrap: wrap;
@@ -854,21 +854,6 @@ select {
   background: var(--inverse);
   border-color: var(--inverse);
   color: #fff;
-}
-/* 完成した作品のたたみ */
-.done-toggle {
-  display: block;
-  margin: 22px 0 12px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.done-toggle:hover {
-  color: var(--text);
 }
 /* これからの締切 */
 .upcoming {
