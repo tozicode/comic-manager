@@ -23,6 +23,7 @@ mod publish;
 mod rows;
 mod schedule;
 mod tags;
+mod work_tags;
 
 pub use collab::{Assignee, CollabInfo, CollabMember, CollabSummary};
 pub use feed::{FeedDue, FeedPrefs, FeedSender};
@@ -33,6 +34,7 @@ pub use prefs::{DisplayPrefs, RemotePrefs, TimerPrefs};
 pub use publish::PublishPrefs;
 pub use schedule::WorkSchedule;
 pub use tags::TagGroup;
+pub use work_tags::WorkTag;
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -100,8 +102,12 @@ pub struct WorkSummary {
     /// 見開きを 2 ページと数えたページ数（イラストはファイルの数）
     pub page_count: i64,
     pub stage_count: i64,
-    /// 0.0〜1.0。完了したタスクの割合（見開きは 2 ページ分の重み）
+    /// 0.0〜1.0。完了したタスクの割合（見開きは 2 ページ分の重み。対象外のマスは数えない）
     pub progress: f64,
+    /// 表示している全工程が全ページで完了か対象外（仕様書 5.26）
+    pub completed: bool,
+    /// 作品のタグ（名前の順。5.26）
+    pub tags: Vec<WorkTag>,
     pub total_ms: i64,
     pub last_worked_at: Option<i64>,
     /// 登録した場所にファイルが見つからない（移動・名前の変更など）。画面に返す直前に調べる
@@ -306,7 +312,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 12;
+const LATEST: i64 = 13;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -592,6 +598,25 @@ impl Store {
                         at INTEGER NOT NULL
                     );
                     PRAGMA user_version = 12;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+        }
+        if version < 13 && target >= 13 {
+            // 版 13：作品のタグ（名前だけ。仕様書 5.26）
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE work_tag (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL UNIQUE
+                    );
+                    CREATE TABLE work_tag_link (
+                        work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+                        tag_id INTEGER NOT NULL REFERENCES work_tag(id) ON DELETE CASCADE,
+                        PRIMARY KEY (work_id, tag_id)
+                    );
+                    PRAGMA user_version = 13;
                     COMMIT;",
                 )
                 .map_err(db_err)?;
@@ -1127,7 +1152,8 @@ impl Store {
 
     pub fn remove_work(&self, work_id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM work WHERE id = ?1", [work_id]).map_err(db_err)?;
-        Ok(())
+        // この作品にしか付いていなかったタグも消す（5.26）
+        self.prune_work_tags()
     }
 
     /// 作品名を変える（漫画は登録時に cmc から取った名前だが、読み直しでは上書きしないので、変えた名前が残る）
@@ -1212,22 +1238,40 @@ impl Store {
                         JOIN page p ON p.id = t.page_id
                         JOIN work_stage ws ON ws.work_id = p.work_id AND ws.stage_id = t.stage_id
                         JOIN stage_def s ON s.id = t.stage_id
-                        WHERE p.work_id = w.id AND p.missing = 0 AND s.hidden = 0),
+                        WHERE p.work_id = w.id AND p.missing = 0 AND s.hidden = 0
+                          AND NOT EXISTS (SELECT 1 FROM task_excluded x WHERE x.page_id = t.page_id AND x.stage_id = t.stage_id)),
                     (SELECT COALESCE(SUM(COALESCE(ss.ended_at, ?1) - ss.started_at), 0)
                         FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
                     (SELECT MAX(COALESCE(ss.ended_at, ss.started_at))
                         FROM work_session ss JOIN page p ON p.id = ss.page_id WHERE p.work_id = w.id),
                     w.set_id, COALESCE(s.unit, ''),
-                    (SELECT file_name FROM page WHERE work_id = w.id AND missing = 0 ORDER BY order_index, half, id LIMIT 1)
+                    (SELECT file_name FROM page WHERE work_id = w.id AND missing = 0 ORDER BY order_index, half, id LIMIT 1),
+                    -- 進捗の分母：対象外を除いたマス（見開きは 2 ページ分。仕様書 5.26）
+                    (SELECT COALESCE(SUM(p.span), 0) FROM page p
+                        JOIN work_stage ws ON ws.work_id = p.work_id
+                        JOIN stage_def s ON s.id = ws.stage_id
+                        WHERE p.work_id = w.id AND p.missing = 0 AND s.hidden = 0
+                          AND NOT EXISTS (SELECT 1 FROM task_excluded x WHERE x.page_id = p.id AND x.stage_id = ws.stage_id)),
+                    -- 完了でも対象外でもないマスの数（0 なら完成。completed_counts と同じ数え方）
+                    (SELECT COUNT(*) FROM page p
+                        JOIN work_stage ws ON ws.work_id = p.work_id
+                        JOIN stage_def s ON s.id = ws.stage_id
+                        WHERE p.work_id = w.id AND p.missing = 0 AND s.hidden = 0
+                          AND NOT EXISTS (SELECT 1 FROM task_done t WHERE t.page_id = p.id AND t.stage_id = ws.stage_id)
+                          AND NOT EXISTS (SELECT 1 FROM task_excluded x WHERE x.page_id = p.id AND x.stage_id = ws.stage_id))
                  FROM work w LEFT JOIN stage_set s ON s.id = w.set_id ORDER BY w.created_at DESC",
             )
             .map_err(db_err)?;
         let now = now_ms();
+        let mut tags = self.work_tags_by_work()?;
         stmt.query_map([now], |r| {
+            let id: i64 = r.get(0)?;
             let pages: i64 = r.get(4)?;
             let stages: i64 = r.get(5)?;
             let done: i64 = r.get(6)?;
-            let total = pages * stages;
+            let total: i64 = r.get(12)?;
+            let left: i64 = r.get(13)?;
+            let completed = pages > 0 && stages > 0 && left == 0;
             let cmc_path: Option<String> = r.get(2)?;
             let kind: String = r.get(3)?;
             let first: Option<String> = r.get(11)?;
@@ -1237,7 +1281,7 @@ impl Store {
                 first.map(|f| page_path(cmc_path.as_deref(), &f).display().to_string())
             };
             Ok(WorkSummary {
-                id: r.get(0)?,
+                id,
                 title: r.get(1)?,
                 cmc_path,
                 kind,
@@ -1246,7 +1290,16 @@ impl Store {
                 thumb_path,
                 page_count: pages,
                 stage_count: stages,
-                progress: if total > 0 { done as f64 / total as f64 } else { 0.0 },
+                // 全マスが対象外の作品は分母が 0 になるが、完成なので 100%
+                progress: if total > 0 {
+                    done as f64 / total as f64
+                } else if completed {
+                    1.0
+                } else {
+                    0.0
+                },
+                completed,
+                tags: tags.remove(&id).unwrap_or_default(),
                 total_ms: r.get(7)?,
                 last_worked_at: r.get(8)?,
                 file_missing: false,
@@ -2057,6 +2110,50 @@ mod tests {
     }
 
     #[test]
+    fn 作品一覧の完成と進捗率は対象外を数えない() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let pages: Vec<i64> = store.board(id, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        let work = |store: &Store| store.list_works().unwrap().into_iter().find(|w| w.id == id).unwrap();
+        assert!(!work(&store).completed);
+        // p4 のトーンを対象外にすると、分母は 4 × 3 − 1 = 11
+        store.set_task_excluded(pages[2], st[2], true).unwrap();
+        store.set_task_done(pages[2], st[0], true, 0).unwrap();
+        assert!((work(&store).progress - 1.0 / 11.0).abs() < 1e-9);
+        // 残りを全部終えると 100% で完成
+        for &p in &pages[..2] {
+            for &s in &st {
+                store.set_task_done(p, s, true, 0).unwrap();
+            }
+        }
+        store.set_task_done(pages[2], st[1], true, 0).unwrap();
+        let w = work(&store);
+        assert!(w.completed);
+        assert_eq!(w.progress, 1.0);
+        // ✓を 1 つ外すと未完成に戻る
+        store.set_task_done(pages[0], st[0], false, 0).unwrap();
+        assert!(!work(&store).completed);
+    }
+
+    #[test]
+    fn 全マスが対象外の作品は完成で_ページの無い作品は完成にしない() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        for p in store.board(id, 0).unwrap().pages {
+            for &s in &st {
+                store.set_task_excluded(p.id, s, true).unwrap();
+            }
+        }
+        let w = &store.list_works().unwrap()[0];
+        assert!(w.completed);
+        assert_eq!(w.progress, 1.0);
+
+        let empty = store.add_work("C:/b.cmc", &comic(&[]), 0).unwrap();
+        let w = store.list_works().unwrap().into_iter().find(|w| w.id == empty).unwrap();
+        assert!(!w.completed);
+    }
+
+    #[test]
     fn 止めた記録の終了時刻を動かす() {
         let (store, id) = setup();
         let page = store.board(id, 0).unwrap().pages[0].id;
@@ -2259,6 +2356,25 @@ mod tests {
         assert!(old.conn.prepare("SELECT weekday_hours FROM work").is_err());
         let s = old.schedule(7).unwrap();
         assert_eq!(s.weekday_hours, old.default_hours().unwrap());
+    }
+
+    #[test]
+    fn 版12のデータを版13に移すと作品のタグは空で使える() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        let old = Store { conn };
+        old.migrate(12).unwrap();
+        old.conn
+            .execute_batch(
+                "INSERT INTO work (id, title, kind, set_id, cmc_path, created_at) VALUES (7, '旧作品', 'comic', 1, 'C:/old.cmc', 0);
+                 INSERT INTO work_stage (work_id, stage_id, sort_order) VALUES (7, 1, 0);",
+            )
+            .unwrap();
+        old.migrate(LATEST).unwrap();
+        assert!(old.list_work_tags().unwrap().is_empty());
+        assert!(old.list_works().unwrap()[0].tags.is_empty());
+        old.add_work_tag(7, "Skeb").unwrap();
+        assert_eq!(old.list_works().unwrap()[0].tags[0].name, "Skeb");
     }
 
     #[test]

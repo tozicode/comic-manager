@@ -177,6 +177,22 @@ fn remove_work(state: State<AppState>, work_id: i64) -> Cmd<()> {
     with_store(&state, |s| s.remove_work(work_id))
 }
 
+/// 作品のタグ（仕様書 5.26）
+#[tauri::command]
+fn list_work_tags(state: State<AppState>) -> Cmd<Vec<store::WorkTag>> {
+    with_store(&state, |s| s.list_work_tags())
+}
+
+#[tauri::command]
+fn add_work_tag(state: State<AppState>, work_id: i64, name: String) -> Cmd<store::WorkTag> {
+    with_store(&state, |s| s.add_work_tag(work_id, &name))
+}
+
+#[tauri::command]
+fn set_work_tag(state: State<AppState>, work_id: i64, tag_id: i64, on: bool) -> Cmd<()> {
+    with_store(&state, |s| s.set_work_tag(work_id, tag_id, on))
+}
+
 #[tauri::command]
 fn rename_work(state: State<AppState>, work_id: i64, title: String) -> Cmd<()> {
     with_store(&state, |s| s.rename_work(work_id, &title))
@@ -965,6 +981,9 @@ pub fn run() {
             add_rows,
             rename_row,
             rename_work,
+            list_work_tags,
+            add_work_tag,
+            set_work_tag,
             add_stage_set,
             update_stage_set,
             remove_stage_set,
