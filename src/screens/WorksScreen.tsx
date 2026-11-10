@@ -183,7 +183,9 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
         </p>
       )}
       {tt && <TimetableWarning tt={tt} onOpen={onOpen} />}
-      {tt && <UpcomingDeadlines rows={tt.upcoming.filter((r) => shownIds.has(r.workId))} today={tt.today} onOpen={onOpen} />}
+      {tt && works.length > 0 && (
+        <UpcomingDeadlines rows={tt.upcoming.filter((r) => shownIds.has(r.workId))} today={tt.today} onOpen={onOpen} />
+      )}
       {allTags.length > 0 && (
         <div className="tag-filter">
           <button className={`opt${filter === null ? " on" : ""}`} onClick={() => setTagFilter(null)}>
@@ -269,6 +271,8 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
         >
           <p>
             {t("removeLog", { time: hours(removing.totalMs) })}
+            <br />
+            {t("removeStats")}
             {removing.kind !== "manual" && (
               <>
                 <br />
@@ -316,44 +320,49 @@ function TimetableWarning({ tt, onOpen }: { tt: NonNullable<ReturnType<typeof us
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** これからの締切（未完成の作品の今日以降の締切を日付の順に。5.26）。行を押すとその作品のスケジュール画面へ */
+/** これからの締切（未完成の作品の今日以降の締切を日付の順に。5.26）。行を押すとその作品のスケジュール画面へ。無ければその旨を出す */
 function UpcomingDeadlines({ rows, today, onOpen }: { rows: UpcomingDeadline[]; today: Date; onOpen: Props["onOpen"] }) {
-  if (rows.length === 0) return null;
   return (
     <section className="upcoming">
       <h3>{t("upcomingTitle")}</h3>
-      <table className="rec">
-        <thead>
-          <tr>
-            <th>{t("upcomingDate")}</th>
-            <th>{t("upcomingWork")}</th>
-            <th>{t("deadline")}</th>
-            <th>{t("upcomingStatus")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => {
-            const days = Math.round((r.date.getTime() - today.getTime()) / DAY_MS);
-            return (
-              <tr
-                key={r.id}
-                className={r.picked ? "link-row" : "link-row other"}
-                title={r.picked ? undefined : t("upcomingOther")}
-                onClick={() => onOpen(r.workId, "schedule")}
-              >
-                <td className="num">
-                  {dayLabel(r.date)} <span className="muted">{days === 0 ? ts("today") : ts("daysLeft", { n: days })}</span>
-                </td>
-                <td>{r.title}</td>
-                <td>{r.name || t("deadline")}</td>
-                <td>
-                  <span className={`tag status ${STATUS[r.status]}`}>{t(`status.${r.status}`)}</span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {rows.length === 0 ? (
+        <p className="muted small-text" style={{ margin: 0 }}>
+          {t("upcomingNone")}
+        </p>
+      ) : (
+        <table className="rec">
+          <thead>
+            <tr>
+              <th>{t("upcomingDate")}</th>
+              <th>{t("upcomingWork")}</th>
+              <th>{t("deadline")}</th>
+              <th>{t("upcomingStatus")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const days = Math.round((r.date.getTime() - today.getTime()) / DAY_MS);
+              return (
+                <tr
+                  key={r.id}
+                  className={r.picked ? "link-row" : "link-row other"}
+                  title={r.picked ? undefined : t("upcomingOther")}
+                  onClick={() => onOpen(r.workId, "schedule")}
+                >
+                  <td className="num">
+                    {dayLabel(r.date)} <span className="muted">{days === 0 ? ts("today") : ts("daysLeft", { n: days })}</span>
+                  </td>
+                  <td>{r.title}</td>
+                  <td>{r.name || t("deadline")}</td>
+                  <td>
+                    <span className={`tag status ${STATUS[r.status]}`}>{t(`status.${r.status}`)}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </section>
   );
 }
