@@ -82,11 +82,19 @@ export function Sidebar({ works, work, screen, onScreen, onWork }: Props) {
           disabled={works.length === 0}
         >
           {!work && <option value="">{t("chooseWork")}</option>}
-          {works.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.title}
-            </option>
-          ))}
+          {/* 完成した作品は出さない。開いている作品が完成していれば、それだけ末尾に区切って出す（5.26） */}
+          {works
+            .filter((w) => !w.completed)
+            .map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.title}
+              </option>
+            ))}
+          {work?.completed && (
+            <optgroup label={t("completedWorks")}>
+              <option value={work.id}>{work.title}</option>
+            </optgroup>
+          )}
         </select>
       </label>
       {item("board", t("screen.board"), !work)}

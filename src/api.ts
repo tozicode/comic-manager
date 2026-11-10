@@ -90,7 +90,14 @@ export type WorkSummary = {
   fileMissing: boolean;
   /** 代表のサムネイル（最初のページ・ファイル）の場所。ファイルを持たない作品は null */
   thumbPath: string | null;
+  /** 表示している全工程が全ページで完了か対象外（仕様書 5.26） */
+  completed: boolean;
+  /** 作品のタグ（名前の順） */
+  tags: WorkTag[];
 };
+
+/** 作品のタグ（名前だけ。ページのタグとは別物。5.26） */
+export type WorkTag = { id: number; name: string };
 
 export type DisplayPrefs = { timeFormat: "hm" | "clock" | "decimal"; theme: ThemePref; language: LangPref };
 
@@ -383,6 +390,11 @@ export const api = {
   renameRow: (pageId: number, title: string) => call<void>("rename_row", { pageId, title }),
   removeWork: (workId: number) => call<void>("remove_work", { workId }),
   renameWork: (workId: number, title: string) => call<void>("rename_work", { workId, title }),
+  listWorkTags: () => call<WorkTag[]>("list_work_tags"),
+  /** 名前でタグを付ける（同じ名前があればそれを、無ければ作る） */
+  addWorkTag: (workId: number, name: string) => call<WorkTag>("add_work_tag", { workId, name }),
+  /** 付け外し。誰にも付いていなくなったタグは消える */
+  setWorkTag: (workId: number, tagId: number, on: boolean) => call<void>("set_work_tag", { workId, tagId, on }),
   syncWork: (workId: number) => call<SyncResult>("sync_work", { workId }),
   getBoard: (workId: number) => call<Board>("get_board", { workId }),
   setTaskDone: (pageId: number, stageId: number, done: boolean) =>

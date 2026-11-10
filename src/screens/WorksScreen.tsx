@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, StageSet, WorkKind, WorkSummary } from "../api";
+import { api, StageSet, WorkKind, WorkSummary, WorkTag } from "../api";
 import { useApp } from "../app-context";
 import { Dialog } from "../components/Dialog";
 import { useRelink } from "../components/Relink";
 import { Thumb } from "../components/Thumb";
-import { useForecast, useTimetable } from "../forecast";
+import { UpcomingDeadline, useForecast, useTimetable } from "../forecast";
 import { dayLabel, estimate, hours } from "../format";
 import { kindKey, setName, unitText } from "../i18n/common";
+import { t as ts } from "../i18n/schedule";
 import { t } from "../i18n/works";
 
 type Props = {
@@ -18,8 +19,18 @@ type Props = {
   onAddSet: () => void;
 };
 
+/** 作品一覧で選んでいるタグ。アプリを閉じるまで覚える（5.26） */
+let lastTag: number | null = null;
+/** 「完成した作品」のたたみを開いているか（5.26） */
+const DONE_OPEN_KEY = "otosazu.worksDoneOpen";
+
 export function WorksScreen({ works, onOpen, onAddSet }: Props) {
   const app = useApp();
+  const tt = useTimetable();
+  const [tagFilter, setTagFilterState] = useState<number | null>(lastTag);
+  const [doneOpen, setDoneOpenState] = useState(() => localStorage.getItem(DONE_OPEN_KEY) === "1");
+  /** タグを付け外ししている作品 */
+  const [tagging, setTagging] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<WorkSummary | null>(null);
   /** 作品名を変えている作品と、入力中の名前 */
@@ -39,6 +50,26 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
     }
   };
 
+  const setTagFilter = (id: number | null) => {
+    lastTag = id;
+    setTagFilterState(id);
+  };
+  const setDoneOpen = (on: boolean) => {
+    localStorage.setItem(DONE_OPEN_KEY, on ? "1" : "0");
+    setDoneOpenState(on);
+  };
+
+  // 今あるタグ。誰にも付いていないタグは消えるので、作品に付いているタグを集めれば全部になる
+  const allTags = [...new Map(works.flatMap((w) => w.tags).map((tag) => [tag.id, tag])).values()].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  // 選んでいたタグが消えていたら「すべて」
+  const filter = allTags.some((tag) => tag.id === tagFilter) ? tagFilter : null;
+  const shown = filter === null ? works : works.filter((w) => w.tags.some((tag) => tag.id === filter));
+  const shownIds = new Set(shown.map((w) => w.id));
+  const openWorks = shown.filter((w) => !w.completed);
+  const doneWorks = shown.filter((w) => w.completed);
+
   const removeWork = async (work: WorkSummary) => {
     setRemoving(null);
     try {
@@ -49,6 +80,99 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
     }
   };
 
+  const card = (w: WorkSummary) => (
+    <div key={w.id} className="card work-card" role="button" tabIndex={0} onClick={() => onOpen(w.id)}>
+      {/* 代表のサムネイル（最初のページ・ファイル）。ファイルを持たない作品は枠だけ */}
+      <div className="work-thumb">
+        {w.thumbPath ? <Thumb path={w.thumbPath} free={w.kind === "files"} width={56} /> : <div className="thumb none" />}
+      </div>
+      <div className="grow">
+        <div className="row">
+          <h3 className="grow">{w.title}</h3>
+          <button
+            className="btn small ghost"
+            title={t("tagsHint")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setTagging(tagging === w.id ? null : w.id);
+            }}
+          >
+            {t("tags")}
+          </button>
+          <button
+            className="btn small ghost"
+            title={t("renameHint")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setRenaming({ work: w, title: w.title });
+            }}
+          >
+            {t("rename")}
+          </button>
+          <button
+            className="btn small ghost"
+            title={t("removeHint")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setRemoving(w);
+            }}
+          >
+            {t("remove")}
+          </button>
+        </div>
+        <div className="muted small-text">
+          {t(kindKey(w.kind, "meta"), { n: w.pageCount, stages: w.stageCount, unit: unitText(w, w.pageCount) })}
+        </div>
+        {w.tags.length > 0 && (
+          <div className="work-tags">
+            {w.tags.map((tag) => (
+              <span key={tag.id} className="tag">
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="bar" style={{ marginTop: 10 }}>
+          <span style={{ width: `${w.progress * 100}%`, background: "var(--accent)" }} />
+        </div>
+        <dl className="kv">
+          <dt>{t("progress")}</dt>
+          <dd className="num">{Math.round(w.progress * 100)}%</dd>
+          <dt>{t("workingTime")}</dt>
+          <dd className="num">{hours(w.totalMs)}</dd>
+          <WorkOutlook workId={w.id} />
+          <dt>{t("lastWork")}</dt>
+          <dd>{w.lastWorkedAt ? dayLabel(new Date(w.lastWorkedAt)) : t("noneYet")}</dd>
+        </dl>
+        {w.cmcPath && (
+          <div className="path" title={w.cmcPath}>
+            {w.cmcPath}
+          </div>
+        )}
+        {w.fileMissing && (
+          <div className="file-missing" onClick={(e) => e.stopPropagation()}>
+            {w.kind === "files" ? (
+              <>
+                <span className="grow">{t("missingFiles")}</span>
+                <button className="btn small primary" onClick={() => onOpen(w.id)}>
+                  {t("openWork")}
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="grow">{t("missingComic")}</span>
+                <button className="btn small primary" onClick={() => relink.start(w.id, w.title)}>
+                  {t("relink")}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      {tagging === w.id && <WorkTagPopover work={w} allTags={allTags} onClose={() => setTagging(null)} />}
+    </div>
+  );
+
   return (
     <>
       {works.length === 0 && (
@@ -58,86 +182,38 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
           {t("leadDetail")}
         </p>
       )}
-      <TimetableWarning onOpen={onOpen} />
+      {tt && <TimetableWarning tt={tt} onOpen={onOpen} />}
+      {tt && <UpcomingDeadlines rows={tt.upcoming.filter((r) => shownIds.has(r.workId))} today={tt.today} onOpen={onOpen} />}
+      {allTags.length > 0 && (
+        <div className="tag-filter">
+          <button className={`opt${filter === null ? " on" : ""}`} onClick={() => setTagFilter(null)}>
+            {t("tagAll")}
+          </button>
+          {allTags.map((tag) => (
+            <button key={tag.id} className={`opt${filter === tag.id ? " on" : ""}`} onClick={() => setTagFilter(tag.id)}>
+              {tag.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {filter !== null && shown.length === 0 && <p className="muted">{t("filteredEmpty")}</p>}
       <div className="works">
-        {works.map((w) => (
-          <div key={w.id} className="card work-card" role="button" tabIndex={0} onClick={() => onOpen(w.id)}>
-            {/* 代表のサムネイル（最初のページ・ファイル）。ファイルを持たない作品は枠だけ */}
-            <div className="work-thumb">
-              {w.thumbPath ? <Thumb path={w.thumbPath} free={w.kind === "files"} width={56} /> : <div className="thumb none" />}
-            </div>
-            <div className="grow">
-              <div className="row">
-                <h3 className="grow">{w.title}</h3>
-                <button
-                  className="btn small ghost"
-                  title={t("renameHint")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRenaming({ work: w, title: w.title });
-                  }}
-                >
-                  {t("rename")}
-                </button>
-                <button
-                  className="btn small ghost"
-                  title={t("removeHint")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRemoving(w);
-                  }}
-                >
-                  {t("remove")}
-                </button>
-              </div>
-              <div className="muted small-text">
-                {t(kindKey(w.kind, "meta"), { n: w.pageCount, stages: w.stageCount, unit: unitText(w, w.pageCount) })}
-              </div>
-              <div className="bar" style={{ marginTop: 10 }}>
-                <span style={{ width: `${w.progress * 100}%`, background: "var(--accent)" }} />
-              </div>
-              <dl className="kv">
-                <dt>{t("progress")}</dt>
-                <dd className="num">{Math.round(w.progress * 100)}%</dd>
-                <dt>{t("workingTime")}</dt>
-                <dd className="num">{hours(w.totalMs)}</dd>
-                <WorkOutlook workId={w.id} />
-                <dt>{t("lastWork")}</dt>
-                <dd>{w.lastWorkedAt ? dayLabel(new Date(w.lastWorkedAt)) : t("noneYet")}</dd>
-              </dl>
-              {w.cmcPath && (
-                <div className="path" title={w.cmcPath}>
-                  {w.cmcPath}
-                </div>
-              )}
-              {w.fileMissing && (
-                <div className="file-missing" onClick={(e) => e.stopPropagation()}>
-                  {w.kind === "files" ? (
-                    <>
-                      <span className="grow">{t("missingFiles")}</span>
-                      <button className="btn small primary" onClick={() => onOpen(w.id)}>
-                        {t("openWork")}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="grow">{t("missingComic")}</span>
-                      <button className="btn small primary" onClick={() => relink.start(w.id, w.title)}>
-                        {t("relink")}
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+        {openWorks.map(card)}
         <button className="work-add" onClick={() => setAdding(true)}>
           <span className="plus">＋</span>
           <b>{t("addWork")}</b>
           <span className="small-text">{t("addWorkKinds")}</span>
         </button>
       </div>
+      {/* 完成した作品は末尾にたたむ（5.26） */}
+      {doneWorks.length > 0 && (
+        <>
+          <button className="done-toggle" onClick={() => setDoneOpen(!doneOpen)} aria-expanded={doneOpen}>
+            {doneOpen ? "▾" : "▸"} {t("doneSection", { n: doneWorks.length })}
+          </button>
+          {doneOpen && <div className="works">{doneWorks.map(card)}</div>}
+        </>
+      )}
 
       {relink.dialog}
       {renaming && (
@@ -214,9 +290,7 @@ const STATUS = {
 } as const;
 
 /** 時間割で締切までに残りを配りきれない作品の 1 行（5.24）。作品名を押すとその作品のスケジュール画面へ */
-function TimetableWarning({ onOpen }: { onOpen: (workId: number, to?: "board" | "schedule") => void }) {
-  const tt = useTimetable();
-  if (!tt) return null;
+function TimetableWarning({ tt, onOpen }: { tt: NonNullable<ReturnType<typeof useTimetable>>; onOpen: Props["onOpen"] }) {
   const late = tt.works
     .filter((w) => w.deadline && (tt.shares.get(w.workId)?.shortMs ?? 0) > 0)
     .sort((a, b) => a.deadline!.getTime() - b.deadline!.getTime());
@@ -236,6 +310,128 @@ function TimetableWarning({ onOpen }: { onOpen: (workId: number, to?: "board" | 
         ))}
         {t("warnTail", { time: hours(shortMs) })}
       </span>
+    </div>
+  );
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** これからの締切（未完成の作品の今日以降の締切を日付の順に。5.26）。行を押すとその作品のスケジュール画面へ */
+function UpcomingDeadlines({ rows, today, onOpen }: { rows: UpcomingDeadline[]; today: Date; onOpen: Props["onOpen"] }) {
+  if (rows.length === 0) return null;
+  return (
+    <section className="upcoming">
+      <h3>{t("upcomingTitle")}</h3>
+      <table className="rec">
+        <thead>
+          <tr>
+            <th>{t("upcomingDate")}</th>
+            <th>{t("upcomingWork")}</th>
+            <th>{t("deadline")}</th>
+            <th>{t("upcomingStatus")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const days = Math.round((r.date.getTime() - today.getTime()) / DAY_MS);
+            return (
+              <tr
+                key={r.id}
+                className={r.picked ? "link-row" : "link-row other"}
+                title={r.picked ? undefined : t("upcomingOther")}
+                onClick={() => onOpen(r.workId, "schedule")}
+              >
+                <td className="num">
+                  {dayLabel(r.date)} <span className="muted">{days === 0 ? ts("today") : ts("daysLeft", { n: days })}</span>
+                </td>
+                <td>{r.title}</td>
+                <td>{r.name || t("deadline")}</td>
+                <td>
+                  <span className={`tag status ${STATUS[r.status]}`}>{t(`status.${r.status}`)}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** 作品のタグの付け外し（5.26）。今あるタグを押して付け外しし、新しい名前を入れると作って付ける */
+function WorkTagPopover({ work, allTags, onClose }: { work: WorkSummary; allTags: WorkTag[]; onClose: () => void }) {
+  const app = useApp();
+  const ref = useRef<HTMLDivElement>(null);
+  const [name, setName] = useState("");
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // 開いたクリック自体で閉じないよう、次のイベントから受け付ける
+    const timer = setTimeout(() => {
+      window.addEventListener("mousedown", onDown);
+      window.addEventListener("keydown", onKey);
+    });
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const on = (tag: WorkTag) => work.tags.some((x) => x.id === tag.id);
+  const toggle = async (tag: WorkTag) => {
+    try {
+      await api.setWorkTag(work.id, tag.id, !on(tag));
+      app.refresh();
+    } catch (e) {
+      app.showError(e);
+    }
+  };
+  const add = async () => {
+    if (!name.trim()) return;
+    try {
+      await api.addWorkTag(work.id, name);
+      setName("");
+      app.refresh();
+    } catch (e) {
+      app.showError(e);
+    }
+  };
+
+  return (
+    // カードを押したことにしない（作品が開かないように）
+    <div className="popover work-tag-pop" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+        <b>{t("tagsTitle", { title: work.title })}</b>
+        {allTags.length > 0 && <span className="muted small-text">{t("tagsToggle")}</span>}
+      </div>
+      {allTags.length > 0 ? (
+        <div className="opts" style={{ marginBottom: 10 }}>
+          {allTags.map((tag) => (
+            <button key={tag.id} className={`opt${on(tag) ? " on" : ""}`} onClick={() => toggle(tag)}>
+              {tag.name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="muted small-text" style={{ marginTop: 0 }}>
+          {t("tagsNone")}
+        </p>
+      )}
+      <div className="row">
+        <input
+          className="field grow"
+          autoFocus
+          placeholder={t("tagsNew")}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <button className="btn small" disabled={!name.trim()} onClick={add}>
+          {t("tagsAdd")}
+        </button>
+      </div>
     </div>
   );
 }

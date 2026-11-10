@@ -115,8 +115,14 @@ function toTimetableWork(w: TimetableWorkInput, allSpans: Span[], today: Date, n
   };
 }
 
-/** 全作品の時間割（作品一覧の警告の 1 行に使う）。読み込み中は null */
-export function useTimetable(): { works: TimetableWork[]; shares: Map<number, WorkShare>; today: Date } | null {
+/** 全作品の時間割（作品一覧の警告の 1 行とこれからの締切に使う）。読み込み中は null */
+export function useTimetable(): {
+  works: TimetableWork[];
+  shares: Map<number, WorkShare>;
+  today: Date;
+  /** これからの締切（未完成の作品の今日以降の締切すべて。5.26） */
+  upcoming: UpcomingDeadline[];
+} | null {
   const app = useApp();
   const [data, setData] = useState<{ input: TimetableWorkInput[]; spans: Span[]; cal: Calendar } | null>(null);
 
@@ -135,7 +141,55 @@ export function useTimetable(): { works: TimetableWork[]; shares: Map<number, Wo
   const now = Date.now();
   const today = startOfDay(now);
   const works = data.input.map((w) => toTimetableWork(w, data.spans, today, now));
-  return { works, shares: buildTimetable(works, today, data.cal), today };
+  const shares = buildTimetable(works, today, data.cal);
+  return { works, shares, today, upcoming: upcomingDeadlines(data.input, works, shares, today, data.cal) };
+}
+
+/** 締切の状況：いっぱいの組み方の完成見込みが締切までに収まるか（多めの見込みまで収まれば ok） */
+function deadlineStatus(s: WorkShare, date: Date): DeadlineStatus {
+  return s.finish.mid && s.finish.mid <= date ? (s.finish.high && s.finish.high <= date ? "ok" : "tight") : "late";
+}
+
+/** これからの締切の 1 行（5.26） */
+export type UpcomingDeadline = {
+  workId: number;
+  title: string;
+  id: number;
+  /** 空なら画面では「締切」と出す */
+  name: string;
+  date: Date;
+  status: DeadlineStatus;
+  /** 計算に使っている締切（5.19） */
+  picked: boolean;
+};
+
+/**
+ * 純粋関数。残りのある作品の今日以降の締切を日付の順に並べる。input と works は同じ並び。
+ * 状況は、計算に使っている締切なら時間割そのもの、ほかの締切はその作品の締切をその日に差し替えて組み直した結果（computeForecast と同じ）
+ */
+export function upcomingDeadlines(
+  input: TimetableWorkInput[],
+  works: TimetableWork[],
+  shares: Map<number, WorkShare>,
+  today: Date,
+  cal: Calendar,
+): UpcomingDeadline[] {
+  const todayKey = dayKey(today);
+  const rows: UpcomingDeadline[] = [];
+  input.forEach((w, i) => {
+    if (w.remainingMs <= 0) return;
+    const picked = pickDeadline(w.deadlines, w.selectedDeadline, todayKey);
+    for (const d of w.deadlines) {
+      if (d.date < todayKey) continue;
+      const date = new Date(`${d.date}T00:00`);
+      const s =
+        d.id === picked?.id
+          ? shares.get(w.workId)!
+          : buildTimetable(works.map((x, j) => (j === i ? { ...x, deadline: date } : x)), today, cal).get(w.workId)!;
+      rows.push({ workId: w.workId, title: w.title, id: d.id, name: d.name, date, status: deadlineStatus(s, date), picked: d.id === picked?.id });
+    }
+  });
+  return rows.sort((a, b) => a.date.getTime() - b.date.getTime() || a.title.localeCompare(b.title));
 }
 
 /**
@@ -234,8 +288,7 @@ export function computeForecast(
       // 確率の分母は、締切までにこの作品が使えた器（ほかの作品が先に取るぶんを除く）。今日の作業済みぶんは除く
       const capacityLeft = Math.max(0, s.availableUntil(date) - Math.max(workedTodayMs, 0));
       const probability = onTimeProbability(prediction.remainingMs, prediction.sigma, capacityLeft);
-      const status: DeadlineStatus =
-        s.finish.mid && s.finish.mid <= date ? (s.finish.high && s.finish.high <= date ? "ok" : "tight") : "late";
+      const status = deadlineStatus(s, date);
       return { id: d.id, name: d.name, date, plan, probability, status, shortMs: s.shortMs };
     });
   const deadline = deadlines.find((d) => d.id === picked?.id) ?? null;
