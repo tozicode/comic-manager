@@ -15,7 +15,7 @@
 | タグの表 | `work_tag(id, name UNIQUE)` と `work_tag_link(work_id, tag_id)`。外部キーは両方 `ON DELETE CASCADE`。付け外しと作品を外したときに、付いていないタグを消す |
 | これからの締切の計算 | `useTimetable` が読んでいる時間割の入力（全作品の締切を含む）から、純粋関数 `upcomingDeadlines()` を `forecast.ts` に足して出す。状況の判定は `computeForecast` の締切ごとの判定と同じ式にする（共通の関数に切り出す） |
 
-## 1. Rust（`src-tauri/src/store`）
+## 1. Rust（`src-tauri/src/store`）（済）
 
 - `WorkSummary` に `completed: bool` と `tags: Vec<WorkTag>`（`{ id, name }`）。進捗率から対象外を外す
 - 版 13：`work_tag` と `work_tag_link`
@@ -24,7 +24,7 @@
 - コマンドを `lib.rs` に登録し、`api.ts` に足す
 - テスト：完成の判定（対象外で揃う・消えたページ・工程 0・✓を外すと戻る）／進捗率が対象外を外す／タグの作成・同じ名前・付け外しで消える・作品を外すと消える／版 12 から上げる
 
-## 2. 画面（TypeScript）
+## 2. 画面（TypeScript）（済）
 
 - 作品一覧（`WorksScreen.tsx`）
   - 上から：時間割の警告 → これからの締切（無ければ「現在、締切はありません」） → 絞り込みのチップ → 当てはまるカード ＋ 作品を追加
