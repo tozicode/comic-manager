@@ -111,6 +111,8 @@ gh repo edit tozicode/comic-manager --visibility private --accept-visibility-cha
 ```
 
 非公開にしたら、手順 6 の comic-manager への二重アップロードはやめる。
+あわせて、利用者数の記録（`../product-stats`）の `repos.json` の `repos` から `tozicode/comic-manager` を外す
+（外さないと、毎日の記録の実行が失敗の扱いになる。それまでの累計は足され続けるので、合計は途切れない）。
 
 ## 7. BOOTH
 
