@@ -14,7 +14,7 @@
 | `GET /p/<公開 ID>` | なし | 閲覧ページ（`public/p.html`）。鍵は URL のフラグメント `#k=` にあり、サーバには届かない |
 | `GET /list` | なし | まとめページ（`public/list.html`）。`#p=<ID>:<閲覧鍵>,…` に一覧を持ち、サーバには何も置かない |
 | `POST /feed` | なし | みんなの作業の知らせを 1 件置く。ボディ `{ sender, emoji: [n, n], kind, stage?, unit?, count? }`。時刻はサーバが付ける |
-| `GET /feed?since=<seq>` | なし | 直近 24 時間の知らせ（`seq` より新しいもの、新しい順、最大 200 件）と `active`（12 時間以内に `start` を送った送り手の数）。D1 から読んだ答えは Cache API で 30 秒使い回し、`POST` のたびに捨てる |
+| `GET /feed?since=<seq>` | なし | 直近 24 時間の知らせ（`seq` より新しいもの、新しい順、最大 200 件）と `active`（12 時間以内に `start` を送った送り手の数）。知らせは主キーで `seq` の先だけを読む（新着が無ければ D1 の行を読まない）。`active` は Cache API で 5 分使い回し、`start` の `POST` で捨てる |
 
 断り方：鍵が無い 401 ／ 鍵が違う 403 ／ ID の形が違う・JSON でない 400 ／ 64 KB 超 413 ／ 同じ ID へ 10 秒以内の再送 429。
 上限は `src/limits.ts`。サーバは鍵の SHA-256 だけを持ち、要約の中身は見ない。
@@ -70,3 +70,7 @@ workerd が起動時に `Incorrect type for map entry` で断る）。テスト�
 - D1 の中身：`npx wrangler d1 execute DB --remote --command "SELECT id, updated_at FROM snapshots ORDER BY updated_at DESC LIMIT 20"`
 - 行を手で消したいとき（利用者からの依頼）：同じく `DELETE FROM snapshots WHERE id = '...'`
 - みんなの作業の様子：`SELECT kind, COUNT(*) FROM feed GROUP BY kind`、荒らされたら `DELETE FROM feed WHERE sender = '...'`
+- 無料枠の使い具合（D1 は 1 日 500 万行の読み取り、Workers は 1 日 10 万リクエスト。どちらも 00:00 UTC に戻る）：
+  `npx wrangler d1 info otosazu-share` の `rows_read_24h`。どのクエリが読んでいるかは
+  `npx wrangler d1 insights otosazu-share --timePeriod 1d --sort-type sum --sort-by reads`。
+  D1 の枠を超えると、その日は `/feed` だけでなく進捗の公開（`/p/`）も読み書きできなくなる

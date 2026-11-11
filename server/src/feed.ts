@@ -14,8 +14,8 @@ export const FEED_MAX_ITEMS = 200;
 export const FEED_ACTIVE_MS = 12 * 60 * 60 * 1000;
 /** これより古い行は日次の掃除で消す */
 export const FEED_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
-/** 取得の答えを使い回す長さ（秒） */
-export const FEED_CACHE_SECONDS = 30;
+/** 人数の答えを使い回す長さ（秒）。知らせは毎回 since の先だけを読むので使い回さない */
+export const FEED_ACTIVE_CACHE_SECONDS = 300;
 /** 絵文字の番号の上限（一覧は後ろに足していくので余裕を見る） */
 export const FEED_MAX_EMOJI = 999;
 
@@ -118,30 +118,31 @@ type FeedRow = {
   at: number;
 };
 
-/** 直近の知らせ（新しい順）と、作業中の人数 */
-export interface FeedSnapshot {
-  now: number;
-  active: number;
-  items: FeedItem[];
-}
+// アプリは窓が表にある間 1 分おきに取りに来る。そのたびに表を端から読むと、D1 の無料枠（1 日 500 万行）を超える
+// （2026-11-11 に実際に超えた）。どちらのクエリも、読む行が表の大きさに比例しない形にしてある（test/feed.spec.ts で固める）
 
-export async function readFeed(db: D1Database, now: number): Promise<FeedSnapshot> {
-  const rows = await db
-    .prepare('SELECT seq, sender, e1, e2, kind, stage, unit, count, at FROM feed WHERE at > ? ORDER BY seq DESC LIMIT ?')
-    .bind(now - FEED_WINDOW_MS, FEED_MAX_ITEMS)
-    .all<FeedRow>();
-  const active = await db
-    .prepare("SELECT COUNT(DISTINCT sender) AS n FROM feed WHERE kind = 'start' AND at > ?")
-    .bind(now - FEED_ACTIVE_MS)
-    .first<{ n: number }>();
-  const items = rows.results.map((r): FeedItem => {
+/** since より新しい知らせ（新しい順）。主キーで since の先だけを読むので、新着が無ければ 1 行も読まない */
+export const FEED_ITEMS_SQL =
+  'SELECT seq, sender, e1, e2, kind, stage, unit, count, at FROM feed WHERE seq > ? AND at > ? ORDER BY seq DESC LIMIT ?';
+/** 作業中の人数。索引 feed_kind_at（kind, at, sender）だけで、窓の中の start を数える */
+export const FEED_ACTIVE_SQL = "SELECT COUNT(DISTINCT sender) AS n FROM feed WHERE kind = 'start' AND at > ?";
+
+/** 直近の知らせのうち、since より新しいもの（新しい順） */
+export async function readFeedItems(db: D1Database, since: number, now: number): Promise<FeedItem[]> {
+  const rows = await db.prepare(FEED_ITEMS_SQL).bind(since, now - FEED_WINDOW_MS, FEED_MAX_ITEMS).all<FeedRow>();
+  return rows.results.map((r): FeedItem => {
     const item: FeedItem = { seq: r.seq, at: r.at, sender: r.sender, emoji: [r.e1, r.e2], kind: r.kind };
     if (r.stage != null) item.stage = r.stage;
     if (r.unit != null) item.unit = r.unit;
     if (r.count != null) item.count = r.count;
     return item;
   });
-  return { now, active: active?.n ?? 0, items };
+}
+
+/** 作業中の人数 */
+export async function readFeedActive(db: D1Database, now: number): Promise<number> {
+  const row = await db.prepare(FEED_ACTIVE_SQL).bind(now - FEED_ACTIVE_MS).first<{ n: number }>();
+  return row?.n ?? 0;
 }
 
 /** 3 日より古い知らせを消す。戻り値は消した数（テスト用） */

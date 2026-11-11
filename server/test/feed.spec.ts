@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   FEED_ACTIVE_MS,
+  FEED_ACTIVE_SQL,
   FEED_GLOBAL_PER_MIN,
+  FEED_ITEMS_SQL,
+  FEED_MAX_ITEMS,
   FEED_RETENTION_MS,
   FEED_SENDER_INTERVAL_MS,
   FEED_WINDOW_MS,
@@ -35,8 +38,8 @@ async function feed(since?: number): Promise<Feed> {
 async function age(ms: number, sender?: string) {
   if (sender) await env.DB.prepare('UPDATE feed SET at = at - ? WHERE sender = ?').bind(ms, sender).run();
   else await env.DB.prepare('UPDATE feed SET at = at - ?').bind(ms).run();
-  // 使い回している答えも捨てる（本番では 30 秒で切れる）
-  await caches.default.delete(new Request(`${base}/feed/__snapshot`));
+  // 使い回している人数も捨てる（本番では 5 分で切れる）
+  await caches.default.delete(new Request(`${base}/feed/__active`));
 }
 
 const start = (sender = A) => ({ sender, emoji: [3, 41], kind: 'start' });
@@ -125,6 +128,43 @@ describe('みんなの作業', () => {
     expect((await feed()).active).toBe(1);
     await age(FEED_ACTIVE_MS + 1000);
     expect((await feed()).active).toBe(0);
+  });
+
+  it('人数は使い回す。start が置かれたら数え直す', async () => {
+    await post(start(A));
+    expect((await feed()).active).toBe(1);
+    // POST を通さずに足した分は、使い回している間は数に入らない
+    await env.DB.prepare("INSERT INTO feed (sender, e1, e2, kind, at) VALUES (?, 0, 0, 'start', ?)")
+      .bind(B, Date.now())
+      .run();
+    expect((await feed()).active).toBe(1);
+    await post(start('c'.repeat(32)));
+    expect((await feed()).active).toBe(3);
+  });
+
+  // 取りに来るたびに表全体を読むと、D1 の無料枠（1 日 500 万行）を超える（2026-11-11 に実際に超えた）
+  it('取りに来るたびに表全体を読まない', async () => {
+    const now = Date.now();
+    const stmt = env.DB.prepare('INSERT INTO feed (sender, e1, e2, kind, at) VALUES (?, 0, 0, ?, ?)');
+    const row = (i: number, kind: string, at: number) => stmt.bind(i.toString(16).padStart(32, '0'), kind, at);
+    await env.DB.batch([
+      // 2 日前の知らせが溜まっている
+      ...Array.from({ length: 300 }, (_, i) => row(i, 'start', now - 2 * FEED_WINDOW_MS)),
+      // 今しがたの知らせ。start は 5 件だけ
+      ...Array.from({ length: 20 }, (_, i) => row(1000 + i, 'work', now - 1000)),
+      ...Array.from({ length: 5 }, (_, i) => row(2000 + i, 'start', now - 1000)),
+    ]);
+    const last = (await env.DB.prepare('SELECT MAX(seq) AS seq FROM feed').first<{ seq: number }>())!.seq;
+
+    // 新着が無ければ、知らせは 1 行も読まない
+    const items = await env.DB.prepare(FEED_ITEMS_SQL).bind(last, now - FEED_WINDOW_MS, FEED_MAX_ITEMS).all();
+    expect(items.results).toHaveLength(0);
+    expect(items.meta.rows_read).toBeLessThanOrEqual(1);
+
+    // 人数は、窓の中の start の行だけを読む
+    const active = await env.DB.prepare(FEED_ACTIVE_SQL).bind(now - FEED_ACTIVE_MS).all<{ n: number }>();
+    expect(active.results[0].n).toBe(5);
+    expect(active.meta.rows_read).toBeLessThanOrEqual(10);
   });
 
   it('掃除で 3 日より古い行が消える', async () => {

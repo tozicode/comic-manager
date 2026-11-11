@@ -2,13 +2,13 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
 import {
-  FEED_CACHE_SECONDS,
+  FEED_ACTIVE_CACHE_SECONDS,
   FEED_MAX_BODY_BYTES,
-  type FeedSnapshot,
   feedRejection,
   insertFeed,
   parseFeedPost,
-  readFeed,
+  readFeedActive,
+  readFeedItems,
   sweepFeed,
 } from './feed';
 import { MAX_BODY_BYTES, MIN_INTERVAL_MS, sweep } from './limits';
@@ -177,12 +177,27 @@ app.get('/p/:id', async (c) => {
   return c.env.ASSETS.fetch(new Request(url.toString(), { headers: c.req.raw.headers }));
 });
 
-/** 取得の答えを使い回すときの鍵（since によらず 1 つ。絞り込みは Worker の中でする） */
-function feedCacheKey(url: string): Request {
+/** 人数の答えを使い回すときの鍵 */
+function feedActiveCacheKey(url: string): Request {
   const u = new URL(url);
-  u.pathname = '/feed/__snapshot';
+  u.pathname = '/feed/__active';
   u.search = '';
   return new Request(u.toString());
+}
+
+/** 作業中の人数。数えるには窓の中の start をぜんぶ読むので、数分は使い回す（Cache API は拠点ごと） */
+async function feedActive(db: D1Database, url: string, now: number): Promise<number> {
+  const key = feedActiveCacheKey(url);
+  const cached = await caches.default.match(key);
+  if (cached) return (await cached.json<{ active: number }>()).active;
+  const active = await readFeedActive(db, now);
+  await caches.default.put(
+    key,
+    new Response(JSON.stringify({ active }), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${FEED_ACTIVE_CACHE_SECONDS}` },
+    }),
+  );
+  return active;
 }
 
 app.post('/feed', async (c) => {
@@ -204,8 +219,8 @@ app.post('/feed', async (c) => {
     return c.json({ error: 'too many requests' }, 429);
   }
   const seq = await insertFeed(c.env.DB, post, now);
-  // 新しい知らせがすぐ見えるよう、使い回している答えを捨てる
-  await caches.default.delete(feedCacheKey(c.req.url));
+  // 人数が変わるのは start だけ。すぐ数に入るよう、使い回している人数を捨てる
+  if (post.kind === 'start') await caches.default.delete(feedActiveCacheKey(c.req.url));
   return c.json({ ok: true, seq }, 201);
 });
 
@@ -213,22 +228,12 @@ app.get('/feed', async (c) => {
   const since = Number(c.req.query('since') ?? 0);
   if (!Number.isInteger(since) || since < 0) return c.json({ error: 'bad since' }, 400);
 
-  const key = feedCacheKey(c.req.url);
-  let snapshot: FeedSnapshot;
-  const cached = await caches.default.match(key);
-  if (cached) {
-    snapshot = await cached.json<FeedSnapshot>();
-  } else {
-    snapshot = await readFeed(c.env.DB, Date.now());
-    await caches.default.put(
-      key,
-      new Response(JSON.stringify(snapshot), {
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${FEED_CACHE_SECONDS}` },
-      }),
-    );
-  }
-  const items = snapshot.items.filter((i) => i.seq > since);
-  return c.body(JSON.stringify({ now: snapshot.now, active: snapshot.active, items }), 200, {
+  const now = Date.now();
+  const [items, active] = await Promise.all([
+    readFeedItems(c.env.DB, since, now),
+    feedActive(c.env.DB, c.req.url, now),
+  ]);
+  return c.body(JSON.stringify({ now, active, items }), 200, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
   });
