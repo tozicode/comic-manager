@@ -95,38 +95,40 @@ export function WorksScreen({ works, onOpen, onAddSet }: Props) {
         {w.thumbPath ? <Thumb path={w.thumbPath} free={w.kind === "files"} width={56} /> : <div className="thumb none" />}
       </div>
       <div className="grow">
-        <div className="row">
+        <div className="row work-head">
           <h3 className="grow">{w.title}</h3>
-          <button
-            className="btn small ghost"
-            title={t("tagsHint")}
-            onClick={(e) => {
-              e.stopPropagation();
-              setTagging(tagging === w.id ? null : w.id);
-            }}
-          >
-            {t("tags")}
-          </button>
-          <button
-            className="btn small ghost"
-            title={t("renameHint")}
-            onClick={(e) => {
-              e.stopPropagation();
-              setRenaming({ work: w, title: w.title });
-            }}
-          >
-            {t("rename")}
-          </button>
-          <button
-            className="btn small ghost"
-            title={t("removeHint")}
-            onClick={(e) => {
-              e.stopPropagation();
-              setRemoving(w);
-            }}
-          >
-            {t("remove")}
-          </button>
+          <div className="row work-actions">
+            <button
+              className="btn small ghost"
+              title={t("tagsHint")}
+              onClick={(e) => {
+                e.stopPropagation();
+                setTagging(tagging === w.id ? null : w.id);
+              }}
+            >
+              {t("tags")}
+            </button>
+            <button
+              className="btn small ghost"
+              title={t("renameHint")}
+              onClick={(e) => {
+                e.stopPropagation();
+                setRenaming({ work: w, title: w.title });
+              }}
+            >
+              {t("rename")}
+            </button>
+            <button
+              className="btn small ghost"
+              title={t("removeHint")}
+              onClick={(e) => {
+                e.stopPropagation();
+                setRemoving(w);
+              }}
+            >
+              {t("remove")}
+            </button>
+          </div>
         </div>
         <div className="muted small-text">
           {t(kindKey(w.kind, "meta"), { n: w.pageCount, stages: w.stageCount, unit: unitText(w, w.pageCount) })}

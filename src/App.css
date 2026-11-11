@@ -818,6 +818,22 @@ select {
   margin: 0;
   font-size: 16px;
 }
+/* 題名とボタンの行。カードが狭いときに題名が縦 1 文字ずつに潰れないよう、題名に最低限の幅を取り、
+   入らなければボタンをまとめて次の行に右寄せで回す */
+.work-head {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 4px;
+}
+.work-head h3 {
+  flex: 1 1 8em;
+  min-width: 8em;
+}
+/* ボタンは 3 つまとめて回す（1 つだけ次の行に落ちないように） */
+.work-actions {
+  flex: none;
+  margin-left: auto;
+}
 /* 作品のタグ（5.26）：カードの中の札と、付け外しのポップオーバー */
 .work-card {
   position: relative;
