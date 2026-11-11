@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./app-context", () => ({ useApp: () => ({}) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), isTauri: () => true }));
 
-import type { TimetableWorkInput } from "./api";
-import { upcomingDeadlines } from "./forecast";
+import type { Board, Prediction, TimetableWorkInput, WorkSchedule } from "./api";
+import { computeForecast, upcomingDeadlines } from "./forecast";
 import { dayKey } from "./format";
 import { Calendar, HOUR, pickDeadline } from "./schedule";
 import { buildTimetable, TimetableWork } from "./timetable";
@@ -72,5 +72,58 @@ describe("これからの締切（5.26）", () => {
     const rows = run([input(1, 20 * HOUR, [[11, "", "2026-10-24"]]), input(2, 16 * HOUR, [[21, "", "2026-10-23"]])]);
     const one = rows.find((r) => r.workId === 1)!;
     expect(one.status).toBe("late");
+  });
+});
+
+describe("次にやるタスクの並び", () => {
+  // 2 ページ × 下書き・ペン入れ。1 ページ目の下書きだけ終わっている
+  const cell = (done: boolean) => ({ done, excluded: false });
+  const board = {
+    work: { id: 1, title: "作品", kind: "comic", unit: "" },
+    stages: [
+      { id: 10, name: "下書き" },
+      { id: 20, name: "ペン入れ" },
+    ],
+    pages: [
+      { id: 1, label: "1", missing: false, assignees: [], cells: [cell(true), cell(false)] },
+      { id: 2, label: "2", missing: false, assignees: [], cells: [cell(false), cell(false)] },
+    ],
+  } as unknown as Board;
+  const task = (pageId: number, stageId: number, done = false) => ({
+    pageId,
+    stageId,
+    predictedMs: HOUR,
+    spentMs: done ? HOUR : 0,
+    remainingMs: done ? 0 : HOUR,
+    done,
+    assigned: false,
+    excluded: false,
+  });
+  const prediction: Prediction = {
+    tasks: [task(1, 10, true), task(1, 20), task(2, 10), task(2, 20)],
+    remainingMs: 3 * HOUR,
+    lowMs: 3 * HOUR,
+    highMs: 3 * HOUR,
+    sigma: 0.3,
+    stages: [],
+  };
+  const next = (workOrder: "stage" | "page") => {
+    const schedule = { weekdayHours: CAL.weekdayHours, deadlines: [], selectedDeadline: null, workOrder, daysOff: [] } as unknown as WorkSchedule;
+    const f = computeForecast(board, prediction, schedule, [], MON.getTime() + 9 * HOUR, CAL);
+    return f.candidates.map((c) => [c.pageId, c.stageId]);
+  };
+
+  it("進め方が工程ごとなら、同じ工程のほかのページを先に出す", () => {
+    expect(next("stage")).toEqual([
+      [2, 10],
+      [1, 20],
+    ]);
+  });
+
+  it("進め方がページごとなら、同じページの次の工程を先に出す", () => {
+    expect(next("page")).toEqual([
+      [1, 20],
+      [2, 10],
+    ]);
   });
 });

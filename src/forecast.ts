@@ -16,6 +16,7 @@ import {
   finishDateAtPace,
   MIN_STEP,
   onTimeProbability,
+  ordered,
   pickDeadline,
   Plan,
   PlanStep,
@@ -339,7 +340,8 @@ export function computeForecast(
     quotaMs,
     planQuotaMs,
     quotaMet,
-    candidates,
+    // ミニタイマーや遠隔の画面の「次」は先頭を使うので、スケジュールの進め方（工程ごと／ページごと）の順にしておく
+    candidates: ordered(candidates, schedule.workOrder),
     openTasks,
     assignedCount,
     plans: buildPlans(candidates, stageInfos, planQuotaMs, schedule.workOrder, board.work),
