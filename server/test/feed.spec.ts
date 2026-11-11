@@ -114,7 +114,7 @@ describe('みんなの作業', () => {
     expect((await SELF.fetch(`${base}/feed?since=-1`)).status).toBe(400);
   });
 
-  it('24 時間より古いものは返らない', async () => {
+  it('12 時間より古いものは返らない', async () => {
     await post(start(A));
     await age(FEED_WINDOW_MS + 1000);
     expect((await feed()).items).toHaveLength(0);

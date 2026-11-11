@@ -7,8 +7,8 @@ export const FEED_MAX_BODY_BYTES = 1024;
 export const FEED_SENDER_INTERVAL_MS = 10_000;
 /** 全体で 1 分あたりに受け付ける件数の上限（IP ごとの制限の代わりの歯止め） */
 export const FEED_GLOBAL_PER_MIN = 120;
-/** 返す知らせの範囲と件数 */
-export const FEED_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** 返す知らせの範囲と件数。範囲は「作業中」に数える長さと揃える */
+export const FEED_WINDOW_MS = 12 * 60 * 60 * 1000;
 export const FEED_MAX_ITEMS = 200;
 /** 「作業中」に数える長さ（最後の start から） */
 export const FEED_ACTIVE_MS = 12 * 60 * 60 * 1000;

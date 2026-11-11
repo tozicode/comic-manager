@@ -1,4 +1,4 @@
-// みんなの作業（仕様書 5.25）の画面：直近 24 時間の知らせ、送る・受け取るの設定、送るもの・送らないもの。
+// みんなの作業（仕様書 5.25）の画面：直近 12 時間の知らせ、送る・受け取るの設定、送るもの・送らないもの。
 // 左ペインの下の 2 行を押して開く
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";

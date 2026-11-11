@@ -39,7 +39,7 @@ interface PutBody {
  *   - GET    /p/:id/snapshot  … X-Otosazu-Read: <閲覧鍵>。要約の JSON
  *   - GET    /p/:id           … 閲覧ページ（public/p.html）
  *   - POST   /feed            … みんなの作業（5.25）の知らせを 1 件置く。鍵は無い
- *   - GET    /feed?since=<n>  … 直近 24 時間の知らせ（n より新しいもの）と作業中の人数
+ *   - GET    /feed?since=<n>  … 直近 12 時間の知らせ（n より新しいもの）と作業中の人数
  *
  * サーバは要約の中身を理解しない。やることは「鍵を確かめて預かり、配る」だけ。
  */

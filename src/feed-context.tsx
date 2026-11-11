@@ -11,7 +11,8 @@ const POLL_MS = 60_000;
 const SEND_MS = 60_000;
 /** 記録が変わってから送り待ちを見に行くまで（送る時刻は Rust 側が 30 秒以上先にしている） */
 const SEND_AFTER_CHANGE_MS = 35_000;
-const WINDOW_MS = 24 * 60 * 60 * 1000;
+/** 知らせの一覧に出す範囲。「作業中」の人数を数える長さ（サーバの FEED_ACTIVE_MS）と揃える */
+const WINDOW_MS = 12 * 60 * 60 * 1000;
 const MAX_ITEMS = 200;
 
 type FeedState = {
@@ -22,7 +23,7 @@ type FeedState = {
   /** 作業中の人数。まだ取れていない・届かないときは null */
   active: number | null;
   offline: boolean;
-  /** 直近 24 時間の知らせ（新しい順） */
+  /** 直近 12 時間の知らせ（新しい順） */
   items: FeedItem[];
   /** 自分の送り手（作品ごと） */
   mine: ReadonlySet<string>;
