@@ -70,7 +70,11 @@ workerd が起動時に `Incorrect type for map entry` で断る）。テスト�
 - D1 の中身：`npx wrangler d1 execute DB --remote --command "SELECT id, updated_at FROM snapshots ORDER BY updated_at DESC LIMIT 20"`
 - 行を手で消したいとき（利用者からの依頼）：同じく `DELETE FROM snapshots WHERE id = '...'`
 - みんなの作業の様子：`SELECT kind, COUNT(*) FROM feed GROUP BY kind`、荒らされたら `DELETE FROM feed WHERE sender = '...'`
-- 無料枠の使い具合（D1 は 1 日 500 万行の読み取り、Workers は 1 日 10 万リクエスト。どちらも 00:00 UTC に戻る）：
-  `npx wrangler d1 info otosazu-share` の `rows_read_24h`。どのクエリが読んでいるかは
+- 使い具合：アカウントは Workers Paid（月 5 ドル。2026-11-12 から。Family Quest と共用）。月あたり Workers 1,000 万リクエスト、
+  D1 の読み取り 250 億行・書き込み 5,000 万行までが込みで、超えた分は従量課金になる（止まりはしない）。
+  D1 は `npx wrangler d1 info otosazu-share` の `rows_read_24h`、どのクエリが読んでいるかは
   `npx wrangler d1 insights otosazu-share --timePeriod 1d --sort-type sum --sort-by reads`。
-  D1 の枠を超えると、その日は `/feed` だけでなく進捗の公開（`/p/`）も読み書きできなくなる
+  リクエスト数はダッシュボードの Workers & Pages → otosazu-share → Metrics。ほぼすべてが `/feed` の取得で、
+  みんなの作業を受け取る窓が表に出ている間、1 窓につき 1 分 1 件（2026-11-11 は 1 日約 5 万件）
+- 無料プランだった 2026-11-11 に、D1 の読み取りが 1 日 500 万行の上限を超えた（`/feed` が表全体を読んでいた）。
+  無料プランでは上限を超えるとその日は D1 が読み書きできず、`/feed` だけでなく進捗の公開（`/p/`）も止まる
