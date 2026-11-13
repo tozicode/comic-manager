@@ -47,6 +47,13 @@ describe("1日の区切り", () => {
   const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime();
   afterEach(() => setDayStartHour(0));
 
+  it("日付か時刻が空・途中なら null（NaN の時刻を送らない）", () => {
+    expect(fromInputs("2026-10-23", "")).toBeNull();
+    expect(fromInputs("2026-10-23", "10")).toBeNull();
+    expect(fromInputs("", "10:00")).toBeNull();
+    expect(fromInputs("2026-10", "10:00")).toBeNull();
+  });
+
   it("0 時区切り（既定）では暦どおり", () => {
     expect(dayKey(startOfDay(at(24, 2)))).toBe("2026-10-24");
     expect(fromInputs("2026-10-23", "01:30")).toBe(at(23, 1, 30));

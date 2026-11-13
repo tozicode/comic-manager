@@ -140,7 +140,9 @@ export function dayKey(d: Date): string {
 export function fromInputs(date: string, hm: string): number | null {
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = hm.split(":").map(Number);
-  if ([y, mo, d, h, mi].some((n) => Number.isNaN(n))) return null;
+  // 欄が空や途中のとき（Mac の時刻の欄は時・分を全部埋めるまで値が空）は、欠けた値が undefined になるので数でないものは全部はじく。
+  // NaN の時刻を Rust に送ると null になり「invalid type: null, expected i64」で断られていた
+  if ([y, mo, d, h, mi].some((n) => !Number.isFinite(n))) return null;
   return new Date(y, mo - 1, d + (h < dayStartHour ? 1 : 0), h, mi).getTime();
 }
 
