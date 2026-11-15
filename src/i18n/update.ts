@@ -3,6 +3,10 @@ import { defineMessages } from ".";
 
 export const { t, tn } = defineMessages({
   ja: {
+    failedTitle: "{version} への更新が終わらなかったようです",
+    failedBody: "前回「更新する」を押しましたが、今も {current} のままです。ウイルス対策ソフトなどがインストーラーを止めたのかもしれません。BOOTH から新しい版をダウンロードして、手でインストールしてください。上書きで入るので、作業記録はそのまま引き継がれます。",
+    close: "閉じる",
+    openBooth: "BOOTH を開く",
     failed: "更新できませんでした：{error}",
     label: "新しい版",
     title: "Otosazu {version} が出ています（今は {current}）",
@@ -12,6 +16,10 @@ export const { t, tn } = defineMessages({
     note: "更新すると Otosazu が一度閉じて、新しい版で開き直します。作業記録はそのまま引き継がれます。計測中のタイマーも止まりません。",
   },
   en: {
+    failedTitle: "The update to {version} didn't finish",
+    failedBody: "You chose Update last time, but you're still on {current}. Antivirus software or similar may have blocked the installer. Please download the new version from BOOTH and install it yourself. It installs over the current one, so your work log is kept.",
+    close: "Close",
+    openBooth: "Open BOOTH",
     failed: "Couldn't update: {error}",
     label: "New version",
     title: "Otosazu {version} is available (you have {current})",
@@ -21,6 +29,10 @@ export const { t, tn } = defineMessages({
     note: "Otosazu will close once and reopen in the new version. Your work log is kept as is, and a running timer won't stop.",
   },
   ko: {
+    failedTitle: "{version}(으)로의 업데이트가 끝나지 않은 것 같습니다",
+    failedBody: "지난번에 '업데이트'를 눌렀지만 아직 {current}입니다. 백신 프로그램 등이 설치 프로그램을 막았을 수 있습니다. BOOTH에서 새 버전을 다운로드해 직접 설치해 주세요. 덮어쓰기로 설치되므로 작업 기록은 그대로 이어집니다.",
+    close: "닫기",
+    openBooth: "BOOTH 열기",
     failed: "업데이트하지 못했습니다: {error}",
     label: "새 버전",
     title: "Otosazu {version}이(가) 나왔습니다(현재 {current})",
@@ -30,6 +42,10 @@ export const { t, tn } = defineMessages({
     note: "업데이트하면 Otosazu가 한 번 닫히고 새 버전으로 다시 열립니다. 작업 기록은 그대로 이어집니다. 측정 중인 타이머도 멈추지 않습니다.",
   },
   "zh-Hans": {
+    failedTitle: "更新到 {version} 似乎没有完成",
+    failedBody: "上次点击了“更新”，但现在仍是 {current}。可能是杀毒软件等阻止了安装程序。请从 BOOTH 下载新版本并手动安装。新版本会覆盖安装，工作记录会原样保留。",
+    close: "关闭",
+    openBooth: "打开 BOOTH",
     failed: "无法更新：{error}",
     label: "新版本",
     title: "Otosazu {version} 已发布（当前为 {current}）",
@@ -39,6 +55,10 @@ export const { t, tn } = defineMessages({
     note: "更新时 Otosazu 会先关闭，再以新版本重新打开。工作记录会原样保留，正在计时的计时器也不会停止。",
   },
   "zh-Hant": {
+    failedTitle: "更新到 {version} 似乎沒有完成",
+    failedBody: "上次點了「更新」，但目前仍是 {current}。可能是防毒軟體等擋下了安裝程式。請從 BOOTH 下載新版本並手動安裝。新版本會覆蓋安裝，工作紀錄會原樣保留。",
+    close: "關閉",
+    openBooth: "開啟 BOOTH",
     failed: "無法更新：{error}",
     label: "新版本",
     title: "Otosazu {version} 已推出（目前為 {current}）",

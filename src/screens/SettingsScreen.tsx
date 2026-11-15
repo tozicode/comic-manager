@@ -21,7 +21,7 @@ const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfZiFdcGdq_BGvwtE6SqV
 const FORM_OS_ENTRY = "entry.245049095";
 const FORM_VERSION_ENTRY = "entry.911636501";
 const FEEDBACK_MAIL = "feedback@otosazu.com";
-const BOOTH_URL = "https://tozicode.booth.pm/items/8867379";
+export const BOOTH_URL = "https://tozicode.booth.pm/items/8867379";
 const X_ACCOUNT = "tozicode";
 
 /** 新しい工程に順番に割り当てる色 */
