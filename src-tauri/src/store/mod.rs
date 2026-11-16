@@ -266,17 +266,18 @@ pub struct SyncResult {
     pub splits: Vec<PageSplit>,
 }
 
-pub fn page_label(number: i64, span: i64) -> String {
-    if span == 2 {
-        format!("p{}-{}", number, number + 1)
-    } else {
-        format!("p{number}")
+/// ページの表示名。見開きは「p4-5」、表紙と裏表紙の見開き（pair が最終ページ）は「p1・8」
+pub fn page_label(number: i64, span: i64, pair: Option<i64>) -> String {
+    match (span, pair) {
+        (2, Some(pair)) => format!("p{number}・{pair}"),
+        (2, None) => format!("p{}-{}", number, number + 1),
+        _ => format!("p{number}"),
     }
 }
 
 /// 行の表示名。イラストのファイルとファイルを持たない作品の行は名前（title）、漫画のページは p 番号
-pub fn row_label(title: Option<String>, number: i64, span: i64) -> String {
-    title.unwrap_or_else(|| page_label(number, span))
+pub fn row_label(title: Option<String>, number: i64, span: i64, pair: Option<i64>) -> String {
+    title.unwrap_or_else(|| page_label(number, span, pair))
 }
 
 /// ページのファイルの場所。漫画は cmc と同じフォルダ、イラストは file_name に場所そのものが入っている
@@ -312,7 +313,7 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 13;
+const LATEST: i64 = 14;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -617,6 +618,17 @@ impl Store {
                         PRIMARY KEY (work_id, tag_id)
                     );
                     PRAGMA user_version = 13;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+        }
+        if version < 14 && target >= 14 {
+            // 版 14：見開きのもう片方のページ番号（表紙と裏表紙の見開きだけ。number + 1 でないとき）
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    ALTER TABLE page ADD COLUMN pair_number INTEGER;
+                    PRAGMA user_version = 14;
                     COMMIT;",
                 )
                 .map_err(db_err)?;
@@ -1337,16 +1349,16 @@ impl Store {
                 used.insert(row.id);
                 tx.execute(
                     "UPDATE page SET node_id = ?2, file_name = ?3, order_index = ?4, number = ?5, span = ?6,
-                        memo = ?7, missing = 0
+                        memo = ?7, missing = 0, pair_number = ?8
                      WHERE id = ?1",
-                    params![row.id, p.node_id, p.file_name, p.order_index, p.number, p.span, p.memo],
+                    params![row.id, p.node_id, p.file_name, p.order_index, p.number, p.span, p.memo, p.pair],
                 )
                 .map_err(db_err)?;
             } else {
                 tx.execute(
-                    "INSERT INTO page (work_id, node_id, file_name, order_index, number, span, memo, missing, half)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8)",
-                    params![work_id, p.node_id, p.file_name, p.order_index, p.number, p.span, p.memo, p.half],
+                    "INSERT INTO page (work_id, node_id, file_name, order_index, number, span, memo, missing, half, pair_number)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)",
+                    params![work_id, p.node_id, p.file_name, p.order_index, p.number, p.span, p.memo, p.half, p.pair],
                 )
                 .map_err(db_err)?;
             }
@@ -1393,7 +1405,7 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, file_name, number, span, missing, title, half FROM page
+                "SELECT id, file_name, number, span, missing, title, half, pair_number FROM page
                  WHERE work_id = ?1 ORDER BY missing, order_index, half, id",
             )
             .map_err(db_err)?;
@@ -1407,7 +1419,7 @@ impl Store {
                     id: r.get(0)?,
                     path: page_path(cmc.as_deref(), &file_name).display().to_string(),
                     file_name,
-                    label: row_label(r.get(5)?, number, span),
+                    label: row_label(r.get(5)?, number, span, r.get(7)?),
                     number,
                     span,
                     half: r.get(6)?,
@@ -1596,7 +1608,7 @@ impl Store {
     pub fn active_session(&self) -> Result<Option<ActiveSession>> {
         self.conn
             .query_row(
-                "SELECT ss.id, w.id, w.title, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, p.title
+                "SELECT ss.id, w.id, w.title, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, p.title, p.pair_number
                  FROM work_session ss
                  JOIN page p ON p.id = ss.page_id
                  JOIN work w ON w.id = p.work_id
@@ -1609,7 +1621,7 @@ impl Store {
                         work_id: r.get(1)?,
                         work_title: r.get(2)?,
                         page_id: r.get(3)?,
-                        page_label: row_label(r.get(10)?, r.get(4)?, r.get(5)?),
+                        page_label: row_label(r.get(10)?, r.get(4)?, r.get(5)?, r.get(11)?),
                         stage_id: r.get(6)?,
                         stage_name: r.get(7)?,
                         stage_color: r.get(8)?,
@@ -1653,7 +1665,7 @@ impl Store {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT ss.id, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, ss.ended_at, ss.edited, p.title
+                "SELECT ss.id, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, ss.ended_at, ss.edited, p.title, p.pair_number
                  FROM work_session ss
                  JOIN page p ON p.id = ss.page_id
                  JOIN stage_def s ON s.id = ss.stage_id
@@ -1665,7 +1677,7 @@ impl Store {
             Ok(SessionRow {
                 id: r.get(0)?,
                 page_id: r.get(1)?,
-                page_label: row_label(r.get(10)?, r.get(2)?, r.get(3)?),
+                page_label: row_label(r.get(10)?, r.get(2)?, r.get(3)?, r.get(11)?),
                 stage_id: r.get(4)?,
                 stage_name: r.get(5)?,
                 stage_color: r.get(6)?,
@@ -1832,7 +1844,7 @@ mod tests {
             pages: pages
                 .iter()
                 .map(|(f, node_id, span)| {
-                    let p = Page { node_id: *node_id, file_name: f.to_string(), number, span: *span, memo: String::new() };
+                    let p = Page { node_id: *node_id, file_name: f.to_string(), number, span: *span, pair: None, memo: String::new() };
                     number += span;
                     p
                 })

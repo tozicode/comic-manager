@@ -29,6 +29,7 @@ pub(super) struct PageState {
     order_index: i64,
     number: i64,
     span: i64,
+    pair: Option<i64>,
     pub(super) half: i64,
     pub(super) missing: bool,
 }
@@ -41,6 +42,8 @@ pub(super) struct PageRow<'a> {
     pub(super) order_index: i64,
     pub(super) number: i64,
     pub(super) span: i64,
+    /// 見開きのもう片方の番号が number + 1 でないとき（表紙と裏表紙の見開き）だけ入る
+    pub(super) pair: Option<i64>,
     pub(super) half: i64,
     pub(super) memo: &'a str,
 }
@@ -50,11 +53,14 @@ pub(super) fn page_rows(comic: &Comic, split: bool) -> Vec<PageRow<'_>> {
     let mut rows = Vec::with_capacity(comic.pages.len());
     for (i, p) in comic.pages.iter().enumerate() {
         let (node_id, file_name, order_index, memo) = (p.node_id, p.file_name.as_str(), i as i64, p.memo.as_str());
+        let pair = p.pair.map(i64::from);
         if split && p.span == 2 {
-            rows.push(PageRow { node_id, file_name, order_index, number: p.number as i64, span: 1, half: 1, memo });
-            rows.push(PageRow { node_id, file_name, order_index, number: p.number as i64 + 1, span: 1, half: 2, memo });
+            // 若い番号の側にも pair を残す（分けるのをやめて見開きに戻したとき、名前を「p1・8」に戻せるように）
+            rows.push(PageRow { node_id, file_name, order_index, number: p.number as i64, span: 1, pair, half: 1, memo });
+            let second = pair.unwrap_or(p.number as i64 + 1);
+            rows.push(PageRow { node_id, file_name, order_index, number: second, span: 1, pair: None, half: 2, memo });
         } else {
-            rows.push(PageRow { node_id, file_name, order_index, number: p.number as i64, span: p.span as i64, half: 0, memo });
+            rows.push(PageRow { node_id, file_name, order_index, number: p.number as i64, span: p.span as i64, pair, half: 0, memo });
         }
     }
     rows
@@ -100,7 +106,7 @@ impl Store {
     pub(super) fn page_states(&self, work_id: i64) -> Result<Vec<PageState>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, file_name, order_index, number, span, missing, half, node_id FROM page WHERE work_id = ?1")
+            .prepare("SELECT id, file_name, order_index, number, span, missing, half, node_id, pair_number FROM page WHERE work_id = ?1")
             .map_err(db_err)?;
         stmt.query_map([work_id], |r| {
             Ok(PageState {
@@ -110,6 +116,7 @@ impl Store {
                 order_index: r.get(2)?,
                 number: r.get(3)?,
                 span: r.get(4)?,
+                pair: r.get(8)?,
                 missing: r.get(5)?,
                 half: r.get(6)?,
             })
@@ -197,7 +204,7 @@ impl Store {
                 // 次のページの側は、若い番号の側の行を写して作る
                 tx.execute(
                     "INSERT INTO page (work_id, node_id, file_name, order_index, number, span, memo, missing, half)
-                     SELECT work_id, node_id, file_name, order_index, number + 1, 1, memo, missing, 2 FROM page WHERE id = ?1",
+                     SELECT work_id, node_id, file_name, order_index, COALESCE(pair_number, number + 1), 1, memo, missing, 2 FROM page WHERE id = ?1",
                     [id],
                 )
                 .map_err(db_err)?;
@@ -280,7 +287,7 @@ impl Store {
                     from_page_id: gone.id,
                     from_file_name: gone.file_name.clone(),
                     to_page_id: spread.id,
-                    to_label: page_label(spread.number, spread.span),
+                    to_label: page_label(spread.number, spread.span, spread.pair),
                     ms: self.page_total(gone.id, now)?,
                 });
             }
@@ -296,9 +303,9 @@ impl Store {
             {
                 splits.push(PageSplit {
                     page_id: page.id,
-                    label: page_label(page.number, page.span),
+                    label: page_label(page.number, page.span, page.pair),
                     new_page_id: added.id,
-                    new_label: page_label(added.number, added.span),
+                    new_label: page_label(added.number, added.span, added.pair),
                     ms: self.page_total(page.id, now)?,
                 });
             }
@@ -685,6 +692,45 @@ mod tests {
         let board = store.board(id, 0).unwrap();
         assert_eq!(board.pages.iter().map(|p| p.id).collect::<Vec<_>>(), ids);
         assert_eq!(board.pages[2].cells[0].total_ms, 60 * MIN);
+    }
+
+    /// 表紙と裏表紙の見開き（表1・表4）、表2、本文 1 ページ、表3 の 5 ページの本（cmc の読み方は cmc.rs のテスト）
+    fn cover_comic() -> Comic {
+        let page = |node_id: i64, f: &str, number: u32, span: u32, pair: Option<u32>| crate::cmc::Page {
+            node_id,
+            file_name: f.into(),
+            number,
+            span,
+            pair,
+            memo: String::new(),
+        };
+        Comic {
+            title: "表紙あり".into(),
+            right_bound: true,
+            pages: vec![
+                page(2, "page0001.clip", 1, 2, Some(5)),
+                page(3, "page0002.clip", 2, 1, None),
+                page(5, "page0004.clip", 3, 1, None),
+                page(4, "page0003.clip", 4, 1, None),
+            ],
+        }
+    }
+
+    #[test]
+    fn 表紙と裏表紙の見開きは1ページ目と最終ページの名前になる() {
+        let store = Store::open_in_memory().unwrap();
+        let id = store.add_work("C:/a.cmc", &cover_comic(), 0).unwrap();
+        let labels = |s: &Store| s.board(id, 0).unwrap().pages.into_iter().map(|p| p.label).collect::<Vec<_>>();
+        assert_eq!(labels(&store), ["p1・5", "p2", "p3", "p4"]);
+        assert_eq!(store.list_works().unwrap()[0].page_count, 5);
+
+        // 見開きを分けると表1 と表4 の 2 行（p1 と p5）になり、やめると「p1・5」に戻る
+        store.set_split_spreads(id, true).unwrap();
+        assert_eq!(labels(&store), ["p1", "p5", "p2", "p3", "p4"]);
+        store.sync_pages(id, &cover_comic(), 0).unwrap();
+        assert_eq!(labels(&store), ["p1", "p5", "p2", "p3", "p4"]);
+        store.set_split_spreads(id, false).unwrap();
+        assert_eq!(labels(&store), ["p1・5", "p2", "p3", "p4"]);
     }
 
     #[test]

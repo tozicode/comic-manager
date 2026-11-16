@@ -35,6 +35,9 @@ pub struct Page {
     pub number: u32,
     /// 1 = 単ページ、2 = 見開き
     pub span: u32,
+    /// 見開きのもう片方のページ番号が number + 1 でないときだけ入る。
+    /// 表紙（表1）と裏表紙（表4）の見開きでは、裏表紙が本の最終ページになる
+    pub pair: Option<u32>,
     pub memo: String,
 }
 
@@ -60,21 +63,34 @@ pub fn read_comic(cmc_path: &Path) -> Result<Comic, String> {
         .flatten()
         .is_none_or(|v| v == 1);
 
+    // 表紙があるか。表紙があると、先頭のページが表紙（表1）、次が表2、末尾が表3（と表4）になる
+    let cover = conn
+        .query_row("SELECT ComicCoverExist FROM Project LIMIT 1", [], |r| r.get::<_, Option<i64>>(0))
+        .ok()
+        .flatten()
+        == Some(1);
+
     let nodes = read_nodes(&conn)?;
     let ordered = order_pages(&nodes);
+    let spans: Vec<u32> = ordered.iter().map(|n| if n.page_flag == 1 { 2 } else { 1 }).collect();
+    // 表紙と裏表紙が見開き（表1・表4）なら、表1 を 1 ページ目、表4 を最終ページとして数える。
+    // 並び順のまま数えると表4 が 2 ページ目になり、本文の番号が 1 つずつずれる（利用者の報告）
+    let cover_spread = cover && spans.first() == Some(&2);
+    let total: u32 = spans.iter().sum();
 
     let mut pages = Vec::with_capacity(ordered.len());
     let mut number = 1;
-    for node in ordered {
-        let span = if node.page_flag == 1 { 2 } else { 1 };
+    for (i, (node, span)) in ordered.into_iter().zip(spans).enumerate() {
+        let pair = (cover_spread && i == 0).then_some(total);
         pages.push(Page {
             node_id: node.main_id,
             file_name: link_file_name(&node.link_path),
             number,
             span,
+            pair,
             memo: node.memo.clone(),
         });
-        number += span;
+        number += if pair.is_some() { 1 } else { span };
     }
     Ok(Comic { title, right_bound, pages })
 }
@@ -330,6 +346,26 @@ mod tests {
                 ("page0008.clip", 6, 1),
                 ("page0004.clip", 7, 1),
                 ("page0002.clip", 8, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn 表紙と裏表紙の見開きは1ページ目と最終ページとして数える() {
+        // CLIP STUDIO で表紙ありの同人誌を作り、表紙を見開きにしたもの。並びは 表1・表4 / 表2 / 本文 4 ページ / 表3
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/cover-spread.cmc");
+        let comic = read_comic(&path).unwrap();
+        let pages: Vec<_> = comic.pages.iter().map(|p| (p.file_name.as_str(), p.number, p.span, p.pair)).collect();
+        assert_eq!(
+            pages,
+            vec![
+                ("page0001.clip", 1, 2, Some(8)),
+                ("page0002.clip", 2, 1, None),
+                ("page0004.clip", 3, 1, None),
+                ("page0005.clip", 4, 1, None),
+                ("page0006.clip", 5, 1, None),
+                ("page0007.clip", 6, 1, None),
+                ("page0003.clip", 7, 1, None),
             ]
         );
     }
