@@ -203,6 +203,8 @@ export type ActiveSession = {
   stageName: string;
   stageColor: string;
   startedAt: number;
+  /** 同じタスクの、止めてある記録の合計。累計は これ ＋ 今回の経過時間 */
+  priorMs: number;
 };
 
 export type StopResult = {

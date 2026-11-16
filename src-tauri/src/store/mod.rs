@@ -212,6 +212,8 @@ pub struct ActiveSession {
     pub stage_name: String,
     pub stage_color: String,
     pub started_at: i64,
+    /// 同じタスク（ページ×工程）の、止めてある記録の合計。累計は これ ＋ 今回の経過時間
+    pub prior_ms: i64,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -1608,7 +1610,9 @@ impl Store {
     pub fn active_session(&self) -> Result<Option<ActiveSession>> {
         self.conn
             .query_row(
-                "SELECT ss.id, w.id, w.title, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, p.title, p.pair_number
+                "SELECT ss.id, w.id, w.title, p.id, p.number, p.span, s.id, s.name, s.color, ss.started_at, p.title, p.pair_number,
+                    (SELECT COALESCE(SUM(x.ended_at - x.started_at), 0) FROM work_session x
+                      WHERE x.page_id = ss.page_id AND x.stage_id = ss.stage_id AND x.ended_at IS NOT NULL)
                  FROM work_session ss
                  JOIN page p ON p.id = ss.page_id
                  JOIN work w ON w.id = p.work_id
@@ -1626,6 +1630,7 @@ impl Store {
                         stage_name: r.get(7)?,
                         stage_color: r.get(8)?,
                         started_at: r.get(9)?,
+                        prior_ms: r.get(12)?,
                     })
                 },
             )
@@ -2006,8 +2011,11 @@ mod tests {
         assert!(store.active_session().unwrap().is_none());
         assert!(store.stop_timer(50 * MIN).unwrap().is_none());
 
-        // 2 回目の計測は合計に足される
-        store.start_timer(pages[1].id, st[0], 60 * MIN).unwrap();
+        assert_eq!(active.prior_ms, 0);
+
+        // 2 回目の計測は合計に足される。計測中は止めてある分（1 回目の 30 分）を持つ（ミニタイマーの累計）
+        let active = store.start_timer(pages[1].id, st[0], 60 * MIN).unwrap();
+        assert_eq!(active.prior_ms, 30 * MIN);
         let stopped = store.stop_timer(70 * MIN).unwrap().unwrap();
         assert_eq!(stopped.total_ms, 40 * MIN);
 

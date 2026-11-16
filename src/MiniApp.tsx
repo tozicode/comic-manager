@@ -158,6 +158,15 @@ export function MiniApp() {
   const breakLabel = p && onBreak ? t(p.long ? "pomoLongBreak" : "pomoBreak", { time: pomoClock(remainingMs(p, pomo.now)) }) : "";
   const task = active && f ? f.task(active.pageId, active.stageId) : undefined;
   const pausedColor = paused && f ? (f.board.stages.find((x) => x.id === paused.stageId)?.color ?? "") : "";
+  // そのタスク（ページ×工程）にかけた時間の合計。大きな数字は今回の経過時間なので、一時停止して再開すると 0 から数え直す。
+  // 「累計されない」と見えないよう、合計も並べて出す（利用者の報告）
+  const activeTotal = active ? active.priorMs + (now - active.startedAt) : 0;
+  const pausedTotal = (() => {
+    if (!paused || !f) return null;
+    const page = f.board.pages.find((x) => x.id === paused.pageId);
+    const i = f.board.stages.findIndex((x) => x.id === paused.stageId);
+    return page && i >= 0 ? (page.cells[i]?.totalMs ?? null) : null;
+  })();
 
   // 次にやること：今日選んだ案の、まだ終わっていない最初のタスク。案が無ければ着手できる最初のタスク
   const plan = workId ? loadChosenPlan(workId) : null;
@@ -217,8 +226,9 @@ export function MiniApp() {
                             : t("notTracking")}
                 {f && <span className="caret">▾</span>}
               </button>
-              <div className="num mtime-s" data-tauri-drag-region>
+              <div className="num mtime-s" data-tauri-drag-region title={active ? t("taskTotal", { time: hours(activeTotal) }) : undefined}>
                 {active ? clock(now - active.startedAt) : "--:--:--"}
+                {active && active.priorMs > 0 && <span className="muted"> ({clock(activeTotal)})</span>}
               </div>
             </>
           )}
@@ -300,13 +310,15 @@ export function MiniApp() {
               <b>{active.pageLabel}</b> · <StageDot color={active.stageColor} /> {active.stageName} <span className="caret">▾</span>
             </button>
             <div className="mtime num">{clock(now - active.startedAt)}</div>
-            {task && (
-              <div className="muted tiny">
-                {task.predictedMs - task.spentMs > 0
-                  ? t("predictedLeft", { time: estimate(task.predictedMs), left: estimate(task.predictedMs - task.spentMs) })
-                  : t("predictedOver", { time: estimate(task.predictedMs) })}
-              </div>
-            )}
+            <div className="muted tiny">
+              {t("taskTotal", { time: hours(activeTotal) })}
+              {task &&
+                ` ・ ${
+                  task.predictedMs - task.spentMs > 0
+                    ? t("predictedLeft", { time: estimate(task.predictedMs), left: estimate(task.predictedMs - task.spentMs) })
+                    : t("predictedOver", { time: estimate(task.predictedMs) })
+                }`}
+            </div>
           </div>
           <div className="mctrl">
             <button className="icon-btn accent" title={t("pause")} onClick={app.pause}>
@@ -329,6 +341,7 @@ export function MiniApp() {
                 <div className="mnext">
                   {paused.pageLabel} {pausedColor && <StageDot color={pausedColor} />} {paused.stageName}
                 </div>
+                {pausedTotal !== null && <div className="muted tiny">{t("taskTotal", { time: hours(pausedTotal) })}</div>}
               </div>
               <div className="mctrl">
                 <button className="icon-btn accent big" title={t("resume")} onClick={app.resume}>
