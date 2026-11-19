@@ -695,6 +695,34 @@ fn print_page(webview: tauri::Webview) -> Cmd<()> {
     r.map_err(|e| trf(M::PrintFailed, &[("e", &e)]))
 }
 
+/// 行の制作ファイルを、そのファイルに結び付いたアプリ（CLIP STUDIO PAINT など）で開く。
+/// `reveal` ならファイルのあるフォルダを開いて、そのファイルを選んだ状態にする
+#[tauri::command]
+fn open_page_file(app: AppHandle, state: State<AppState>, page_id: i64, reveal: bool) -> Cmd<()> {
+    let path = with_store(&state, |s| s.page_file_path(page_id))?;
+    open_file(&app, &path, reveal)
+}
+
+/// 漫画の作品の cmc を CLIP STUDIO PAINT で開く。
+/// 漫画のページの .clip は単独では開けない（CLIP STUDIO の仕様）ので、ページではなく作品ごとに開く
+#[tauri::command]
+fn open_cmc(app: AppHandle, state: State<AppState>, work_id: i64) -> Cmd<()> {
+    let path = with_store(&state, |s| s.work_cmc_path(work_id))?;
+    open_file(&app, &path, false)
+}
+
+fn open_file(app: &AppHandle, path: &std::path::Path, reveal: bool) -> Cmd<()> {
+    if !path.exists() {
+        return Err(trf(M::PageFileNotFound, &[("e", &path.display())]));
+    }
+    let r = if reveal {
+        app.opener().reveal_item_in_dir(path)
+    } else {
+        app.opener().open_path(path.to_string_lossy(), None::<&str>)
+    };
+    r.map_err(|e| trf(M::OpenFileFailed, &[("e", &e)]))
+}
+
 /// データの保存場所をエクスプローラーで開く
 #[tauri::command]
 fn reveal_data(app: AppHandle, state: State<AppState>) -> Cmd<()> {
@@ -961,6 +989,8 @@ pub fn run() {
             save_image,
             print_page,
             reveal_data,
+            open_page_file,
+            open_cmc,
             check_relink,
             relink_work,
             get_display_prefs,

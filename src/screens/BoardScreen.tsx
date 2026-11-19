@@ -248,6 +248,11 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
     }
   };
 
+  const openFile = (page: BoardPage, reveal: boolean) => api.openPageFile(page.id, reveal).catch(app.showError);
+  // 行から開けるのはイラストのファイルだけ。漫画のページの .clip は単独では開けないので、上の「CLIP STUDIO で開く」で cmc を開く。
+  // 遠隔の画面からは PC のファイルを開かせない
+  const canOpenRow = (page: BoardPage) => isFiles && !isRemote && page.found;
+
   const relinkFile = async (page: BoardPage) => {
     const picked = await openDialog({ title: t("chooseFileFor", { label: page.label }), multiple: false, directory: false, filters: illustFilter() });
     if (typeof picked !== "string") return;
@@ -334,6 +339,11 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           )}
         </div>
         <div className="row tight">
+          {kind === "comic" && !isRemote && (
+            <button className="btn small ghost" title={t("openCmcTip")} onClick={() => api.openCmc(workId).catch(app.showError)}>
+              {t("openCmc")}
+            </button>
+          )}
           {isFiles && (
             <button className="btn small ghost" onClick={addFiles}>
               {t("addFiles")}
@@ -538,7 +548,17 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                       ⋮⋮
                     </span>
                   )}
-                  {!isManual && <Thumb path={page.path} spread={page.span === 2} half={spreadSide(page, board.work)} free={isFiles} />}
+                  {!isManual && (
+                    <Thumb
+                      path={page.path}
+                      spread={page.span === 2}
+                      half={spreadSide(page, board.work)}
+                      free={isFiles}
+                      // 制作ファイルを直接開く（遠隔の画面からは開けない）
+                      title={canOpenRow(page) ? t("openFileTip") : undefined}
+                      onClick={canOpenRow(page) ? () => openFile(page, false) : undefined}
+                    />
+                  )}
                   <div className={hasRows ? "pinfo" : "pinfo inline"}>
                     {isManual ? (
                       <button
@@ -595,6 +615,15 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                   >
                     {allExcluded(page) ? "↶" : "⊘"}
                   </button>
+                  {canOpenRow(page) && (
+                    <button
+                      className={`mini folder${hasRows ? " beside" : ""}`}
+                      title={t("revealFileTip")}
+                      onClick={() => openFile(page, true)}
+                    >
+                      📂
+                    </button>
+                  )}
                   {hasRows && (
                     <button
                       className="mini remove"

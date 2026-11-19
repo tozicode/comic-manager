@@ -157,6 +157,27 @@ impl Store {
         Ok(SyncResult { added: 0, missing, merges: Vec::new(), splits: Vec::new() })
     }
 
+    /// 1 つの行のファイルの場所（ボードやミニ窓から制作ファイルを開くため）。ファイルを持たない作品の行は断る
+    pub fn page_file_path(&self, page_id: i64) -> Result<std::path::PathBuf> {
+        let (work_id, file): (i64, String) = self
+            .conn
+            .query_row("SELECT work_id, file_name FROM page WHERE id = ?1", [page_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(db_err)?;
+        let work = self.work_info(work_id)?;
+        if work.kind == KIND_MANUAL {
+            return Err(tr(M::NoPageFile).into());
+        }
+        Ok(super::page_path(work.cmc_path.as_deref(), &file))
+    }
+
+    /// 漫画の作品の cmc の場所。漫画でなければ断る
+    pub fn work_cmc_path(&self, work_id: i64) -> Result<std::path::PathBuf> {
+        self.work_info(work_id)?
+            .cmc_path
+            .map(std::path::PathBuf::from)
+            .ok_or_else(|| tr(M::NoPageFile).into())
+    }
+
     /// 作品の（消えていない）ページのファイルの場所。保存の検知に使う
     pub fn page_paths(&self, work_id: i64) -> Result<Vec<(i64, std::path::PathBuf)>> {
         let cmc = self.work_info(work_id)?.cmc_path;
@@ -237,6 +258,21 @@ mod tests {
         let stages: Vec<String> = board.stages.into_iter().map(|s| s.name).collect();
         assert_eq!(stages, ["ラフ", "線画", "塗り", "仕上げ"]);
         assert_eq!(store.list_works().unwrap()[0].page_count, 2);
+    }
+
+    #[test]
+    fn 行のファイルの場所() {
+        let (store, id) = illust();
+        let page = store.board(id, 0).unwrap().pages[1].id;
+        assert_eq!(store.page_file_path(page).unwrap(), std::path::PathBuf::from("D:/絵/キャラA.psd"));
+        // ファイルを持たない作品の行には場所が無い
+        let set = store.add_stage_set("小説", "章").unwrap();
+        store.add_stage_in_set(set.id, "初稿", "#111111").unwrap();
+        let manual = store.add_manual_work("小説", &["第1章".into()], set.id, 0).unwrap();
+        let row = store.board(manual, 0).unwrap().pages[0].id;
+        assert!(store.page_file_path(row).is_err());
+        // cmc はイラストの作品には無い
+        assert!(store.work_cmc_path(id).is_err());
     }
 
     #[test]

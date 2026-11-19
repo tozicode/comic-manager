@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn 受け付けるコマンドは記録を見るか計測するものだけ() {
         // ファイルを選ぶ・窓を動かす・データを書き出すコマンドは入れない（5.17）
-        for name in ["add_work", "open_mini", "backup_data", "set_timer_prefs", "reveal_data", "print_page"] {
+        for name in ["add_work", "open_mini", "backup_data", "set_timer_prefs", "reveal_data", "print_page", "open_page_file", "open_cmc"] {
             assert!(!ALLOWED.contains(&name), "{name} は受け付けてはいけない");
         }
         // 記録が変わるものは、アプリの窓に知らせる一覧にも入っている

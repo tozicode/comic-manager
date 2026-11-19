@@ -487,6 +487,10 @@ export const api = {
   saveCalendar: (dest: string, text: string) => call<void>("save_calendar", { dest, text }),
   printPage: () => call<void>("print_page"),
   revealData: () => call<void>("reveal_data"),
+  /** 行の制作ファイルを開く。reveal ならファイルのあるフォルダを開く（アプリの窓からだけ） */
+  openPageFile: (pageId: number, reveal: boolean) => call<void>("open_page_file", { pageId, reveal }),
+  /** 漫画の作品の cmc を開く（ページの .clip は単独では開けないため） */
+  openCmc: (workId: number) => call<void>("open_cmc", { workId }),
   checkRelink: (workId: number, cmcPath: string) => call<RelinkCheck>("check_relink", { workId, cmcPath }),
   relinkWork: (workId: number, cmcPath: string) => call<SyncResult>("relink_work", { workId, cmcPath }),
   getDisplayPrefs: () => call<DisplayPrefs>("get_display_prefs"),

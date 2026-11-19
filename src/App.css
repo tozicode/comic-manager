@@ -2286,6 +2286,27 @@ button.lost:hover {
 .board tr:hover .mini.exclude {
   visibility: visible;
 }
+/* ファイルのあるフォルダを開く。対象外の ⊘ の左 */
+.pcell .mini.folder {
+  position: absolute;
+  top: 6px;
+  right: 30px;
+  visibility: hidden;
+}
+.pcell .mini.folder.beside {
+  right: 54px;
+}
+.board tr:hover .mini.folder {
+  visibility: visible;
+}
+/* 押すと制作ファイルを開くサムネ */
+.thumb.clickable {
+  cursor: pointer;
+}
+.thumb.clickable:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 
 /* 工程が多くても、マスが潰れて文字が縦に並ばないように */
 .board .cell {

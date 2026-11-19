@@ -298,6 +298,20 @@ messages! {
         "无法打印：{e}",
         "無法列印：{e}",
     ],
+    NoPageFile => [
+        "この行にはファイルがありません",
+        "This row has no file",
+        "이 행에는 파일이 없습니다",
+        "这一行没有文件",
+        "這一列沒有檔案",
+    ],
+    OpenFileFailed => [
+        "ファイルを開けませんでした: {e}",
+        "Couldn't open the file: {e}",
+        "파일을 열 수 없습니다: {e}",
+        "无法打开文件：{e}",
+        "無法開啟檔案：{e}",
+    ],
     OpenDataDirFailed => [
         "保存場所を開けませんでした: {e}",
         "Couldn't open the save location: {e}",

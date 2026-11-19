@@ -106,11 +106,22 @@ function StageDot({ color }: { color: string }) {
   return <span style={{ color }}>●</span>;
 }
 
-/** ミニ窓用のページのサムネ。ファイルを持たない作品やページが見つからないときは出さない */
-function PageThumb({ f, pageId }: { f: Forecast; pageId: number }) {
+/** ミニ窓用のページのサムネ。押すと制作ファイルを開く。ファイルを持たない作品やページが見つからないときは出さない */
+function PageThumb({ f, pageId, onError }: { f: Forecast; pageId: number; onError: (e: unknown) => void }) {
   const page = f.board.pages.find((x) => x.id === pageId);
   if (!page || f.board.work.kind === "manual") return null;
-  return <Thumb path={page.path} spread={page.span === 2} half={spreadSide(page, f.board.work)} free={f.board.work.kind === "files"} width={40} />;
+  return (
+    <Thumb
+      path={page.path}
+      spread={page.span === 2}
+      half={spreadSide(page, f.board.work)}
+      free={f.board.work.kind === "files"}
+      width={40}
+      title={t("openFileTip")}
+      // 漫画のページの .clip は単独では開けないので、作品の cmc を開く
+      onClick={() => (f.board.work.kind === "comic" ? api.openCmc(f.board.work.id) : api.openPageFile(page.id, false)).catch(onError)}
+    />
+  );
 }
 
 export function MiniApp() {
@@ -304,7 +315,7 @@ export function MiniApp() {
         </div>
       ) : active ? (
         <div className="mbody">
-          {f && <PageThumb f={f} pageId={active.pageId} />}
+          {f && <PageThumb f={f} pageId={active.pageId} onError={app.showError} />}
           <div className="grow">
             <button className="mpick small-text" title={t("pickOther")} onClick={() => setPicking(true)}>
               <b>{active.pageLabel}</b> · <StageDot color={active.stageColor} /> {active.stageName} <span className="caret">▾</span>
@@ -333,7 +344,7 @@ export function MiniApp() {
         <div className="mbody">
           {paused ? (
             <>
-              {f && <PageThumb f={f} pageId={paused.pageId} />}
+              {f && <PageThumb f={f} pageId={paused.pageId} onError={app.showError} />}
               <div className="grow">
                 <div className={`small-text${onBreak || breakOver ? " mbreak" : " muted"}`}>
                   {onBreak ? breakLabel : breakOver ? t("pomoBreakOver") : t("paused")}
@@ -354,7 +365,7 @@ export function MiniApp() {
             </>
           ) : next ? (
             <>
-              {f && <PageThumb f={f} pageId={next.page.id} />}
+              {f && <PageThumb f={f} pageId={next.page.id} onError={app.showError} />}
               <div className="grow">
                 <div className="small-text muted">{t(next.picked ? "pickedTask" : "next")}</div>
                 <button className="mpick mnext" title={t("pickOther")} onClick={() => setPicking(true)}>

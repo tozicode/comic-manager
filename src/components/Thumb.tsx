@@ -11,6 +11,9 @@ type Props = {
   /** イラストのように縦横の比率が決まっていない絵（正方形の枠に収める） */
   free?: boolean;
   width?: number;
+  /** 押したときの動き（制作ファイルを開くなど）。あれば押せる見た目にする */
+  onClick?: () => void;
+  title?: string;
 };
 
 export type Side = "left" | "right";
@@ -25,7 +28,7 @@ export function spreadSide(page: { half: number }, work: { rightBound: boolean }
 }
 
 /** ページのサムネイル。画面に入ってから読み込む */
-export function Thumb({ path, spread = false, half = null, free = false, width = 36 }: Props) {
+export function Thumb({ path, spread = false, half = null, free = false, width = 36, onClick, title }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
@@ -53,9 +56,16 @@ export function Thumb({ path, spread = false, half = null, free = false, width =
     };
   }, [visible, path]);
 
-  const cls = `thumb${spread ? " spread" : ""}${free ? " free" : ""}${half ? ` half ${half}` : ""}`;
+  const cls = `thumb${spread ? " spread" : ""}${free ? " free" : ""}${half ? ` half ${half}` : ""}${onClick ? " clickable" : ""}`;
   return (
-    <div ref={ref} className={cls} style={{ width: spread ? width * 2 : free ? width * 1.4 : width }}>
+    <div
+      ref={ref}
+      className={cls}
+      style={{ width: spread ? width * 2 : free ? width * 1.4 : width }}
+      onClick={onClick}
+      title={title}
+      role={onClick ? "button" : undefined}
+    >
       {url && <img src={url} alt="" />}
     </div>
   );
