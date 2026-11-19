@@ -368,7 +368,14 @@ export type TimerPrefs = {
   pomoLongMin: number;
   pomoLongEvery: number;
   pomoSound: boolean;
+  pomoSoundKind: SoundKind;
+  /** 0〜100 */
+  pomoVolume: number;
+  /** 1〜5 */
+  pomoRepeat: number;
 };
+
+export type SoundKind = "chime" | "bell" | "marimba" | "alarm";
 
 export const api = {
   listWorks: () => call<WorkSummary[]>("list_works"),

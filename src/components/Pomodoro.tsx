@@ -7,6 +7,7 @@ import { api, TimerPrefs } from "../api";
 import { useApp } from "../app-context";
 import { dayKey, startOfDay } from "../format";
 import { t } from "../i18n/timer";
+import { playSound } from "../sound";
 import {
   haltPomo,
   initialPomo,
@@ -52,33 +53,11 @@ function update(f: (p: Pomo, s: PomoSettings) => Pomo) {
 
 /** 時間になったことを知らせる（音と OS の通知） */
 function announce(event: "workDone" | "breakDone", prefs: TimerPrefs) {
-  if (prefs.pomoSound) chime(event === "workDone" ? [880, 660] : [660, 880]);
+  if (prefs.pomoSound) playSound(prefs.pomoSoundKind, event, prefs.pomoVolume, prefs.pomoRepeat);
   const body = event === "workDone" ? t("pomoWorkDoneBody", { min: prefs.pomoWorkMin }) : t("pomoBreakDoneBody");
   isPermissionGranted()
     .then((ok) => ok && sendNotification({ title: "Otosazu", body }))
     .catch(() => {});
-}
-
-/** 短い 2 音のチャイム。音のファイルを持たないよう、その場で鳴らす */
-function chime(freqs: number[]) {
-  try {
-    const ctx = new AudioContext();
-    freqs.forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const at = ctx.currentTime + i * 0.28;
-      osc.frequency.value = f;
-      gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(0.25, at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(at);
-      osc.stop(at + 0.55);
-    });
-    setTimeout(() => ctx.close().catch(() => {}), 1500);
-  } catch {
-    // 音が出せなくても通知と画面の表示で分かる
-  }
 }
 
 /** 通知の許可を求める（設定でポモドーロをオンにしたとき）。
