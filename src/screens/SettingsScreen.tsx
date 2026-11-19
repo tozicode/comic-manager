@@ -806,10 +806,10 @@ function TimerSection() {
               <>
                 {(
                   [
-                    ["workDone", "pomoSoundWork", "pomo.soundWork"],
-                    ["breakDone", "pomoSoundBreak", "pomo.soundBreak"],
+                    ["workDone", "pomoSoundWork", "pomoRepeatWork", "pomo.soundWork"],
+                    ["breakDone", "pomoSoundBreak", "pomoRepeatBreak", "pomo.soundBreak"],
                   ] as const
-                ).map(([event, key, label]) => (
+                ).map(([event, key, repeatKey, label]) => (
                   <div className="row" key={key}>
                     <span className="grow">{t(label)}</span>
                     <select
@@ -823,7 +823,19 @@ function TimerSection() {
                         </option>
                       ))}
                     </select>
-                    <button className="btn small" onClick={() => playSound(prefs[key], event, prefs.pomoVolume, prefs.pomoRepeat)}>
+                    <select
+                      className="field"
+                      title={t("pomo.repeat")}
+                      value={prefs[repeatKey]}
+                      onChange={(e) => save({ ...prefs, [repeatKey]: Number(e.target.value) })}
+                    >
+                      {[1, 2, 3, 5].map((n) => (
+                        <option key={n} value={n}>
+                          {t("pomo.repeatTimes", { n })}
+                        </option>
+                      ))}
+                    </select>
+                    <button className="btn small" onClick={() => playSound(prefs[key], event, prefs.pomoVolume, prefs[repeatKey])}>
                       {t("pomo.soundTest")}
                     </button>
                   </div>
@@ -845,16 +857,6 @@ function TimerSection() {
                   <span className="num" style={{ width: 28, textAlign: "right" }}>
                     {prefs.pomoVolume}
                   </span>
-                </label>
-                <label className="row">
-                  <span className="grow">{t("pomo.repeat")}</span>
-                  <select className="field" value={prefs.pomoRepeat} onChange={(e) => save({ ...prefs, pomoRepeat: Number(e.target.value) })}>
-                    {[1, 2, 3, 5].map((n) => (
-                      <option key={n} value={n}>
-                        {t("pomo.repeatTimes", { n })}
-                      </option>
-                    ))}
-                  </select>
                 </label>
               </>
             )}

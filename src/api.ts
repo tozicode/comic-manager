@@ -373,8 +373,9 @@ export type TimerPrefs = {
   pomoSoundBreak: string;
   /** 0〜100 */
   pomoVolume: number;
-  /** 1〜5 */
-  pomoRepeat: number;
+  /** 作業が終わったとき・休憩が終わったときのくり返しの回数（1〜5） */
+  pomoRepeatWork: number;
+  pomoRepeatBreak: number;
 };
 
 export const api = {

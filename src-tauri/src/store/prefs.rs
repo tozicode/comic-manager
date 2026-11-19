@@ -73,8 +73,9 @@ pub struct TimerPrefs {
     pub pomo_sound_break: String,
     /// 音量（0〜100）
     pub pomo_volume: i64,
-    /// 音を何回くり返すか（1〜5）。短い音だと聞きそびれるため（利用者の要望）
-    pub pomo_repeat: i64,
+    /// 作業が終わったとき・休憩が終わったときに、音を何回くり返すか（1〜5）。短い音だと聞きそびれるため（利用者の要望）
+    pub pomo_repeat_work: i64,
+    pub pomo_repeat_break: i64,
 }
 
 impl Default for TimerPrefs {
@@ -92,7 +93,8 @@ impl Default for TimerPrefs {
             pomo_sound_work: "se_oshirase06".into(),
             pomo_sound_break: "se_pikon5".into(),
             pomo_volume: 50,
-            pomo_repeat: 1,
+            pomo_repeat_work: 1,
+            pomo_repeat_break: 1,
         }
     }
 }
@@ -122,7 +124,8 @@ impl Store {
         // 音の設定は画面のつまみ・選択肢でしか変えないので、範囲の外は断らずに収める
         let mut prefs = prefs.clone();
         prefs.pomo_volume = prefs.pomo_volume.clamp(0, 100);
-        prefs.pomo_repeat = prefs.pomo_repeat.clamp(1, 5);
+        prefs.pomo_repeat_work = prefs.pomo_repeat_work.clamp(1, 5);
+        prefs.pomo_repeat_break = prefs.pomo_repeat_break.clamp(1, 5);
         self.conn
             .execute(
                 "INSERT INTO setting (key, value) VALUES (?1, ?2)
@@ -287,23 +290,24 @@ mod tests {
         assert_eq!(p.pomo_work_min, 25);
         // 音の項目が無かった版（3.5.3 まで）は、既定の音を 1 回
         assert_eq!(
-            (p.pomo_sound_work.as_str(), p.pomo_sound_break.as_str(), p.pomo_volume, p.pomo_repeat),
-            ("se_oshirase06", "se_pikon5", 50, 1)
+            (p.pomo_sound_work.as_str(), p.pomo_sound_break.as_str(), p.pomo_volume, p.pomo_repeat_work, p.pomo_repeat_break),
+            ("se_oshirase06", "se_pikon5", 50, 1, 1)
         );
     }
 
     #[test]
     fn 音の設定は範囲に収めて保存する() {
         let store = Store::open_in_memory().unwrap();
-        let p = TimerPrefs { pomo_volume: 300, pomo_repeat: 0, ..Default::default() };
+        let p = TimerPrefs { pomo_volume: 300, pomo_repeat_work: 0, pomo_repeat_break: 9, ..Default::default() };
         store.set_timer_prefs(&p).unwrap();
         let p = store.timer_prefs().unwrap();
-        assert_eq!((p.pomo_volume, p.pomo_repeat), (100, 1));
+        assert_eq!((p.pomo_volume, p.pomo_repeat_work, p.pomo_repeat_break), (100, 1, 5));
         let p = TimerPrefs {
             pomo_sound_work: "se_bell1".into(),
             pomo_sound_break: "se_koto01".into(),
             pomo_volume: 80,
-            pomo_repeat: 3,
+            pomo_repeat_work: 3,
+            pomo_repeat_break: 2,
             ..Default::default()
         };
         store.set_timer_prefs(&p).unwrap();

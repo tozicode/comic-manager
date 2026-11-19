@@ -53,7 +53,10 @@ function update(f: (p: Pomo, s: PomoSettings) => Pomo) {
 
 /** 時間になったことを知らせる（音と OS の通知） */
 function announce(event: "workDone" | "breakDone", prefs: TimerPrefs) {
-  if (prefs.pomoSound) playSound(event === "workDone" ? prefs.pomoSoundWork : prefs.pomoSoundBreak, event, prefs.pomoVolume, prefs.pomoRepeat);
+  if (prefs.pomoSound) {
+    const work = event === "workDone";
+    playSound(work ? prefs.pomoSoundWork : prefs.pomoSoundBreak, event, prefs.pomoVolume, work ? prefs.pomoRepeatWork : prefs.pomoRepeatBreak);
+  }
   const body = event === "workDone" ? t("pomoWorkDoneBody", { min: prefs.pomoWorkMin }) : t("pomoBreakDoneBody");
   isPermissionGranted()
     .then((ok) => ok && sendNotification({ title: "Otosazu", body }))
