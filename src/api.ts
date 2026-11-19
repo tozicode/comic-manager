@@ -368,14 +368,14 @@ export type TimerPrefs = {
   pomoLongMin: number;
   pomoLongEvery: number;
   pomoSound: boolean;
-  pomoSoundKind: SoundKind;
+  /** 作業が終わったとき・休憩が終わったときに鳴らす音（src/sound.ts の SOUNDS の名前） */
+  pomoSoundWork: string;
+  pomoSoundBreak: string;
   /** 0〜100 */
   pomoVolume: number;
   /** 1〜5 */
   pomoRepeat: number;
 };
-
-export type SoundKind = "chime" | "bell" | "marimba" | "alarm";
 
 export const api = {
   listWorks: () => call<WorkSummary[]>("list_works"),

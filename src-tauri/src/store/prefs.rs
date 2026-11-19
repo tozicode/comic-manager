@@ -68,16 +68,14 @@ pub struct TimerPrefs {
     pub pomo_long_every: i64,
     /// 時間になったら音で知らせる
     pub pomo_sound: bool,
-    /// 知らせる音の種類（chime・bell・marimba・alarm）
-    pub pomo_sound_kind: String,
+    /// 作業が終わったとき・休憩が終わったときに鳴らす音（音のファイルの名前。一覧は画面の src/sound.ts が持つ）
+    pub pomo_sound_work: String,
+    pub pomo_sound_break: String,
     /// 音量（0〜100）
     pub pomo_volume: i64,
     /// 音を何回くり返すか（1〜5）。短い音だと聞きそびれるため（利用者の要望）
     pub pomo_repeat: i64,
 }
-
-/// 知らせる音の種類
-pub const SOUND_KINDS: [&str; 4] = ["chime", "bell", "marimba", "alarm"];
 
 impl Default for TimerPrefs {
     fn default() -> Self {
@@ -91,7 +89,8 @@ impl Default for TimerPrefs {
             pomo_long_min: 15,
             pomo_long_every: 4,
             pomo_sound: true,
-            pomo_sound_kind: "chime".into(),
+            pomo_sound_work: "se_oshirase06".into(),
+            pomo_sound_break: "se_pikon5".into(),
             pomo_volume: 50,
             pomo_repeat: 1,
         }
@@ -124,9 +123,6 @@ impl Store {
         let mut prefs = prefs.clone();
         prefs.pomo_volume = prefs.pomo_volume.clamp(0, 100);
         prefs.pomo_repeat = prefs.pomo_repeat.clamp(1, 5);
-        if !SOUND_KINDS.contains(&prefs.pomo_sound_kind.as_str()) {
-            prefs.pomo_sound_kind = "chime".into();
-        }
         self.conn
             .execute(
                 "INSERT INTO setting (key, value) VALUES (?1, ?2)
@@ -289,18 +285,27 @@ mod tests {
         assert_eq!((p.idle_minutes, p.shortcut.as_str(), p.watch_saves), (20, "Ctrl+Alt+P", false));
         assert!(!p.pomodoro);
         assert_eq!(p.pomo_work_min, 25);
-        // 音の項目が無かった版（3.5.3 まで）は、今までどおりのチャイムを 1 回
-        assert_eq!((p.pomo_sound_kind.as_str(), p.pomo_volume, p.pomo_repeat), ("chime", 50, 1));
+        // 音の項目が無かった版（3.5.3 まで）は、既定の音を 1 回
+        assert_eq!(
+            (p.pomo_sound_work.as_str(), p.pomo_sound_break.as_str(), p.pomo_volume, p.pomo_repeat),
+            ("se_oshirase06", "se_pikon5", 50, 1)
+        );
     }
 
     #[test]
     fn 音の設定は範囲に収めて保存する() {
         let store = Store::open_in_memory().unwrap();
-        let p = TimerPrefs { pomo_sound_kind: "x".into(), pomo_volume: 300, pomo_repeat: 0, ..Default::default() };
+        let p = TimerPrefs { pomo_volume: 300, pomo_repeat: 0, ..Default::default() };
         store.set_timer_prefs(&p).unwrap();
         let p = store.timer_prefs().unwrap();
-        assert_eq!((p.pomo_sound_kind.as_str(), p.pomo_volume, p.pomo_repeat), ("chime", 100, 1));
-        let p = TimerPrefs { pomo_sound_kind: "bell".into(), pomo_volume: 80, pomo_repeat: 3, ..Default::default() };
+        assert_eq!((p.pomo_volume, p.pomo_repeat), (100, 1));
+        let p = TimerPrefs {
+            pomo_sound_work: "se_bell1".into(),
+            pomo_sound_break: "se_koto01".into(),
+            pomo_volume: 80,
+            pomo_repeat: 3,
+            ..Default::default()
+        };
         store.set_timer_prefs(&p).unwrap();
         assert_eq!(store.timer_prefs().unwrap(), p);
     }

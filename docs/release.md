@@ -51,7 +51,8 @@ npm test
 **git には入れない**（公開のリポジトリに置くと、誰でも素材そのものを落とせてしまう）。
 Dropbox に置いてある音のファイルを、ビルドする場所（Windows と Mac の両方）の `public/sounds/` にコピーする。
 
-- 名前は `<種類>-<workDone|breakDone>.mp3`（種類は chime・bell・marimba・alarm。workDone が作業の終わり、breakDone が休憩の終わり）
+- 名前は効果音工房のファイル名のまま（`se_bell1.mp3` など）。要るファイルは `src/sound.ts` の SOUNDS の一覧
+- 音を足すときは、ファイルを置いて SOUNDS に名前を足し、言葉の表（`src/i18n/settings.ts`）に 5 言語の呼び名 `pomo.sound.<名前>` を書く
 - 1 つでも欠けていると `npm run tauri build` が止まり、足りないファイルの名前が出る
 - otosazu.com など、アプリの外にも置かない
 

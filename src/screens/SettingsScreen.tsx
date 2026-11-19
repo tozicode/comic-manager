@@ -11,7 +11,7 @@ import { dayKey, dayLabel, estimate, hours, startOfDay, TimeFormat, weekdayName 
 import type { ThemePref } from "../theme";
 import { LANG_NAMES, LANGS, LangPref } from "../i18n";
 import { t } from "../i18n/settings";
-import { playSound, SOUND_KINDS } from "../sound";
+import { playSound, SOUNDS, soundOrDefault } from "../sound";
 
 type Section = "stages" | "tags" | "hours" | "timer" | "display" | "data" | "about";
 const SECTIONS: Section[] = ["stages", "tags", "hours", "timer", "display", "data", "about"];
@@ -804,20 +804,30 @@ function TimerSection() {
             </label>
             {prefs.pomoSound && (
               <>
-                <label className="row">
-                  <span className="grow">{t("pomo.soundKind")}</span>
-                  <select
-                    className="field"
-                    value={prefs.pomoSoundKind}
-                    onChange={(e) => save({ ...prefs, pomoSoundKind: e.target.value as TimerPrefs["pomoSoundKind"] })}
-                  >
-                    {SOUND_KINDS.map((k) => (
-                      <option key={k} value={k}>
-                        {t(`pomo.sound.${k}`)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {(
+                  [
+                    ["workDone", "pomoSoundWork", "pomo.soundWork"],
+                    ["breakDone", "pomoSoundBreak", "pomo.soundBreak"],
+                  ] as const
+                ).map(([event, key, label]) => (
+                  <div className="row" key={key}>
+                    <span className="grow">{t(label)}</span>
+                    <select
+                      className="field"
+                      value={soundOrDefault(prefs[key], event)}
+                      onChange={(e) => save({ ...prefs, [key]: e.target.value })}
+                    >
+                      {SOUNDS.map((s) => (
+                        <option key={s} value={s}>
+                          {t(`pomo.sound.${s}`)}
+                        </option>
+                      ))}
+                    </select>
+                    <button className="btn small" onClick={() => playSound(prefs[key], event, prefs.pomoVolume, prefs.pomoRepeat)}>
+                      {t("pomo.soundTest")}
+                    </button>
+                  </div>
+                ))}
                 <label className="row">
                   <span className="grow">{t("pomo.volume")}</span>
                   {/* つまみを動かしている間は保存せず、離したときに保存する */}
@@ -846,12 +856,6 @@ function TimerSection() {
                     ))}
                   </select>
                 </label>
-                <div className="row">
-                  <span className="grow" />
-                  <button className="btn small" onClick={() => playSound(prefs.pomoSoundKind, "workDone", prefs.pomoVolume, prefs.pomoRepeat)}>
-                    {t("pomo.soundTest")}
-                  </button>
-                </div>
               </>
             )}
           </>
