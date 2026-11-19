@@ -18,3 +18,6 @@ src-tauri/gen/schemas/
 
 # 配布物（インストーラー・説明書の PDF・zip）
 release/
+
+# 知らせる音の素材（効果音工房）。再配布できないので git に入れない。ビルドする人が置く（docs/release.md）
+public/sounds/

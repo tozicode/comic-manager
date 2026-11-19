@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SOUND_KINDS, soundNotes } from "./sound";
+import { repeatStarts, SOUND_FILES, SOUND_KINDS, soundNotes } from "./sound";
 
 describe("知らせる音", () => {
   it("音量 50・1 回のチャイムは 3.5.3 までと同じ音", () => {
@@ -31,5 +31,18 @@ describe("知らせる音", () => {
     const one = soundNotes("marimba", "workDone", 50, 1).length;
     expect(soundNotes("marimba", "workDone", 50, 0)).toHaveLength(one);
     expect(soundNotes("marimba", "workDone", 50, 9)).toHaveLength(one * 5);
+  });
+
+  it("音のファイルのくり返しも、鳴り終わってから次を鳴らす", () => {
+    const starts = repeatStarts(1.5, 3);
+    expect(starts).toHaveLength(3);
+    [0, 1.85, 3.7].forEach((t, i) => expect(starts[i]).toBeCloseTo(t));
+    expect(repeatStarts(1.5, 0)).toEqual([0]);
+  });
+
+  it("配布する版には、種類ごとに作業の終わり・休憩の終わりの 2 つのファイルが要る", () => {
+    expect(SOUND_FILES).toHaveLength(SOUND_KINDS.length * 2);
+    expect(SOUND_FILES).toContain("sounds/chime-workDone.mp3");
+    expect(SOUND_FILES).toContain("sounds/alarm-breakDone.mp3");
   });
 });

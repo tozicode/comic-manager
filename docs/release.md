@@ -45,6 +45,16 @@ npm test
 (cd server && npm test)
 ```
 
+## 2.5 音のファイル（3.6.0 から）
+
+知らせる音（仕様書 5.8）は効果音工房（https://umipla.com/）の素材を使う。規約で素材の再配布が禁じられているので、
+**git には入れない**（公開のリポジトリに置くと、誰でも素材そのものを落とせてしまう）。
+Dropbox に置いてある音のファイルを、ビルドする場所（Windows と Mac の両方）の `public/sounds/` にコピーする。
+
+- 名前は `<種類>-<workDone|breakDone>.mp3`（種類は chime・bell・marimba・alarm。workDone が作業の終わり、breakDone が休憩の終わり）
+- 1 つでも欠けていると `npm run tauri build` が止まり、足りないファイルの名前が出る
+- otosazu.com など、アプリの外にも置かない
+
 ## 3. Windows 版のビルド（Git Bash で）
 
 更新ファイルの署名に鍵が要る。PowerShell では空のパスワードを環境変数に入れられないので、Git Bash で行う。

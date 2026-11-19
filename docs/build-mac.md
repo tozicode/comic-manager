@@ -35,6 +35,8 @@ npm test
 
 ## 3. ビルド
 
+先に、Dropbox に置いてある知らせる音のファイルを `public/sounds/` にコピーしておく（[release.md](release.md) の 2.5。揃っていないとビルドが止まる）。
+
 ```sh
 export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/otosazu.key)"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
