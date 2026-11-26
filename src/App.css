@@ -1984,6 +1984,14 @@ table.rec {
 .miniwin .tiny {
   font-size: 11px;
 }
+/* ミニタイマーの進み具合（仕様書 5.2） */
+.miniwin .mprogress {
+  margin-top: 2px;
+}
+.miniwin .mprogress input[type="range"] {
+  width: 96px;
+  height: 12px;
+}
 .miniwin .mctrl {
   display: flex;
   gap: 6px;

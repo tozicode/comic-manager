@@ -102,7 +102,8 @@ pub struct WorkSummary {
     /// 見開きを 2 ページと数えたページ数（イラストはファイルの数）
     pub page_count: i64,
     pub stage_count: i64,
-    /// 0.0〜1.0。完了したタスクの割合（見開きは 2 ページ分の重み。対象外のマスは数えない）
+    /// 0.0〜1.0。完了したタスクの割合（見開きは 2 ページ分の重み。対象外のマスは数えない。
+    /// 完了していないマスは進み具合（task_progress）の分だけ数える）
     pub progress: f64,
     /// 表示している全工程が全ページで完了か対象外（仕様書 5.26）
     pub completed: bool,
@@ -164,6 +165,8 @@ pub struct Cell {
     pub total_ms: i64,
     /// 作業が要らないマス（対象外）。進捗・予測・ノルマの分母に入れず、計測も始めない。完了や記録はそのまま残す
     pub excluded: bool,
+    /// 完了していないマスの進み具合（0〜90%。利用者の要望）。完了なら 100% と数えるので、この値は見ない
+    pub progress: i64,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -315,7 +318,10 @@ const ILLUST_STAGES: [(&str, &str, i64); 4] = [
 ];
 
 /// スキーマの最新の版
-const LATEST: i64 = 14;
+const LATEST: i64 = 15;
+
+/// マスの進み具合の上限（%）。100% は完了の ✓ で付ける
+pub const MAX_PROGRESS: i64 = 90;
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -631,6 +637,22 @@ impl Store {
                     "BEGIN;
                     ALTER TABLE page ADD COLUMN pair_number INTEGER;
                     PRAGMA user_version = 14;
+                    COMMIT;",
+                )
+                .map_err(db_err)?;
+        }
+        if version < 15 && target >= 15 {
+            // 版 15：マスの進み具合（0〜90%。利用者の要望。仕様書 5.2）。完了の印とは別に持ち、完了なら 100% と数える
+            self.conn
+                .execute_batch(
+                    "BEGIN;
+                    CREATE TABLE task_progress (
+                        page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+                        stage_id INTEGER NOT NULL REFERENCES stage_def(id),
+                        percent INTEGER NOT NULL,
+                        PRIMARY KEY (page_id, stage_id)
+                    );
+                    PRAGMA user_version = 15;
                     COMMIT;",
                 )
                 .map_err(db_err)?;
@@ -1008,7 +1030,8 @@ impl Store {
                 "SELECT EXISTS (SELECT 1 FROM work_stage WHERE stage_id = ?1)
                      OR EXISTS (SELECT 1 FROM task_done WHERE stage_id = ?1)
                      OR EXISTS (SELECT 1 FROM work_session WHERE stage_id = ?1)
-                     OR EXISTS (SELECT 1 FROM task_excluded WHERE stage_id = ?1)",
+                     OR EXISTS (SELECT 1 FROM task_excluded WHERE stage_id = ?1)
+                     OR EXISTS (SELECT 1 FROM task_progress WHERE stage_id = ?1)",
                 [id],
                 |r| r.get(0),
             )
@@ -1272,7 +1295,15 @@ impl Store {
                         JOIN stage_def s ON s.id = ws.stage_id
                         WHERE p.work_id = w.id AND p.missing = 0 AND s.hidden = 0
                           AND NOT EXISTS (SELECT 1 FROM task_done t WHERE t.page_id = p.id AND t.stage_id = ws.stage_id)
-                          AND NOT EXISTS (SELECT 1 FROM task_excluded x WHERE x.page_id = p.id AND x.stage_id = ws.stage_id))
+                          AND NOT EXISTS (SELECT 1 FROM task_excluded x WHERE x.page_id = p.id AND x.stage_id = ws.stage_id)),
+                    -- 完了していないマスの進み具合（見開きは 2 ページ分。対象外は数えない）
+                    (SELECT COALESCE(SUM(p.span * tp.percent), 0) / 100.0 FROM task_progress tp
+                        JOIN page p ON p.id = tp.page_id
+                        JOIN work_stage ws ON ws.work_id = p.work_id AND ws.stage_id = tp.stage_id
+                        JOIN stage_def s ON s.id = tp.stage_id
+                        WHERE p.work_id = w.id AND p.missing = 0 AND s.hidden = 0
+                          AND NOT EXISTS (SELECT 1 FROM task_done t WHERE t.page_id = tp.page_id AND t.stage_id = tp.stage_id)
+                          AND NOT EXISTS (SELECT 1 FROM task_excluded x WHERE x.page_id = tp.page_id AND x.stage_id = tp.stage_id))
                  FROM work w LEFT JOIN stage_set s ON s.id = w.set_id ORDER BY w.created_at DESC",
             )
             .map_err(db_err)?;
@@ -1285,6 +1316,7 @@ impl Store {
             let done: i64 = r.get(6)?;
             let total: i64 = r.get(12)?;
             let left: i64 = r.get(13)?;
+            let partial: f64 = r.get(14)?;
             let completed = pages > 0 && stages > 0 && left == 0;
             let cmc_path: Option<String> = r.get(2)?;
             let kind: String = r.get(3)?;
@@ -1306,7 +1338,7 @@ impl Store {
                 stage_count: stages,
                 // 全マスが対象外の作品は分母が 0 になるが、完成なので 100%
                 progress: if total > 0 {
-                    done as f64 / total as f64
+                    ((done as f64 + partial) / total as f64).min(1.0)
                 } else if completed {
                     1.0
                 } else {
@@ -1466,6 +1498,15 @@ impl Store {
             .and_then(|rows| rows.collect())
             .map_err(db_err)?;
 
+        let mut progress = self
+            .conn
+            .prepare("SELECT t.page_id, t.stage_id, t.percent FROM task_progress t JOIN page p ON p.id = t.page_id WHERE p.work_id = ?1")
+            .map_err(db_err)?;
+        let progress: Vec<(i64, i64, i64)> = progress
+            .query_map([work_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .and_then(|rows| rows.collect())
+            .map_err(db_err)?;
+
         let page_tags = self.page_tags(work_id)?;
         let assignees = self.collab_assignees(work_id)?;
         for page in &mut pages {
@@ -1485,6 +1526,7 @@ impl Store {
                             .map(|t| t.2)
                             .unwrap_or(0),
                         excluded: excluded.contains(&(page.id, s.id)),
+                        progress: progress.iter().find(|(p, st, _)| *p == page.id && *st == s.id).map(|t| t.2).unwrap_or(0),
                     }
                 })
                 .collect();
@@ -1541,6 +1583,27 @@ impl Store {
         } else {
             self.conn
                 .execute("DELETE FROM task_excluded WHERE page_id = ?1 AND stage_id = ?2", params![page_id, stage_id])
+                .map_err(db_err)?;
+        }
+        Ok(())
+    }
+
+    /// マスの進み具合を記録する（0〜90%。仕様書 5.2）。100% は完了の ✓ で付けるので、ここでは 90% までに収める。
+    /// 0 なら記録を消す。完了の印とは別に持つので、完了を外すと元の進み具合に戻る
+    pub fn set_task_progress(&self, page_id: i64, stage_id: i64, percent: i64) -> Result<()> {
+        self.check_task(page_id, stage_id)?;
+        let percent = percent.clamp(0, MAX_PROGRESS);
+        if percent == 0 {
+            self.conn
+                .execute("DELETE FROM task_progress WHERE page_id = ?1 AND stage_id = ?2", params![page_id, stage_id])
+                .map_err(db_err)?;
+        } else {
+            self.conn
+                .execute(
+                    "INSERT INTO task_progress (page_id, stage_id, percent) VALUES (?1, ?2, ?3)
+                     ON CONFLICT (page_id, stage_id) DO UPDATE SET percent = excluded.percent",
+                    params![page_id, stage_id, percent],
+                )
                 .map_err(db_err)?;
         }
         Ok(())
@@ -2153,6 +2216,38 @@ mod tests {
         // ✓を 1 つ外すと未完成に戻る
         store.set_task_done(pages[0], st[0], false, 0).unwrap();
         assert!(!work(&store).completed);
+    }
+
+    #[test]
+    fn マスの進み具合は進捗率に入り_完了なら100とみなす() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let pages: Vec<i64> = store.board(id, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        let progress = |store: &Store| store.list_works().unwrap().into_iter().find(|w| w.id == id).unwrap().progress;
+        // 分母は 4 ページ × 3 工程 = 12。p1 の下書き 50% → 0.5
+        store.set_task_progress(pages[0], st[0], 50).unwrap();
+        assert!((progress(&store) - 0.5 / 12.0).abs() < 1e-9);
+        // 見開き（p2-3）は 2 ページ分の重み：30% → 0.6
+        store.set_task_progress(pages[1], st[0], 30).unwrap();
+        assert!((progress(&store) - 1.1 / 12.0).abs() < 1e-9);
+        // 完了にすると 100% と数え、記録した進み具合は見ない
+        store.set_task_done(pages[0], st[0], true, 0).unwrap();
+        assert!((progress(&store) - 1.6 / 12.0).abs() < 1e-9);
+        // 完了を外すと、元の進み具合に戻る
+        store.set_task_done(pages[0], st[0], false, 0).unwrap();
+        assert!((progress(&store) - 1.1 / 12.0).abs() < 1e-9);
+        // 対象外のマスの進み具合は数えない
+        store.set_task_excluded(pages[1], st[0], true).unwrap();
+        assert!((progress(&store) - 0.5 / 10.0).abs() < 1e-9);
+
+        // 100% は ✓ で付けるので 90% までに収め、0 にすると記録を消す
+        store.set_task_progress(pages[2], st[1], 150).unwrap();
+        let cell = |store: &Store, page: usize, stage: usize| store.board(id, 0).unwrap().pages[page].cells[stage].progress;
+        assert_eq!(cell(&store, 2, 1), 90);
+        store.set_task_progress(pages[2], st[1], 0).unwrap();
+        assert_eq!(cell(&store, 2, 1), 0);
+        // 作品の工程でないマスには付けない
+        assert!(store.set_task_progress(pages[0], 99999, 50).is_err());
     }
 
     #[test]

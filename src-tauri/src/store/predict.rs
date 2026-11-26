@@ -5,7 +5,8 @@
 //!   実績がまだ無い工程は、設定の「目安の時間」を使う
 //! - タグの倍率：初期倍率を事前分布とした縮小推定で、実績が増えるほど実績に寄せる。
 //!   基準時間と交互に推定し、log 倍率 = (Σ ずれ + K × log 初期倍率) / (実績数 + K)
-//! - 作業途中のタスクの残り = max(予測 − 経過, 予測 × 0.1)
+//! - 作業途中のタスクの残り = max(予測 − 経過, 予測 × 0.1)。
+//!   進み具合（%）を記録したマスは max(予測 × (1 − 進み具合), 予測 × 0.1)（経過時間より利用者の見立てを使う）
 //!
 //! ばらつき：実績と予測のずれ（対数）の標準偏差 σ から、残り合計の幅を出す。
 //! 残りのタスクが多いほど個々のずれは打ち消し合い、実績が少ないほど基準時間そのものが不確か、
@@ -298,6 +299,8 @@ impl Store {
                 let assigned = page.assignees.iter().any(|a| a.stage_ids.contains(&cell.stage_id));
                 let remaining = if cell.done || assigned || cell.excluded {
                     0.0
+                } else if cell.progress > 0 {
+                    (predicted * (1.0 - cell.progress as f64 / 100.0)).max(predicted * 0.1)
                 } else {
                     (predicted - cell.total_ms as f64).max(predicted * 0.1)
                 };
@@ -582,6 +585,21 @@ mod tests {
         let p = store.prediction(id, 0).unwrap();
         let t = p.tasks.iter().find(|t| t.page_id == page && t.stage_id == st[0]).unwrap();
         assert_eq!(t.remaining_ms, 6 * MIN);
+    }
+
+    #[test]
+    fn 進み具合を記録したマスは_経過時間ではなく進み具合で残りを出す() {
+        let (store, id) = setup();
+        let st = stage_ids(&store);
+        let page = store.board(id, 0).unwrap().pages[0].id;
+        // 下書きの予測は 60 分。50 分作業していても、30% と記録したなら残りは 7 割の 42 分
+        store.add_session(page, st[0], 0, 50 * MIN, i64::MAX).unwrap();
+        store.set_task_progress(page, st[0], 30).unwrap();
+        let task = |store: &Store| store.prediction(id, 0).unwrap().tasks.into_iter().find(|t| t.page_id == page && t.stage_id == st[0]).unwrap();
+        assert_eq!(task(&store).remaining_ms, 42 * MIN);
+        // 90% でも、終わるまでは 1 割（6 分）残す
+        store.set_task_progress(page, st[0], 90).unwrap();
+        assert_eq!(task(&store).remaining_ms, 6 * MIN);
     }
 
     #[test]

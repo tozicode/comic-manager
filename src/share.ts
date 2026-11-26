@@ -1,5 +1,5 @@
 // 進捗を共有する画像（仕様書 5.20）に載せる中身を、ボードと今日の作業記録から計算する。描くのは share-draw.ts
-import type { Board, StageRef } from "./api";
+import { cellAmount, type Board, type StageRef } from "./api";
 import { dayLabel, hours } from "./format";
 import { kindKey, unitText } from "./i18n/common";
 import { t } from "./i18n/share";
@@ -41,8 +41,9 @@ export function shareData(board: Board, sessions: SessionLike[], dayStart: numbe
     page.cells.map((cell, i): CellState => {
       if (cell.excluded) return "excluded";
       total += page.span;
+      // 途中のマスも進み具合の分だけ進捗率に入れる（マスの色分けは今までどおり完了か否か）
+      done += page.span * cellAmount(cell);
       if (cell.done) {
-        done += page.span;
         if ((cell.doneAt ?? 0) >= dayStart) {
           today += page.span;
           counts[i] += page.span;

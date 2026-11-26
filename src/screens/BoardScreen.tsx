@@ -1,6 +1,6 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, BoardPage, CollabInfo, PageMerge, PageSplit, PublishPrefs, StageRef, TagGroup, isRemote, cellPassed } from "../api";
+import { api, BoardPage, CollabInfo, PageMerge, PageSplit, PublishPrefs, StageRef, TagGroup, isRemote, cellPassed, cellAmount, MAX_PROGRESS } from "../api";
 import { useApp } from "../app-context";
 import type { Screen } from "../App";
 import { AiDialog } from "../components/AiDialog";
@@ -55,6 +55,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   /** ファイルを持たない作品：行を足す入力（null なら閉じている）、名前を変えている行 */
   const [addingRows, setAddingRows] = useState<string | null>(null);
   /** 計測し忘れた記録を後から足す入力（マスの「＋」から） */
+  /** 進み具合を記録しているマス（仕様書 5.2） */
+  const [progressing, setProgressing] = useState<{ page: BoardPage; stage: StageRef; value: number } | null>(null);
   const [logging, setLogging] = useState<{ page: BoardPage; stage: StageRef; date: string; minutes: string; done: boolean } | null>(
     null,
   );
@@ -416,7 +418,8 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
           {board.stages.map((s, i) => {
             // 対象外のマスは分母にも完了にも入れない
             const counted = pages.filter((p) => !p.cells[i].excluded);
-            const done = counted.reduce((n, p) => n + (p.cells[i].done ? p.span : 0), 0);
+            // 途中のマスは進み具合の分だけ数える（2.5/12 のように出る）
+            const done = counted.reduce((n, p) => n + cellAmount(p.cells[i]) * p.span, 0);
             const total = counted.reduce((n, p) => n + p.span, 0);
             return (
               <div key={s.id} className="stage-prog">
@@ -425,7 +428,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                   <span style={{ width: `${total ? (done / total) * 100 : 0}%`, background: s.color }} />
                 </div>
                 <span className="num muted">
-                  {done}/{total}
+                  {Math.round(done * 10) / 10}/{total}
                 </span>
               </div>
             );
@@ -662,6 +665,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                     state={cellState(page, i)}
                     stage={stage}
                     totalMs={page.cells[i].totalMs}
+                    progress={page.cells[i].progress}
                     predictedMs={forecast.task(page.id, stage.id)?.predictedMs ?? 0}
                     runningMs={app.active ? app.now - app.active.startedAt : 0}
                     onStart={() => app.start(page.id, stage.id)}
@@ -670,6 +674,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                     onUndo={() => setUndo({ page, stage })}
                     onExclude={() => setExcluded(page, stage, true)}
                     onRestore={() => setExcluded(page, stage, false)}
+                    onProgress={() => setProgressing({ page, stage, value: page.cells[i].progress })}
                     onLog={() => setLogging({ page, stage, date: dayKey(startOfDay(Date.now())), minutes: "30", done: false })}
                   />
                 </td>
@@ -893,6 +898,50 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             onChange={(e) => setAddingRows(e.target.value)}
             style={{ width: "100%", resize: "vertical" }}
           />
+        </Dialog>
+      )}
+      {progressing && (
+        <Dialog
+          title={t("progressTitle", { page: progressing.page.label, stage: progressing.stage.name })}
+          onClose={() => setProgressing(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setProgressing(null)}>
+                {t("cancel")}
+              </button>
+              <button
+                className="btn primary"
+                onClick={() => {
+                  const { page, stage, value } = progressing;
+                  setProgressing(null);
+                  run(() => api.setTaskProgress(page.id, stage.id, value));
+                }}
+              >
+                {t("progressSave")}
+              </button>
+            </>
+          }
+        >
+          <div className="form">
+            <label className="row">
+              <input
+                type="range"
+                className="grow"
+                min={0}
+                max={MAX_PROGRESS}
+                step={10}
+                autoFocus
+                value={progressing.value}
+                onChange={(e) => setProgressing({ ...progressing, value: Number(e.target.value) })}
+              />
+              <b className="num" style={{ width: 44, textAlign: "right" }}>
+                {progressing.value}%
+              </b>
+            </label>
+            <p className="muted small-text" style={{ margin: 0 }}>
+              {t("progressNote")}
+            </p>
+          </div>
         </Dialog>
       )}
       {logging && (
@@ -1159,6 +1208,8 @@ type CellProps = {
   state: CellState;
   stage: StageRef;
   totalMs: number;
+  /** 進み具合（0〜90%） */
+  progress: number;
   predictedMs: number;
   runningMs: number;
   onStart: () => void;
@@ -1170,9 +1221,12 @@ type CellProps = {
   /** このマスを対象外にする／戻す（作業が要らないとき） */
   onExclude: () => void;
   onRestore: () => void;
+  /** 進み具合を記録する */
+  onProgress: () => void;
 };
 
-function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onPause, onDone, onUndo, onLog, onExclude, onRestore }: CellProps) {
+function BoardCell(props: CellProps) {
+  const { state, stage, totalMs, progress, predictedMs, runningMs, onStart, onPause, onDone, onUndo, onLog, onExclude, onRestore, onProgress } = props;
   if (state === "excluded") {
     return (
       <div className="cell excluded">
@@ -1203,7 +1257,20 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
       </div>
     );
   }
-  const pct = predictedMs > 0 ? Math.min(100, (totalMs / predictedMs) * 100) : 0;
+  // 棒は、進み具合を記録していればそれを、無ければ予測に対する作業時間を出す
+  const pct = progress > 0 ? progress : predictedMs > 0 ? Math.min(100, (totalMs / predictedMs) * 100) : 0;
+  const progressButton = (
+    <button
+      className="mini"
+      title={t("progressTip")}
+      onClick={(e) => {
+        e.stopPropagation();
+        onProgress();
+      }}
+    >
+      %
+    </button>
+  );
   if (state === "running") {
     return (
       <div className="cell running">
@@ -1215,6 +1282,7 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
         </div>
         <div className="line muted">
           <span className="num">{t("total", { time: hours(totalMs) })}</span>
+          {progress > 0 && <span className="num">{progress}%</span>}
         </div>
         <div className="line muted">
           <span className="num">{t("predicted", { time: estimate(predictedMs) })}</span>
@@ -1223,6 +1291,7 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
           <span style={{ width: `${pct}%`, background: stage.color }} />
         </div>
         <div className="cell-actions show">
+          {progressButton}
           <button className="mini dark" title={t("pause")} onClick={onPause}>
             ❚❚
           </button>
@@ -1233,10 +1302,13 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
   // 前の工程待ち（locked）でも計測はできる（工程順に進めないこともあるため）。完了にするのは前の工程が終わってから
   return (
     <div className={`cell ${state}${state === "locked" && totalMs > 0 ? " doing" : ""}`} onClick={onStart} title={t("clickToStart")}>
-      {totalMs > 0 ? (
+      {totalMs > 0 || progress > 0 ? (
         <>
           <div className="line">
-            <span>{t("cellPartial")}</span>
+            <span>
+              {t("cellPartial")}
+              {progress > 0 && <b className="num"> {progress}%</b>}
+            </span>
             <span className="num">
               <b>{hours(totalMs)}</b>
             </span>
@@ -1269,6 +1341,7 @@ function BoardCell({ state, stage, totalMs, predictedMs, runningMs, onStart, onP
         >
           ＋
         </button>
+        {progressButton}
         {state !== "locked" && (
           <button
             className="mini"

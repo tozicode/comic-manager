@@ -26,7 +26,7 @@ const page = (id: number, label: string, span: number, cells: [boolean, number][
   missing: false,
   found: true,
   tags,
-  cells: cells.map(([done, totalMs], i) => ({ stageId: stages[i].id, done, doneAt: done ? NOW - HOUR : null, totalMs, excluded: false })),
+  cells: cells.map(([done, totalMs], i) => ({ stageId: stages[i].id, done, doneAt: done ? NOW - HOUR : null, totalMs, excluded: false, progress: 0 })),
   assignees: [],
 });
 const board: Board = {

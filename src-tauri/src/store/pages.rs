@@ -245,6 +245,7 @@ impl Store {
                 "SELECT EXISTS (SELECT 1 FROM work_session WHERE page_id = ?1)
                      OR EXISTS (SELECT 1 FROM task_done WHERE page_id = ?1)
                      OR EXISTS (SELECT 1 FROM task_excluded WHERE page_id = ?1)
+                     OR EXISTS (SELECT 1 FROM task_progress WHERE page_id = ?1)
                      OR EXISTS (SELECT 1 FROM page_tag WHERE page_id = ?1)",
                 [page_id],
                 |r| r.get(0),
@@ -354,6 +355,20 @@ impl Store {
             params![from, to],
         )
         .map_err(db_err)?;
+        // 進み具合は、両方のページで進めていた工程だけ、少ないほうを残す（完了と同じく控えめに数える）
+        tx.execute(
+            "DELETE FROM task_progress WHERE page_id = ?2
+             AND stage_id NOT IN (SELECT stage_id FROM task_progress WHERE page_id = ?1)",
+            params![from, to],
+        )
+        .map_err(db_err)?;
+        tx.execute(
+            "UPDATE task_progress SET percent = MIN(percent,
+                (SELECT f.percent FROM task_progress f WHERE f.page_id = ?1 AND f.stage_id = task_progress.stage_id))
+             WHERE page_id = ?2",
+            params![from, to],
+        )
+        .map_err(db_err)?;
         // タグは足し合わせる。ただし排他グループで移す先にすでにタグがあるときは、移す先のタグを優先する
         tx.execute(
             "INSERT OR IGNORE INTO page_tag (page_id, tag_id)
@@ -389,6 +404,12 @@ impl Store {
         .map_err(db_err)?;
         tx.execute(
             "INSERT OR IGNORE INTO task_excluded (page_id, stage_id) SELECT ?2, stage_id FROM task_excluded WHERE page_id = ?1",
+            params![page_id, new_page_id],
+        )
+        .map_err(db_err)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO task_progress (page_id, stage_id, percent)
+             SELECT ?2, stage_id, percent FROM task_progress WHERE page_id = ?1",
             params![page_id, new_page_id],
         )
         .map_err(db_err)?;
@@ -500,6 +521,27 @@ mod tests {
             .sync_pages(id, &comic(&[("page0001.clip", 1), ("page0006.clip", 2), ("page0008.clip", 1)]), 0)
             .unwrap();
         assert!(r.merges.is_empty());
+    }
+
+    #[test]
+    fn ページをまとめると進み具合は両方で進めていた工程の少ないほうを残し_分けると写す() {
+        let (store, id) = super::super::tests::setup();
+        let st = stage_ids(&store);
+        let pages: Vec<i64> = store.board(id, 0).unwrap().pages.iter().map(|p| p.id).collect();
+        store.set_task_progress(pages[0], st[0], 40).unwrap();
+        store.set_task_progress(pages[2], st[0], 70).unwrap();
+        store.set_task_progress(pages[2], st[1], 50).unwrap();
+        store.merge_pages(pages[0], pages[2]).unwrap();
+        let cells = |store: &Store| {
+            let board = store.board(id, 0).unwrap();
+            let page = board.pages.iter().find(|p| p.id == pages[2]).unwrap();
+            page.cells.iter().map(|c| c.progress).collect::<Vec<_>>()
+        };
+        assert_eq!(cells(&store), [40, 0, 0]);
+        // 分けると、新しいページにも同じ進み具合を写す
+        store.split_page(pages[2], pages[1], false).unwrap();
+        let board = store.board(id, 0).unwrap();
+        assert_eq!(board.pages.iter().find(|p| p.id == pages[1]).unwrap().cells[0].progress, 40);
     }
 
     #[test]

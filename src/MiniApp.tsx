@@ -1,6 +1,6 @@
 // ミニタイマー窓。CLIP STUDIO の上に常に表示しておく小さな窓
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { api, MAX_PROGRESS } from "./api";
 import { useApp } from "./app-context";
 import { usePomodoro } from "./components/Pomodoro";
 import { SaveToast } from "./components/Watchers";
@@ -102,6 +102,27 @@ function TaskPicker({ f, onPick, onClose }: { f: Forecast; onPick: (pageId: numb
 }
 
 /** 工程の色の ●（ページ名と工程名の間に置く） */
+/** 計測中・一時停止中のタスクの進み具合（0〜90%）。つまみを離したときに保存する */
+function ProgressRow({ f, pageId, stageId, onError, onSaved }: { f: Forecast; pageId: number; stageId: number; onError: (e: unknown) => void; onSaved: () => void }) {
+  const page = f.board.pages.find((x) => x.id === pageId);
+  const i = f.board.stages.findIndex((x) => x.id === stageId);
+  const saved = page && i >= 0 ? (page.cells[i]?.progress ?? 0) : 0;
+  const [value, setValue] = useState(saved);
+  useEffect(() => setValue(saved), [saved, pageId, stageId]);
+  if (!page || i < 0) return null;
+  const save = () => {
+    if (value === saved) return;
+    api.setTaskProgress(pageId, stageId, value).then(onSaved).catch(onError);
+  };
+  return (
+    <label className="mprogress row tight tiny muted" title={t("progressTip")}>
+      <span>{t("progressLabel")}</span>
+      <input type="range" min={0} max={MAX_PROGRESS} step={10} value={value} onChange={(e) => setValue(Number(e.target.value))} onPointerUp={save} onKeyUp={save} />
+      <span className="num">{value}%</span>
+    </label>
+  );
+}
+
 function StageDot({ color }: { color: string }) {
   return <span style={{ color }}>●</span>;
 }
@@ -172,6 +193,13 @@ export function MiniApp() {
   // そのタスク（ページ×工程）にかけた時間の合計。大きな数字は今回の経過時間なので、一時停止して再開すると 0 から数え直す。
   // 「累計されない」と見えないよう、合計も並べて出す（利用者の報告）
   const activeTotal = active ? active.priorMs + (now - active.startedAt) : 0;
+  // 計測中のタスクの進み具合（記録していれば、残りは進み具合から出す）
+  const activeProgress = (() => {
+    if (!active || !f) return 0;
+    const page = f.board.pages.find((x) => x.id === active.pageId);
+    const i = f.board.stages.findIndex((x) => x.id === active.stageId);
+    return page && i >= 0 ? (page.cells[i]?.progress ?? 0) : 0;
+  })();
   const pausedTotal = (() => {
     if (!paused || !f) return null;
     const page = f.board.pages.find((x) => x.id === paused.pageId);
@@ -325,11 +353,14 @@ export function MiniApp() {
               {t("taskTotal", { time: hours(activeTotal) })}
               {task &&
                 ` ・ ${
-                  task.predictedMs - task.spentMs > 0
-                    ? t("predictedLeft", { time: estimate(task.predictedMs), left: estimate(task.predictedMs - task.spentMs) })
-                    : t("predictedOver", { time: estimate(task.predictedMs) })
+                  activeProgress > 0
+                    ? t("predictedLeft", { time: estimate(task.predictedMs), left: estimate(task.remainingMs) })
+                    : task.predictedMs - task.spentMs > 0
+                      ? t("predictedLeft", { time: estimate(task.predictedMs), left: estimate(task.predictedMs - task.spentMs) })
+                      : t("predictedOver", { time: estimate(task.predictedMs) })
                 }`}
             </div>
+            {f && <ProgressRow f={f} pageId={active.pageId} stageId={active.stageId} onError={app.showError} onSaved={app.refresh} />}
           </div>
           <div className="mctrl">
             <button className="icon-btn accent" title={t("pause")} onClick={app.pause}>
@@ -353,6 +384,7 @@ export function MiniApp() {
                   {paused.pageLabel} {pausedColor && <StageDot color={pausedColor} />} {paused.stageName}
                 </div>
                 {pausedTotal !== null && <div className="muted tiny">{t("taskTotal", { time: hours(pausedTotal) })}</div>}
+                {f && <ProgressRow f={f} pageId={paused.pageId} stageId={paused.stageId} onError={app.showError} onSaved={app.refresh} />}
               </div>
               <div className="mctrl">
                 <button className="icon-btn accent big" title={t("resume")} onClick={app.resume}>

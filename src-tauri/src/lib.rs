@@ -290,6 +290,11 @@ fn set_task_done(state: State<AppState>, page_id: i64, stage_id: i64, done: bool
 }
 
 #[tauri::command]
+fn set_task_progress(state: State<AppState>, page_id: i64, stage_id: i64, percent: i64) -> Cmd<()> {
+    with_store(&state, |s| s.set_task_progress(page_id, stage_id, percent))
+}
+
+#[tauri::command]
 fn set_task_excluded(state: State<AppState>, page_id: i64, stage_id: i64, excluded: bool) -> Cmd<()> {
     with_store(&state, |s| s.set_task_excluded(page_id, stage_id, excluded))
 }
@@ -933,6 +938,7 @@ pub fn run() {
             get_board,
             set_task_done,
             set_task_excluded,
+            set_task_progress,
             load_thumbnail,
             get_active_session,
             start_timer,

@@ -113,10 +113,18 @@ export type Cell = {
   totalMs: number;
   /** 作業が要らないマス（対象外）。進捗・予測・ノルマの分母に入れず、計測も始めない */
   excluded: boolean;
+  /** 完了していないマスの進み具合（0〜90%）。完了なら 100% と数えるので、この値は見ない */
+  progress: number;
 };
 
 /** 次の工程に進むうえで「済んだ」とみなすマス（完了か対象外） */
 export const cellPassed = (c: Cell) => c.done || c.excluded;
+
+/** マスの進み具合の上限（%）。100% は完了の ✓ で付ける（Rust の MAX_PROGRESS と同じ） */
+export const MAX_PROGRESS = 90;
+
+/** 進捗率に数えるマスの済んだ量（0〜1）。完了は 1、途中は進み具合、対象外は分母ごと外すので呼ぶ側で除く */
+export const cellAmount = (c: Cell) => (c.done ? 1 : c.progress / 100);
 
 // ----- 共同作業の取り込み（5.23） -----
 
@@ -411,6 +419,9 @@ export const api = {
     call<void>("set_task_done", { pageId, stageId, done }),
   setTaskExcluded: (pageId: number, stageId: number, excluded: boolean) =>
     call<void>("set_task_excluded", { pageId, stageId, excluded }),
+  /** マスの進み具合（0〜90%）。0 で消す */
+  setTaskProgress: (pageId: number, stageId: number, percent: number) =>
+    call<void>("set_task_progress", { pageId, stageId, percent }),
   loadThumbnail: (path: string) => call<string>("load_thumbnail", { path }),
 
   getActiveSession: () => call<ActiveSession | null>("get_active_session"),

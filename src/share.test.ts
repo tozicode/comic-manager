@@ -21,7 +21,7 @@ const page = (id: number, span: number, cells: [boolean, number | null][], missi
   missing,
   found: true,
   tags: [],
-  cells: cells.map(([done, doneAt], i) => ({ stageId: stages[i].id, done, doneAt, totalMs: 0, excluded: false })),
+  cells: cells.map(([done, doneAt], i) => ({ stageId: stages[i].id, done, doneAt, totalMs: 0, excluded: false, progress: 0 })),
   assignees: [],
 });
 const board = (pages: BoardPage[]): Board => ({
@@ -42,6 +42,21 @@ const board = (pages: BoardPage[]): Board => ({
 });
 
 describe("shareData", () => {
+  it("途中のマスは進み具合の分だけ進捗率に入れ、マスの色分けは変えない", () => {
+    const p2 = page(2, 2, [[false, null], [false, null]]);
+    p2.cells[0].progress = 50;
+    // 完了のマスは記録した進み具合を見ず 1 と数える
+    const p1 = page(1, 1, [[true, DAY - 1000], [false, null]]);
+    p1.cells[0].progress = 30;
+    const d = shareData(board([p1, p2]), [], DAY);
+    expect(d.rows).toEqual([
+      ["before", "open"],
+      ["open", "open"],
+    ]);
+    // (1 + 2 × 0.5) ÷ ((1 + 2) × 2) = 2 / 6
+    expect(d.progress).toBeCloseTo(2 / 6);
+  });
+
   it("マスをこれまで・今日・手を付けた・未着手に分ける", () => {
     const b = board([
       page(1, 1, [[true, DAY - 1000], [true, DAY + 1000]]),
