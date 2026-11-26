@@ -712,11 +712,6 @@ select {
   color: #fff;
   font-size: 9px;
 }
-.mini.light {
-  border-color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
-}
 
 /* ===== ダイアログ ===== */
 .overlay {
@@ -1099,19 +1094,43 @@ table.board {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
   background: var(--accent-soft);
-  padding-right: 40px;
 }
-.cell-actions {
+/* マス・ページに乗せたときの操作の吹き出し。マスの文字に重ならないよう、マスの上に浮かせる。
+   外側の枠は透明で、マスとの間の隙間を埋める（吹き出しへマウスを動かしても消えないように） */
+.board td.pcol {
+  position: relative;
+}
+.hover-bar {
   position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 4px;
+  bottom: 100%;
+  z-index: 5;
   display: none;
-  gap: 4px;
+  padding-bottom: 4px;
+  cursor: default;
 }
-.cell:hover .cell-actions,
-.cell-actions.show {
+.hover-bar .bubble {
+  position: relative;
   display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+/* 吹き出しのしっぽ */
+.hover-bar .bubble::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  top: 100%;
+  border: 5px solid transparent;
+  border-top-color: var(--border);
+}
+.cell:hover > .hover-bar,
+.board td.pcol:hover > .hover-bar {
+  display: block;
 }
 
 /* ===== 作業記録 ===== */
@@ -2270,42 +2289,6 @@ button.lost {
 }
 button.lost:hover {
   border-color: var(--warn);
-}
-/* ファイルを外す × は行の右端に重ねて出し、列の幅を取らない */
-.pcell .mini.remove {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  visibility: hidden;
-}
-.board tr:hover .mini.remove {
-  visibility: visible;
-}
-/* ページの全工程を対象外にする／戻す。× と同じく行に乗せたときだけ出す（× がある行では × の左） */
-.pcell .mini.exclude {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  visibility: hidden;
-}
-.pcell .mini.exclude.beside {
-  right: 30px;
-}
-.board tr:hover .mini.exclude {
-  visibility: visible;
-}
-/* ファイルのあるフォルダを開く。対象外の ⊘ の左 */
-.pcell .mini.folder {
-  position: absolute;
-  top: 6px;
-  right: 30px;
-  visibility: hidden;
-}
-.pcell .mini.folder.beside {
-  right: 54px;
-}
-.board tr:hover .mini.folder {
-  visibility: visible;
 }
 /* 押すと制作ファイルを開くサムネ */
 .thumb.clickable {

@@ -1,4 +1,4 @@
-import { DragEvent, useEffect, useRef, useState } from "react";
+import { DragEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api, BoardPage, CollabInfo, PageMerge, PageSplit, PublishPrefs, StageRef, TagGroup, isRemote, cellPassed, cellAmount, MAX_PROGRESS } from "../api";
 import { useApp } from "../app-context";
@@ -535,7 +535,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                   }
                 />
               </td>
-              <td style={{ position: "relative" }}>
+              <td className="pcol">
                 <div className="pcell">
                   {hasRows && (
                     <span
@@ -611,32 +611,30 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                       </button>
                     </div>
                   </div>
+                </div>
+                <HoverBar>
+                  {canOpenRow(page) && (
+                    <button className="mini" title={t("revealFileTip")} onClick={() => openFile(page, true)}>
+                      📂
+                    </button>
+                  )}
                   <button
-                    className={`mini exclude${hasRows ? " beside" : ""}`}
+                    className="mini"
                     title={allExcluded(page) ? t("pageRestoreTip") : t("pageExcludeTip")}
                     onClick={() => setPagesExcluded([page], !allExcluded(page))}
                   >
                     {allExcluded(page) ? "↶" : "⊘"}
                   </button>
-                  {canOpenRow(page) && (
-                    <button
-                      className={`mini folder${hasRows ? " beside" : ""}`}
-                      title={t("revealFileTip")}
-                      onClick={() => openFile(page, true)}
-                    >
-                      📂
-                    </button>
-                  )}
                   {hasRows && (
                     <button
-                      className="mini remove"
+                      className="mini"
                       title={isManual ? t("removeRowHint", { unit: unitText(board.work, 1) }) : t("removeFileHint")}
                       onClick={() => setRemoving(page)}
                     >
                       ×
                     </button>
                   )}
-                </div>
+                </HoverBar>
                 {tagging === page.id && (
                   <TagPopover
                     title={t("pageTags", { label: page.label })}
@@ -1234,11 +1232,11 @@ function BoardCell(props: CellProps) {
           <span>{t("cellExcluded")}</span>
           {totalMs > 0 && <span className="num">{hours(totalMs)}</span>}
         </div>
-        <div className="cell-actions">
-          <button className="mini light" title={t("cellRestore")} onClick={onRestore}>
+        <HoverBar>
+          <button className="mini" title={t("cellRestore")} onClick={onRestore}>
             ↺
           </button>
-        </div>
+        </HoverBar>
       </div>
     );
   }
@@ -1249,11 +1247,11 @@ function BoardCell(props: CellProps) {
           <span>{t("cellDone")}</span>
           <span className="num">{hours(totalMs)}</span>
         </div>
-        <div className="cell-actions">
-          <button className="mini light" title={t("undoDone")} onClick={onUndo}>
+        <HoverBar>
+          <button className="mini" title={t("undoDone")} onClick={onUndo}>
             ↺
           </button>
-        </div>
+        </HoverBar>
       </div>
     );
   }
@@ -1290,12 +1288,12 @@ function BoardCell(props: CellProps) {
         <div className="bar">
           <span style={{ width: `${pct}%`, background: stage.color }} />
         </div>
-        <div className="cell-actions show">
+        <HoverBar>
           {progressButton}
           <button className="mini dark" title={t("pause")} onClick={onPause}>
             ❚❚
           </button>
-        </div>
+        </HoverBar>
       </div>
     );
   }
@@ -1330,7 +1328,7 @@ function BoardCell(props: CellProps) {
           </div>
         </>
       )}
-      <div className="cell-actions">
+      <HoverBar>
         <button
           className="mini"
           title={t("logHint")}
@@ -1364,10 +1362,22 @@ function BoardCell(props: CellProps) {
         >
           ⊘
         </button>
-        <button className="mini accent" title={t("startTracking")}>
+        <button className="mini accent" title={t("startTracking")} onClick={onStart}>
           ▶
         </button>
-      </div>
+      </HoverBar>
+    </div>
+  );
+}
+
+/**
+ * マスやページに乗せたときに出す操作の吹き出し。マスの文字に重ならないよう、マスの上に浮かせる。
+ * 吹き出しの中のクリックがマスの「計測を始める」に届かないよう、ここで止める（▶ は自分で計測を始める）
+ */
+function HoverBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="hover-bar" onClick={(e) => e.stopPropagation()}>
+      <div className="bubble">{children}</div>
     </div>
   );
 }
