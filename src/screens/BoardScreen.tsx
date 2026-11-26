@@ -924,7 +924,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
             <label className="row">
               <input
                 type="range"
-                className="grow"
+                className="grow progress-range"
                 min={0}
                 max={MAX_PROGRESS}
                 step={10}

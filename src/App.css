@@ -2010,6 +2010,11 @@ table.rec {
 .miniwin .mprogress input[type="range"] {
   width: 96px;
   height: 12px;
+  accent-color: var(--accent);
+}
+/* ボードの進み具合の窓のつまみ（作業時間のつまみと同じ色） */
+.progress-range {
+  accent-color: var(--accent);
 }
 .miniwin .mctrl {
   display: flex;
