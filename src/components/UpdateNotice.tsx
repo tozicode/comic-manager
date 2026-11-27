@@ -7,7 +7,7 @@ import { api } from "../api";
 import { useApp } from "../app-context";
 import { t } from "../i18n/update";
 import { BOOTH_URL } from "../screens/SettingsScreen";
-import { clearUpdateAttempt, recordUpdateAttempt, takeFailedUpdate } from "../update-attempt";
+import { clearUpdateAttempt, diagnoseUpdate, recordUpdateAttempt, takeFailedUpdate, UpdateDiagnosis } from "../update-attempt";
 import { Dialog } from "./Dialog";
 
 /**
@@ -21,7 +21,7 @@ export function UpdateNotice() {
   // ダウンロードの進み具合（0〜100）。null ならまだ始めていない
   const [progress, setProgress] = useState<number | null>(null);
   // 前回入れようとして入らなかった版と、今の版
-  const [failed, setFailed] = useState<{ to: string; current: string } | null>(null);
+  const [failed, setFailed] = useState<{ to: string; current: string; diagnosis: UpdateDiagnosis } | null>(null);
 
   useEffect(() => {
     if (import.meta.env.DEV) return;
@@ -30,7 +30,11 @@ export function UpdateNotice() {
       try {
         const current = await getVersion();
         const to = takeFailedUpdate(current);
-        if (to && !cancelled) setFailed({ to, current });
+        if (to) {
+          // インストーラーが書き残した記録から、どこで止まったかを読む（Windows のみ。読めなければ unknown）
+          const log = await api.installerLog().catch(() => undefined);
+          if (!cancelled) setFailed({ to, current, diagnosis: diagnoseUpdate(log, to) });
+        }
       } catch (e) {
         console.warn("前回の更新の確認に失敗しました", e);
       }
@@ -64,7 +68,16 @@ export function UpdateNotice() {
           </>
         }
       >
-        <p>{t("failedBody", { version: failed.to, current: failed.current })}</p>
+        <p>
+          {t("failedBody", { current: failed.current })}
+          {t(`failed.${failed.diagnosis}`)}
+        </p>
+        {failed.diagnosis !== "installed" && <p>{t("failedManual")}</p>}
+        <p className="muted small-text">
+          {t("failedReport")}
+          <br />
+          <span className="num">{t("failedCode", { code: `${failed.current} → ${failed.to} / ${failed.diagnosis}` })}</span>
+        </p>
       </Dialog>
     );
   }

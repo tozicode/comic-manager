@@ -610,6 +610,17 @@ fn get_display_prefs(state: State<AppState>) -> Cmd<store::DisplayPrefs> {
     with_store(&state, |s| s.display_prefs())
 }
 
+/// 更新のインストーラーが書き残した記録（windows/hooks.nsh）。無ければ None（仕様書 5.13）。
+/// 記録を残すのは Windows のインストーラーだけなので、ほかではエラーにして「わからない」と扱わせる
+#[tauri::command]
+fn installer_log(app: AppHandle) -> Cmd<Option<String>> {
+    if !cfg!(windows) {
+        return Err("installer log is Windows only".into());
+    }
+    let path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("installer.log");
+    Ok(std::fs::read_to_string(path).ok())
+}
+
 #[tauri::command]
 fn get_check_updates(state: State<AppState>) -> Cmd<bool> {
     with_store(&state, |s| s.check_updates())
@@ -1003,6 +1014,7 @@ pub fn run() {
             set_display_prefs,
             get_system_language,
             get_check_updates,
+            installer_log,
             set_check_updates,
             add_files_work,
             add_files,

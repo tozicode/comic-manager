@@ -30,3 +30,21 @@ export function takeFailedUpdate(current: string): string | null {
     return null;
   }
 }
+
+/**
+ * 入れようとした版のインストーラーがどこまで進んだか（仕様書 5.13）。
+ * インストーラーは動き始めたときに installer.log を「start 版」で書き直し、最後まで終わると「done 版」を足す。
+ * - notStarted：その版の印が無い。動き始める前に止められた（セキュリティソフトなど）
+ * - stopped：動き始めたが、終わりの印が無い。ファイルの入れ替えの途中で止まった
+ * - installed：最後まで終わっている。別の場所にある古い版を開いている
+ * - unknown：記録が読めなかった（Mac など）
+ */
+export type UpdateDiagnosis = "notStarted" | "stopped" | "installed" | "unknown";
+
+export function diagnoseUpdate(log: string | null | undefined, to: string): UpdateDiagnosis {
+  if (log === undefined) return "unknown";
+  const lines = (log ?? "").split(/\r?\n/).map((l) => l.trim());
+  if (lines.includes(`done ${to}`)) return "installed";
+  if (lines.includes(`start ${to}`)) return "stopped";
+  return "notStarted";
+}

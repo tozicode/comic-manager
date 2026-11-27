@@ -510,6 +510,8 @@ export const api = {
   getSystemLanguage: () => call<Lang>("get_system_language"),
   /** 起動時に新しい版を確認するか */
   getCheckUpdates: () => call<boolean>("get_check_updates"),
+  /** 更新のインストーラーが書き残した記録（Windows のみ。無ければ null） */
+  installerLog: () => call<string | null>("installer_log"),
   setCheckUpdates: (on: boolean) => call<void>("set_check_updates", { on }),
   setDisplayPrefs: (prefs: DisplayPrefs) => call<void>("set_display_prefs", { prefs }),
 
