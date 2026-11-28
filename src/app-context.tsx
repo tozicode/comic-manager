@@ -52,6 +52,8 @@ type AppContextValue = {
   resume: () => Promise<void>;
   /** 計測をやめる（一時停止中のタスクも忘れる）。完了にはしない */
   stop: () => Promise<void>;
+  /** 計測を止めて、今回の記録を消す（間違えて始めたとき）。それより前の記録は残す */
+  discard: () => Promise<void>;
   /** 計測を止めて、そのタスクを完了にする（ミニ窓・右上タイマー・遠隔の画面の ✓） */
   finish: () => Promise<void>;
   /** 止め忘れの確認などで、止めたタスクを一時停止中として覚えておく */
@@ -247,6 +249,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const discard = async () => {
+    try {
+      const result = await api.stopTimer();
+      if (result) await api.deleteSession(result.sessionId);
+      setActive(null);
+      setPaused(null);
+      refresh();
+    } catch (e) {
+      showError(e);
+    }
+  };
+
   const finish = async () => {
     if (!active) return;
     try {
@@ -318,6 +332,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pause,
         resume,
         stop,
+        discard,
         finish,
         setPaused,
         reloadActive,

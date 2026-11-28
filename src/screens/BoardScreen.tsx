@@ -30,6 +30,8 @@ const illustFilter = () => [{ name: t("illustFilter"), extensions: ["clip", "psd
 const HOUR = 3_600_000;
 /** 共同作業データを読み直す間隔（5.23） */
 const COLLAB_CHECK_MS = 60_000;
+/** 計測を取り消すとき、これより長く計っていたら消す前に確かめる */
+const DISCARD_CONFIRM_MS = 60_000;
 
 /** セルの状態。locked = 前の工程が終わっていない */
 type CellState = "done" | "running" | "doing" | "todo" | "locked" | "excluded";
@@ -52,6 +54,7 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
   const [moveTo, setMoveTo] = useState<Record<number, number>>({});
   /** イラストの作品で外そうとしているファイル（ファイルを持たない作品では行） */
   const [removing, setRemoving] = useState<BoardPage | null>(null);
+  const [discarding, setDiscarding] = useState<{ page: BoardPage; stage: StageRef } | null>(null);
   /** ファイルを持たない作品：行を足す入力（null なら閉じている）、名前を変えている行 */
   const [addingRows, setAddingRows] = useState<string | null>(null);
   /** 計測し忘れた記録を後から足す入力（マスの「＋」から） */
@@ -668,6 +671,11 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
                     runningMs={app.active ? app.now - app.active.startedAt : 0}
                     onStart={() => app.start(page.id, stage.id)}
                     onPause={app.pause}
+                    onDiscard={() => {
+                      // 始めてすぐ（1 分未満）なら確かめずに取り消す。長く計っていたら消す前に確かめる
+                      if (app.active && app.now - app.active.startedAt >= DISCARD_CONFIRM_MS) setDiscarding({ page, stage });
+                      else app.discard();
+                    }}
                     onDone={() => run(() => api.setTaskDone(page.id, stage.id, true))}
                     onUndo={() => setUndo({ page, stage })}
                     onExclude={() => setExcluded(page, stage, true)}
@@ -830,6 +838,30 @@ export function BoardScreen({ workId, onNavigate }: { workId: number; onNavigate
         >
           <p>{t(splitting ? "splitOnBody" : "splitOffBody")}</p>
           {splitting && <p className="muted small-text">{t("splitOnNote")}</p>}
+        </Dialog>
+      )}
+      {discarding && (
+        <Dialog
+          title={t("cancelTitle", { page: discarding.page.label, stage: discarding.stage.name })}
+          onClose={() => setDiscarding(null)}
+          actions={
+            <>
+              <button className="btn" onClick={() => setDiscarding(null)}>
+                {t("cancel")}
+              </button>
+              <button
+                className="btn danger"
+                onClick={() => {
+                  setDiscarding(null);
+                  app.discard();
+                }}
+              >
+                {t("cancelApply")}
+              </button>
+            </>
+          }
+        >
+          <p>{t("cancelBody", { time: hours(app.active ? app.now - app.active.startedAt : 0) })}</p>
         </Dialog>
       )}
       {removing && (
@@ -1212,6 +1244,8 @@ type CellProps = {
   runningMs: number;
   onStart: () => void;
   onPause: () => void;
+  /** 計測を取り消す（今回の計測を記録しない） */
+  onDiscard: () => void;
   onDone: () => void;
   onUndo: () => void;
   /** 計測し忘れた記録を後から足す */
@@ -1224,7 +1258,7 @@ type CellProps = {
 };
 
 function BoardCell(props: CellProps) {
-  const { state, stage, totalMs, progress, predictedMs, runningMs, onStart, onPause, onDone, onUndo, onLog, onExclude, onRestore, onProgress } = props;
+  const { state, stage, totalMs, progress, predictedMs, runningMs, onStart, onPause, onDiscard, onDone, onUndo, onLog, onExclude, onRestore, onProgress } = props;
   if (state === "excluded") {
     return (
       <div className="cell excluded">
@@ -1290,6 +1324,9 @@ function BoardCell(props: CellProps) {
         </div>
         <HoverBar>
           {progressButton}
+          <button className="mini" title={t("cancelTip")} onClick={onDiscard}>
+            ✕
+          </button>
           <button className="mini dark" title={t("pause")} onClick={onPause}>
             ❚❚
           </button>
