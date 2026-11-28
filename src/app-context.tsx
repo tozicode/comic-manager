@@ -133,6 +133,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then(([p, dayStart, systemLang]) => {
         setTimeFormat(p.timeFormat);
         setThemePref(p.theme);
+        // マスの操作ボタンの出し方（App.css が html[data-actions] を見る）
+        document.documentElement.dataset.actions = p.actionPosition;
         setLang(p.language === "system" ? systemLang : p.language);
         setDayStartHour(dayStart);
         const key = `${p.timeFormat}|${dayStart}`;

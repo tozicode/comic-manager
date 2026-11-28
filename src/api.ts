@@ -99,7 +99,14 @@ export type WorkSummary = {
 /** 作品のタグ（名前だけ。ページのタグとは別物。5.26） */
 export type WorkTag = { id: number; name: string };
 
-export type DisplayPrefs = { timeFormat: "hm" | "clock" | "decimal"; theme: ThemePref; language: LangPref };
+/** ボードのマスに乗せたときの操作ボタンの出し方 */
+export type ActionPosition = "top" | "center" | "bottom";
+export type DisplayPrefs = {
+  timeFormat: "hm" | "clock" | "decimal";
+  theme: ThemePref;
+  language: LangPref;
+  actionPosition: ActionPosition;
+};
 
 export type RelinkCheck = { title: string; newPages: number; oldPages: number; matched: number };
 

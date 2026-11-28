@@ -1371,7 +1371,7 @@ function BoardCell(props: CellProps) {
 }
 
 /**
- * マスやページに乗せたときに出す操作の吹き出し。マスの文字に重ならないよう、マスの上に浮かせる。
+ * マスやページに乗せたときに出す操作の吹き出し。出す場所（マスの上・重ねる・下）は表示の設定で選び、App.css が html[data-actions] で切り替える。
  * 吹き出しの中のクリックがマスの「計測を始める」に届かないよう、ここで止める（▶ は自分で計測を始める）
  */
 function HoverBar({ children }: { children: ReactNode }) {

@@ -1,6 +1,6 @@
 import { DragEvent, useCallback, useEffect, useRef, useState } from "react";
 import { askNotificationPermission } from "../components/Pomodoro";
-import { api, DisplayPrefs, RemotePrefs, StageDef, StageSet, Tag, TagGroup, TimerPrefs } from "../api";
+import { ActionPosition, api, DisplayPrefs, RemotePrefs, StageDef, StageSet, Tag, TagGroup, TimerPrefs } from "../api";
 import { Dialog } from "../components/Dialog";
 import { Qr } from "../components/Qr";
 import { kindKey, setName, unitText } from "../i18n/common";
@@ -1160,6 +1160,8 @@ const TIME_FORMATS: TimeFormat[] = ["hm", "clock", "decimal"];
 
 const THEMES: ThemePref[] = ["system", "light", "dark"];
 
+const ACTION_POSITIONS: ActionPosition[] = ["top", "center", "bottom"];
+
 /** 言語の選択肢。自動のあとに各言語（その言語自身の名前で出す） */
 const LANGUAGE_CHOICES: LangPref[] = ["system", ...LANGS];
 
@@ -1242,6 +1244,26 @@ function DisplaySection() {
               <b>{t(`theme.${th}`)}</b>
               <br />
               <span className="muted">{t(`theme.${th}Note`)}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="section-title" style={{ marginTop: 22 }}>
+        {t("display.actions")}
+      </div>
+      <div className="card pad form">
+        {ACTION_POSITIONS.map((pos) => (
+          <button
+            key={pos}
+            className={`choice${prefs.actionPosition === pos ? " on" : ""}`}
+            onClick={() => save({ ...prefs, actionPosition: pos })}
+          >
+            <span className="radio" />
+            <span className="grow">
+              <b>{t(`actions.${pos}`)}</b>
+              <br />
+              <span className="muted">{t(`actions.${pos}Note`)}</span>
             </span>
           </button>
         ))}

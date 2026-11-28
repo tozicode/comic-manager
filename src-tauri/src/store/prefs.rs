@@ -41,11 +41,13 @@ pub struct DisplayPrefs {
     pub theme: String,
     /// 言語："system"（OS に合わせる）/ "ja" / "en" / "ko" / "zh-Hans" / "zh-Hant"
     pub language: String,
+    /// ボードのマスに乗せたときの操作ボタンの出し方："top"（マスの上）/ "center"（マスに重ねる）/ "bottom"（マスの下）
+    pub action_position: String,
 }
 
 impl Default for DisplayPrefs {
     fn default() -> Self {
-        Self { time_format: "hm".into(), theme: "system".into(), language: "system".into() }
+        Self { time_format: "hm".into(), theme: "system".into(), language: "system".into(), action_position: "top".into() }
     }
 }
 
@@ -156,6 +158,9 @@ impl Store {
         }
         if !["system", "ja", "en", "ko", "zh-Hans", "zh-Hant"].contains(&prefs.language.as_str()) {
             return Err(tr(M::LanguageInvalid).into());
+        }
+        if !["top", "center", "bottom"].contains(&prefs.action_position.as_str()) {
+            return Err(tr(M::ActionPositionInvalid).into());
         }
         self.conn
             .execute(
@@ -334,7 +339,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             store.display_prefs().unwrap(),
-            DisplayPrefs { time_format: "clock".into(), theme: "system".into(), language: "system".into() }
+            DisplayPrefs { time_format: "clock".into(), theme: "system".into(), language: "system".into(), action_position: "top".into() }
         );
         store.set_display_prefs(&DisplayPrefs { theme: "dark".into(), ..Default::default() }).unwrap();
         assert_eq!(store.display_prefs().unwrap().theme, "dark");
@@ -342,6 +347,9 @@ mod tests {
         store.set_display_prefs(&DisplayPrefs { language: "zh-Hant".into(), ..Default::default() }).unwrap();
         assert_eq!(store.display_prefs().unwrap().language, "zh-Hant");
         assert!(store.set_display_prefs(&DisplayPrefs { language: "fr".into(), ..Default::default() }).is_err());
+        store.set_display_prefs(&DisplayPrefs { action_position: "center".into(), ..Default::default() }).unwrap();
+        assert_eq!(store.display_prefs().unwrap().action_position, "center");
+        assert!(store.set_display_prefs(&DisplayPrefs { action_position: "left".into(), ..Default::default() }).is_err());
     }
 
     #[test]

@@ -1095,7 +1095,7 @@ table.board {
   outline-offset: 1px;
   background: var(--accent-soft);
 }
-/* マス・ページに乗せたときの操作の吹き出し。マスの文字に重ならないよう、マスの上に浮かせる。
+/* マス・ページに乗せたときの操作の吹き出し。既定はマスの文字に重ならないよう、マスの上に浮かせる。
    外側の枠は透明で、マスとの間の隙間を埋める（吹き出しへマウスを動かしても消えないように） */
 .board td.pcol {
   position: relative;
@@ -1131,6 +1131,29 @@ table.board {
 .cell:hover > .hover-bar,
 .board td.pcol:hover > .hover-bar {
   display: block;
+}
+/* 出し方は設定で選べる（5.8）。下：マスの下に浮かせる */
+html[data-actions="bottom"] .hover-bar {
+  bottom: auto;
+  top: 100%;
+  padding-bottom: 0;
+  padding-top: 4px;
+}
+html[data-actions="bottom"] .hover-bar .bubble::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--border);
+}
+/* 中央：マスの右側に、文字に重ねて出す（3.6 までの形） */
+html[data-actions="center"] .hover-bar {
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  padding-bottom: 0;
+}
+html[data-actions="center"] .hover-bar .bubble::after {
+  display: none;
 }
 
 /* ===== 作業記録 ===== */
